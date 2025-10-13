@@ -369,7 +369,10 @@ app.use('/api', proceduresRouter);
 const server = http.createServer(app);
 const io = socketio(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: [
+  "http://localhost:3000",
+  "https://finsys-clinics.vercel.app"
+],
     methods: ["GET", "POST"]
   }
 });
