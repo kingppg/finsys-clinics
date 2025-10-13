@@ -1,0 +1,1029 @@
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { supabase } from '../supabaseClient';
+import StatusSelect from './StatusSelect';
+import './AppointmentsModern.css';
+import './MainSection.css';
+import Swal from 'sweetalert2';
+import io from 'socket.io-client';
+
+// ================= CONFIG =================
+const ENABLE_ROW_HOVER_AUTO_CLEAR = false;
+const TOAST_THROTTLE_MS = 1500;
+const FLASH_DURATION_MS = 60000; // 1 minute
+const SOUND_PATH = process.env.PUBLIC_URL + '/sounds/notify.mp3';
+// ==========================================
+
+const statusMessages = {
+  Completed: "Patient will be notified that their appointment has been marked as completed. You may send a 'thank you' or follow-up message.",
+  "No Show": "Patient will be notified that they missed their appointment. You may send an acknowledgement or reschedule message.",
+  Cancelled: "Patient will be notified that their appointment has been cancelled. You may send a cancellation confirmation message."
+};
+
+const StatusUpdateModal = {
+  async confirmAndUpdate({ appointment, newStatus, onStatusUpdated }) {
+    const patientName = appointment.patient_name || 'Patient';
+    const modalText = statusMessages[newStatus] || "Are you sure you want to update the status?";
+
+    const { value: customMessage, isConfirmed } = await Swal.fire({
+      title: `Mark as "${newStatus}"?`,
+      html: `<b>${patientName}</b><br>${modalText}<br><br>
+        <textarea id="custom-message" class="swal2-textarea" placeholder="Optional: Add a custom message for the patient"></textarea>`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, update & notify patient',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      focusConfirm: false,
+      preConfirm: () => document.getElementById('custom-message').value,
+      customClass: {
+        confirmButton: 'swal2-confirm-btn',
+        cancelButton: 'swal2-cancel-btn'
+      }
+    });
+
+    if (!isConfirmed) return false;
+
+    try {
+      const { error: updateError } = await supabase
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', appointment.id)
+        .eq('clinic_id', appointment.clinic_id);
+      if (updateError) throw updateError;
+
+      const res = await fetch(`/status-notifications/${appointment.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+            message: customMessage || "",
+            clinic_id: appointment.clinic_id
+        })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Messenger notification failed');
+      }
+
+      onStatusUpdated && onStatusUpdated(newStatus);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Status updated & patient notified!',
+        timer: 1600,
+        showConfirmButton: false
+      });
+      return true;
+    } catch {
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed!',
+        text: 'There was a problem updating the status or sending the message.',
+        timer: 1800,
+        showConfirmButton: false
+      });
+      return false;
+    }
+  }
+};
+
+function getWeeksOfMonth(year, month) {
+  const m = parseInt(month, 10) - 1;
+  const firstDayOfMonth = new Date(year, m, 1);
+  const lastDayOfMonth = new Date(year, m + 1, 0);
+
+  let weeks = [];
+  let start = new Date(firstDayOfMonth);
+  let end;
+  if (start.getDay() === 0) {
+    end = new Date(start);
+  } else {
+    end = new Date(start);
+    end.setDate(start.getDate() + (7 - start.getDay()));
+    if (end > lastDayOfMonth) end = new Date(lastDayOfMonth);
+  }
+  weeks.push({ start: new Date(start), end: new Date(end) });
+
+  let nextMonday = new Date(end);
+  nextMonday.setDate(end.getDate() + 1);
+
+  while (nextMonday <= lastDayOfMonth) {
+    let weekStart = new Date(nextMonday);
+    let weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    if (weekEnd > lastDayOfMonth) weekEnd = new Date(lastDayOfMonth);
+    weeks.push({ start: weekStart, end: weekEnd });
+    nextMonday = new Date(weekEnd);
+    nextMonday.setDate(weekEnd.getDate() + 1);
+  }
+  return weeks;
+}
+
+function getYearList(appointments) {
+  const years = new Set();
+  const thisYear = new Date().getFullYear();
+  appointments.forEach(a => years.add(new Date(a.appointment_time).getFullYear()));
+  let arr = Array.from(years);
+  if (arr.length === 0) arr = [thisYear];
+  const min = Math.min(...arr, thisYear - 2);
+  const max = Math.max(...arr, thisYear);
+  const result = [];
+  for (let y = min; y <= max; ++y) result.push(y);
+  return result;
+}
+
+function getMonthList() {
+  return [
+    { value: "01", name: "January" }, { value: "02", name: "February" },
+    { value: "03", name: "March" }, { value: "04", name: "April" },
+    { value: "05", name: "May" }, { value: "06", name: "June" },
+    { value: "07", name: "July" }, { value: "08", name: "August" },
+    { value: "09", name: "September" }, { value: "10", name: "October" },
+    { value: "11", name: "November" }, { value: "12", name: "December" },
+  ];
+}
+
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
+  const [appointments, setAppointments] = useState([]);
+  const [dentists, setDentists] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState('monthly');
+  const [selectedYear, setSelectedYear] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
+  const [selectedDay, setSelectedDay] = useState('');
+  const [selectedDentist, setSelectedDentist] = useState('');
+  const [statusLoadingIds, setStatusLoadingIds] = useState([]);
+  const [now, setNow] = useState(new Date());
+
+  const [flashRow, setFlashRow] = useState(null);
+  const flashTimerRef = useRef(null);
+
+  const [unreadUpdates, setUnreadUpdates] = useState([]);
+
+  const lastToastRef = useRef(0);
+  const audioRef = useRef(null);
+  const glowTimers = useRef({});
+
+  const [collapsedDentists, setCollapsedDentists] = useState({});
+  const [summaryPulse, setSummaryPulse] = useState(false);
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(()=>{});
+    }
+  }, []);
+
+  useEffect(() => {
+    setSummaryPulse(true);
+    const t = setTimeout(() => setSummaryPulse(false), 500);
+    return () => clearTimeout(t);
+  }, [appointments.length, viewMode, selectedDentist]);
+
+  useEffect(() => {
+    const now = new Date();
+    const currentYear = String(now.getFullYear());
+    const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const currentDay = String(now.getDate());
+    setSelectedYear(currentYear);
+    setSelectedMonth(currentMonth);
+
+    if (viewMode === 'weekly') {
+      const weeksArr = getWeeksOfMonth(currentYear, currentMonth);
+      let weekIdx = 0;
+      for (let i = 0; i < weeksArr.length; i++) {
+        const { start, end } = weeksArr[i];
+        if (now >= start && now <= end) {
+          weekIdx = i;
+          break;
+        }
+      }
+      setSelectedWeekIdx(weekIdx);
+      setSelectedDay('');
+    } else if (viewMode === 'daily') {
+      setSelectedWeekIdx(0);
+      setSelectedDay(currentDay);
+    } else {
+      setSelectedWeekIdx(0);
+      setSelectedDay('');
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    const preload = async () => {
+      setLoading(true);
+      try {
+        const [denRes, patRes, appRes] = await Promise.all([
+          supabase.from('dentists').select('*').eq('clinic_id', clinicId),
+          supabase.from('patients').select('*').eq('clinic_id', clinicId).eq('deleted', false),
+          supabase.from('appointments').select('*').eq('clinic_id', clinicId).eq('deleted', false),
+        ]);
+        setDentists(denRes.data || []);
+        setPatients(patRes.data || []);
+        setAppointments(appRes.data || []);
+        const years = getYearList(appRes.data || []);
+        if (!selectedYear) setSelectedYear(years[years.length - 1]);
+        if (!selectedMonth) setSelectedMonth(String(new Date().getMonth() + 1).padStart(2, '0'));
+      } catch {
+        setDentists([]);
+        setPatients([]);
+        setAppointments([]);
+      }
+      setLoading(false);
+    };
+    if (clinicId) preload();
+    // eslint-disable-next-line
+  }, [clinicId]);
+
+  useEffect(() => {
+    if (clinicId) fetchAppointments();
+    // eslint-disable-next-line
+  }, [viewMode, selectedYear, selectedMonth, selectedWeekIdx, selectedDay, selectedDentist, clinicId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const scrollToRow = useCallback((id) => {
+    const appt = appointments.find(a => a.id === id);
+    if (appt) {
+      const dentistId = appt.dentist_id;
+      if (collapsedDentists[dentistId]) {
+        setCollapsedDentists(prev => ({
+          ...prev,
+          [dentistId]: false
+        }));
+        setTimeout(() => {
+          const row = document.querySelector(`tr[data-appt-id="${id}"]`);
+            if (row) {
+              row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              row.classList.add('row-scroll-focus');
+              if (glowTimers.current[id]) clearTimeout(glowTimers.current[id]);
+              glowTimers.current[id] = setTimeout(() => {
+                row.classList.remove('row-scroll-focus');
+              }, 4000);
+            }
+        }, 350);
+        return;
+      }
+    }
+    const row = document.querySelector(`tr[data-appt-id="${id}"]`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('row-scroll-focus');
+      if (glowTimers.current[id]) clearTimeout(glowTimers.current[id]);
+      glowTimers.current[id] = setTimeout(() => {
+        row.classList.remove('row-scroll-focus');
+      }, 4000);
+    }
+  }, [appointments, collapsedDentists]);
+
+  const playSound = () => {
+    if (!audioRef.current) {
+      audioRef.current = new Audio(SOUND_PATH);
+      audioRef.current.volume = 0.6;
+    }
+    audioRef.current.currentTime = 0;
+    audioRef.current.play().catch(()=>{});
+  };
+
+  const showUpdateToast = (appt) => {
+    const nowTs = Date.now();
+    if (nowTs - lastToastRef.current < TOAST_THROTTLE_MS) return;
+    lastToastRef.current = nowTs;
+
+    const isCancelled = ['Cancelled', 'No Show'].includes(appt.status);
+    Swal.fire({
+      toast: true,
+      icon: isCancelled ? 'error' : 'info',
+      title: `#${appt.id} ${appt.status}`,
+      html: `<small>${new Date(appt.appointment_time).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</small>
+             <br/><button id="toast-view-btn" style="margin-top:6px; background:#185abd; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer;">View</button>`,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 6000,
+      didOpen: () => {
+        const btn = document.getElementById('toast-view-btn');
+        if (btn) {
+          btn.addEventListener('click', () => {
+            scrollToRow(appt.id);
+            Swal.close();
+          });
+        }
+      }
+    });
+  };
+
+  const showBrowserNotification = (appt) => {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    if (!document.hidden) return;
+    const n = new Notification(`Appt #${appt.id} ${appt.status}`, {
+      body: new Date(appt.appointment_time).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) + ' • Click to view',
+      tag: `appt-${appt.id}`
+    });
+    n.onclick = () => {
+      window.focus();
+      setTimeout(() => scrollToRow(appt.id), 300);
+    };
+  };
+
+  useEffect(() => {
+    const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000');
+    socket.on('appointment-updated', (updatedRow) => {
+      if (!updatedRow || String(updatedRow.clinic_id) !== String(clinicId)) return;
+      if (!passesCurrentFilter(updatedRow)) return;
+
+      if (collapsedDentists[updatedRow.dentist_id]) {
+        setCollapsedDentists(prev => ({
+          ...prev,
+          [updatedRow.dentist_id]: false
+        }));
+      }
+
+      setAppointments(prev => {
+        let found = false;
+        const patched = prev.map(a => {
+          if (a.id === updatedRow.id) {
+            found = true;
+            return { ...a, ...updatedRow };
+          }
+          return a;
+        });
+        return found ? patched : [...patched, updatedRow];
+      });
+
+      setUnreadUpdates(prev => prev.includes(updatedRow.id) ? prev : [...prev, updatedRow.id]);
+
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      setFlashRow({ id: updatedRow.id, status: updatedRow.status, ts: Date.now() });
+      flashTimerRef.current = setTimeout(() => {
+        setFlashRow(null);
+      }, FLASH_DURATION_MS);
+
+      playSound();
+      if (!document.hidden) {
+        showUpdateToast(updatedRow);
+      } else {
+        showBrowserNotification(updatedRow);
+      }
+      // ------ PATCH ADDED BELOW: REFRESH PATIENTS ------
+      fetchPatients(); // <-- This fixes the patient name display issue for new bookings
+      // -----------------------------------------------
+    });
+
+    function handleVisibilityChange() {
+      if (!document.hidden && unreadUpdates.length > 0) {
+        unreadUpdates.forEach(id => {
+          const appt = appointments.find(a => a.id === id);
+          if (appt) {
+            setFlashRow({ id, status: appt.status, ts: Date.now() });
+          }
+        });
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      socket.disconnect();
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      Object.values(glowTimers.current).forEach(t => clearTimeout(t));
+      glowTimers.current = {};
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+    // eslint-disable-next-line
+  }, [clinicId, viewMode, selectedYear, selectedMonth, selectedWeekIdx, selectedDay, scrollToRow, collapsedDentists, unreadUpdates, appointments]);
+
+  function passesCurrentFilter(appt) {
+    const d = new Date(appt.appointment_time);
+    if (viewMode === 'monthly') {
+      return d.getFullYear() === Number(selectedYear) &&
+             (d.getMonth() + 1) === Number(selectedMonth);
+    }
+    if (viewMode === 'weekly') {
+      const weeksArr = getWeeksOfMonth(selectedYear, selectedMonth);
+      const w = weeksArr[selectedWeekIdx];
+      if (!w) return false;
+      return d >= w.start && d <= w.end;
+    }
+    if (viewMode === 'daily') {
+      return d.getFullYear() === Number(selectedYear) &&
+             (d.getMonth() + 1) === Number(selectedMonth) &&
+             d.getDate() === Number(selectedDay);
+    }
+    return true;
+  }
+
+  const fetchAppointments = async () => {
+    setLoading(true);
+    try {
+      let { data: arr, error } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('clinic_id', clinicId)
+        .eq('deleted', false);
+
+      if (error) throw error;
+
+      let filtered = [];
+      if (viewMode === 'monthly' && selectedYear && selectedMonth) {
+        filtered = arr.filter(a => {
+          const d = new Date(a.appointment_time);
+          return d.getFullYear() === Number(selectedYear) &&
+                 (d.getMonth() + 1) === Number(selectedMonth);
+        });
+      } else if (viewMode === 'weekly' && selectedYear && selectedMonth) {
+        const weeksArr = getWeeksOfMonth(selectedYear, selectedMonth);
+        const { start, end } = weeksArr[selectedWeekIdx] || {};
+        filtered = arr.filter(a => {
+          const dateObj = new Date(a.appointment_time);
+          return start && end && dateObj >= start && dateObj <= end;
+        });
+      } else if (viewMode === 'daily' && selectedYear && selectedMonth && selectedDay) {
+        filtered = arr.filter(a => {
+          const d = new Date(a.appointment_time);
+          return d.getFullYear() === Number(selectedYear) &&
+                 (d.getMonth() + 1) === Number(selectedMonth) &&
+                 d.getDate() === Number(selectedDay);
+        });
+      } else {
+        filtered = arr;
+      }
+
+      setAppointments(filtered);
+      setUnreadUpdates(prev => prev.filter(id => filtered.some(f => f.id === id)));
+
+      if (flashRow && !filtered.some(a => a.id === flashRow.id)) {
+        setFlashRow(null);
+      }
+    } catch {
+      setAppointments([]);
+    }
+    setLoading(false);
+  };
+
+  const fetchPatients = async () => {
+    try {
+      let { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('clinic_id', clinicId)
+        .eq('deleted', false);
+      if (error) throw error;
+      setPatients(data);
+    } catch {
+      setPatients([]);
+    }
+  };
+
+  const dentistName = (id) =>
+    dentists.find(d => String(d.id) === String(id))?.name || id;
+
+  const patientName = (id) =>
+    patients.find(p => String(p.id) === String(id))?.name || id;
+
+  const handleDelete = async (id) => {
+    const { isConfirmed } = await Swal.fire({
+      title: 'Are you sure?',
+      text: 'Do you want to cancel this appointment?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, cancel it!',
+      cancelButtonText: 'No',
+      reverseButtons: true,
+      focusCancel: true,
+      customClass: {
+        confirmButton: 'swal2-confirm-btn',
+        cancelButton: 'swal2-cancel-btn'
+      }
+    });
+    if (isConfirmed) {
+      try {
+        await supabase
+          .from('appointments')
+          .update({ deleted: true })
+          .eq('id', id)
+          .eq('clinic_id', clinicId);
+        Swal.fire({
+          icon: 'success',
+          title: 'Appointment cancelled',
+          timer: 1400,
+          showConfirmButton: false
+        });
+        fetchAppointments();
+        fetchPatients();
+      } catch {
+        Swal.fire({
+          icon: 'error',
+          title: 'Failed to cancel',
+          text: 'There was a problem cancelling the appointment.',
+          timer: 1800,
+          showConfirmButton: false
+        });
+      }
+    }
+  };
+
+  const handleStatusChange = async (id, newStatus) => {
+    setStatusLoadingIds(ids => [...ids, id]);
+    const appointment = appointments.find(a => a.id === id);
+
+    if (['Completed', 'No Show', 'Cancelled'].includes(newStatus)) {
+      await StatusUpdateModal.confirmAndUpdate({
+        appointment: {
+          ...appointment,
+          patient_name: patientName(appointment.patient_id),
+          clinic_id: appointment.clinic_id ?? clinicId
+        },
+        newStatus,
+        onStatusUpdated: (updatedStatus) => {
+          setAppointments(apps =>
+            apps.map(a => a.id === appointment.id ? { ...a, status: updatedStatus } : a)
+          );
+          fetchPatients();
+        }
+      });
+      setStatusLoadingIds(ids => ids.filter(i => i !== id));
+      return;
+    }
+
+    try {
+      await supabase
+        .from('appointments')
+        .update({ status: newStatus })
+        .eq('id', id)
+        .eq('clinic_id', appointment?.clinic_id ?? clinicId);
+      setAppointments(apps => apps.map(a => a.id === id ? { ...a, status: newStatus } : a));
+      Swal.fire({
+        icon: 'success',
+        title: 'Status updated',
+        text: `Appointment status changed to "${newStatus}"`,
+        timer: 1200,
+        showConfirmButton: false
+      });
+      fetchPatients();
+    } catch {
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed to update status!',
+        text: 'There was a problem updating the appointment status.',
+        timer: 1800,
+        showConfirmButton: false
+      });
+    }
+    setStatusLoadingIds(ids => ids.filter(i => i !== id));
+  };
+
+  const acknowledgeAll = () => {
+    setUnreadUpdates([]);
+  };
+
+  const handleRowMouseEnter = (id) => {
+    if (!ENABLE_ROW_HOVER_AUTO_CLEAR) return;
+    setUnreadUpdates(prev => prev.filter(x => x !== id));
+  };
+
+  const totalAppointmentsAllDentists = appointments.length;
+
+  const dentistAppointmentCountMap = dentists.reduce((acc, d) => {
+    acc[d.id] = 0;
+    return acc;
+  }, {});
+  appointments.forEach(appt => {
+    if (dentistAppointmentCountMap.hasOwnProperty(appt.dentist_id)) {
+      dentistAppointmentCountMap[appt.dentist_id] += 1;
+    }
+  });
+
+  const years = getYearList(appointments);
+  const weeksArr = selectedYear && selectedMonth ? getWeeksOfMonth(selectedYear, selectedMonth) : [];
+
+  function renderStatusCell(appt) {
+    const isLoading = statusLoadingIds.includes(appt.id);
+    if (isLoading) {
+      return <span style={{ padding: '3px 10px', display: 'inline-block' }}>Updating...</span>;
+    }
+    return (
+      <StatusSelect
+        value={appt.status}
+        onChange={newStatus => handleStatusChange(appt.id, newStatus)}
+        appointmentTime={appt.appointment_time}
+      />
+    );
+  }
+
+  const statusCellStyle = { verticalAlign: 'middle', textAlign: 'center', height: 48, padding: '0 2px', minWidth: 0 };
+
+  function displayOrigin(origin) {
+    if (!origin || origin === '') return "System";
+    if (origin.toLowerCase().includes("messenger")) return "Messenger";
+    return origin;
+  }
+
+  function formatLongDate(date) {
+    return new Date(date).toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric'
+    });
+  }
+
+  function formatTime(date) {
+    return new Date(date).toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: true
+    });
+  }
+
+  function renderProcedureCell(appt) {
+    return appt.reason;
+  }
+
+  function renderActionsCell(appt) {
+    return (
+      <td className="appointments-actions-cell">
+        <i
+          className="fa fa-edit icon-action edit-icon"
+          title="Edit"
+          onClick={() => onEdit(appt)}
+          style={{ cursor: "pointer", marginRight: 16 }}
+        />
+        <i
+          className="fa fa-trash icon-action delete-icon"
+          title="Delete"
+          onClick={() => handleDelete(appt.id)}
+          style={{ cursor: "pointer", marginRight: 16 }}
+        />
+        <i
+          className="fa fa-bell icon-action reminder-icon"
+          title="Manage Reminders"
+          onClick={() => onReminder(appt.id, patientName(appt.patient_id))}
+          style={{ cursor: "pointer" }}
+        />
+      </td>
+    );
+  }
+
+  function rowFlashClass(appt) {
+    if (!flashRow || flashRow.id !== appt.id) return '';
+    if (flashRow.status === 'Confirmed' || flashRow.status === 'Scheduled') return 'row-flash-confirmed';
+    if (flashRow.status === 'Cancelled' || flashRow.status === 'No Show') return 'row-flash-cancelled';
+    return 'row-flash-generic';
+  }
+
+  function rowPersistentClass(appt) {
+    if (!unreadUpdates.includes(appt.id)) return '';
+    if (['Confirmed', 'Scheduled'].includes(appt.status)) return 'persistent-highlight-confirmed';
+    if (['Cancelled', 'No Show'].includes(appt.status)) return 'persistent-highlight-cancelled';
+    return 'persistent-highlight-generic';
+  }
+
+  function renderTable(appointmentsArr) {
+    const sortedAppointmentsArr = [...appointmentsArr].sort(
+      (a, b) => new Date(a.appointment_time) - new Date(b.appointment_time)
+    );
+
+    return (
+      <div className="appointments-table-scroll">
+        <table className="appointments-table-fixed" border="1" cellPadding="8">
+          <colgroup>
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '25%' }} />
+            <col style={{ width: '15%' }} />
+            <col style={{ width: '90px' }} />
+            <col style={{ width: '20%' }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Patient / Date & Time</th>
+              <th>Procedure</th>
+              <th>Origin</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedAppointmentsArr.map(appt => {
+              const apptTime = new Date(appt.appointment_time);
+              const isPast = now > apptTime;
+              const needsStatusUpdate =
+                isPast && (appt.status === "Scheduled" || appt.status === "Confirmed");
+
+              const flashClass = rowFlashClass(appt);
+              const persistentClass = rowPersistentClass(appt);
+              const combinedClass = `${flashClass} ${persistentClass}`.trim();
+
+              return (
+                <tr
+                  key={appt.id}
+                  data-appt-id={appt.id}
+                  className={combinedClass}
+                  onMouseEnter={() => handleRowMouseEnter(appt.id)}
+                >
+                  <td>
+                    <div style={{ fontWeight: 600, fontSize: '1.1em', marginBottom: 2 }}>
+                      {patientName(appt.patient_id)}
+                    </div>
+                    <div style={{ fontSize: '0.88em', color: '#888', fontWeight: 500, marginBottom: 1 }}>
+                      Appointment ID: <span style={{
+                        fontFamily: 'monospace',
+                        background: '#f3f3f3',
+                        borderRadius: 4,
+                        padding: '0px 6px'
+                      }}>{appt.id}</span>
+                    </div>
+                    <div style={{ fontSize: '0.86em', color: '#444', fontWeight: 400, marginBottom: 1 }}>
+                      MID: <span style={{
+                        fontFamily: 'monospace',
+                        background: '#efefef',
+                        borderRadius: 4,
+                        padding: '0px 6px'
+                      }}>
+                        {patients.find(p => String(p.id) === String(appt.patient_id))?.messenger_id || 'N/A'}
+                        {' / '}
+                        {appt.guardian_messenger_id || 'N/A'}
+                      </span>
+                    </div>
+                    <div style={{ color: '#185abd', fontSize: '0.96em', fontWeight: 400, lineHeight: 1.1 }}>
+                      {formatLongDate(appt.appointment_time)}
+                    </div>
+                    <div style={{ color: '#555', fontSize: '0.88em' }}>
+                      {formatTime(appt.appointment_time)}
+                    </div>
+                  </td>
+                  <td title={appt.reason}>{renderProcedureCell(appt)}</td>
+                  <td title={appt.booking_origin}>{displayOrigin(appt.booking_origin)}</td>
+                  <td style={statusCellStyle}>
+                    {renderStatusCell(appt)}
+                    {needsStatusUpdate && (
+                      <div style={{ marginTop: 6 }}>
+                        <span style={{
+                          color: "#d97706",
+                          fontWeight: "bold",
+                          fontSize: "0.92em",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4
+                        }}>
+                          <i className="fa fa-exclamation-triangle" aria-hidden="true" />
+                          Needs status update
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  {renderActionsCell(appt)}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  const dentistFilteredAppointments = selectedDentist
+    ? appointments.filter(appt => String(appt.dentist_id) === String(selectedDentist))
+    : null;
+
+  const scopeLabel =
+    viewMode === 'monthly' ? 'this month'
+      : viewMode === 'weekly' ? 'this week'
+      : viewMode === 'daily' ? 'today'
+      : '';
+
+  const totalLabel = `Total: ${totalAppointmentsAllDentists} appointment${totalAppointmentsAllDentists === 1 ? '' : 's'} ${scopeLabel}`;
+
+  const toggleCollapse = (dentistId) => {
+    setCollapsedDentists(prev => ({
+      ...prev,
+      [dentistId]: !prev[dentistId]
+    }));
+  };
+
+  return (
+    <section className="appointment-modern appointments-sticky-layout" style={{display:'flex', flexDirection:'column', height:'100%', minHeight:'calc(100vh - 16px)'}}>
+      <div
+        style={{
+        position:'fixed',
+        top:0,
+        left:220,
+        right:0,
+        height:40,
+        background:'#f6f9fc',
+        zIndex: 940,
+        pointerEvents:'none'
+     }}
+/>
+      {/* STICKY HEADER BLOCK */}
+            
+      <div className="appointments-sticky-header" style={{
+        position:'sticky',
+        top:40,
+        zIndex:30,
+        background:'#f6f9fc',
+        paddingTop:4,
+        paddingBottom:10,
+        borderBottom:'1px solid #e2e8f0'
+      }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8
+        }}>
+          <h2 style={{ margin: 0 }}>Appointments</h2>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {unreadUpdates.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div
+                  className="new-updates-pill"
+                  title="New/updated appointments in this view"
+                >
+                  {unreadUpdates.length} new update{unreadUpdates.length > 1 ? 's' : ''}
+                </div>
+                <button
+                  onClick={acknowledgeAll}
+                  style={{
+                    background: '#e3f1ff',
+                    color: '#185abd',
+                    padding: '6px 12px',
+                    borderRadius: 16,
+                    fontWeight: 600,
+                    fontSize: '.75em',
+                    border: '1px solid #b5d5f7',
+                    cursor: 'pointer'
+                  }}
+                  title="Clear highlight of updated rows"
+                >
+                  Acknowledge All
+                </button>
+              </div>
+            )}
+            <button
+              className="add-btn"
+              onClick={onAdd}
+              style={{
+                fontWeight: 'bold', background: '#185abd', color: '#fff',
+                padding: '0px 30px', border: 'none', borderRadius: 4, minWidth: 170
+              }}
+            >
+              Add Appointment
+            </button>
+          </div>
+        </div>
+
+        <div className={`appointments-summary-bar ${summaryPulse ? 'pulse' : ''}`}>
+          <i className="fa fa-database" aria-hidden="true" style={{ color: '#185abd' }} />
+          {totalLabel}
+          {selectedDentist && (
+            <span style={{ fontWeight: 500, color: '#555' }}>
+              (Filtered: {dentistName(selectedDentist)})
+            </span>
+          )}
+        </div>
+
+        <div style={{
+          margin: '1em 0 0.4em 0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5em'
+        }}>
+          <label>
+            <span>Dentist:&nbsp;</span>
+            <select
+              value={selectedDentist}
+              onChange={e => setSelectedDentist(e.target.value)}
+              style={{ minWidth: 200 }}
+            >
+              <option value="">
+                -- All Dentists -- ({totalAppointmentsAllDentists})
+              </option>
+              {dentists.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({dentistAppointmentCountMap[d.id] || 0})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>View:&nbsp;</span>
+            <select value={viewMode} onChange={e => setViewMode(e.target.value)}>
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+              <option value="daily">Daily</option>
+            </select>
+          </label>
+          <label>
+            <span>Year:&nbsp;</span>
+            <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)}>
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </label>
+          {(viewMode === 'monthly' || viewMode === 'weekly' || viewMode === 'daily') && (
+            <label>
+              <span>Month:&nbsp;</span>
+              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                {getMonthList().map(m => <option key={m.value} value={m.value}>{m.name}</option>)}
+              </select>
+            </label>
+          )}
+          {viewMode === 'weekly' && selectedYear && selectedMonth && (
+            <label>
+              <span>Week:&nbsp;</span>
+              <select
+                value={selectedWeekIdx}
+                onChange={e => setSelectedWeekIdx(Number(e.target.value))}
+              >
+                {weeksArr.map((_, i) => (
+                  <option key={i} value={i}>{`Week ${i + 1}`}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {viewMode === 'daily' && selectedYear && selectedMonth && (
+            <label>
+              <span>Day:&nbsp;</span>
+              <select
+                value={selectedDay}
+                onChange={e => setSelectedDay(e.target.value)}
+                style={{ minWidth: 60, maxWidth: 80 }}
+              >
+                {Array.from({ length: daysInMonth(selectedYear, selectedMonth) }, (_, i) => i + 1)
+                  .map(day => <option key={day} value={day}>{day}</option>)}
+              </select>
+            </label>
+          )}
+        </div>
+      </div>
+      {/* END STICKY HEADER BLOCK */}
+
+      {/* SCROLL AREA FOR CARDS/TABLES */}
+      <div className="appointments-scroll-area" style={{
+        flex:1,
+        overflowY:'auto',
+        paddingTop:8,
+        paddingBottom:32
+      }}>
+        {loading ? (
+          <div>Loading...</div>
+        ) : selectedDentist ? (
+          <div className={`dentist-group-card ${collapsedDentists[selectedDentist] ? 'collapsed' : ''}`}>
+            <div className="dentist-group-title" style={{ justifyContent: 'space-between' }}>
+              <span>
+                {dentistName(selectedDentist)} ({(dentistFilteredAppointments || []).length} appointment{(dentistFilteredAppointments || []).length === 1 ? '' : 's'})
+              </span>
+              <button
+                className="dentist-toggle-btn"
+                aria-expanded={!collapsedDentists[selectedDentist]}
+                onClick={() => toggleCollapse(selectedDentist)}
+              >
+                <span className="caret" />
+                {collapsedDentists[selectedDentist] ? 'Expand' : 'Collapse'}
+              </button>
+            </div>
+            {!collapsedDentists[selectedDentist] && renderTable(dentistFilteredAppointments || [])}
+          </div>
+        ) : (
+          dentists.map(dentist => {
+            const dentistAppointments =
+              appointments.filter(a => String(a.dentist_id) === String(dentist.id));
+            if (dentistAppointments.length === 0) return null;
+            const apptCount = dentistAppointments.length;
+            const collapsed = collapsedDentists[dentist.id] === true;
+            return (
+              <div key={dentist.id} className={`dentist-group-card ${collapsed ? 'collapsed' : ''}`}>
+                <div className="dentist-group-title" style={{ justifyContent: 'space-between' }}>
+                  <span>
+                    {dentist.name} ({apptCount} appointment{apptCount === 1 ? '' : 's'})
+                  </span>
+                  <button
+                    className="dentist-toggle-btn"
+                    aria-expanded={!collapsed}
+                    onClick={() => toggleCollapse(dentist.id)}
+                  >
+                    <span className="caret" />
+                    {collapsed ? 'Expand' : 'Collapse'}
+                  </button>
+                </div>
+                {!collapsed && renderTable(dentistAppointments)}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div
+        aria-live="polite"
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          width: '1px',
+          height: '1px',
+          overflow: 'hidden'
+        }}
+      >
+        {flashRow ? `Appointment ${flashRow.id} ${flashRow.status}` : ''}
+      </div>
+    </section>
+  );
+}
+
+export default AppointmentsTable;

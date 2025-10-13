@@ -1,0 +1,656 @@
+import React, { useEffect, useState, useRef } from 'react';
+import Calendar from 'react-calendar';
+import { supabase } from '../supabaseClient';
+import './AppointmentsModern.css';
+import './MainSection.css';
+import io from 'socket.io-client';
+import Swal from 'sweetalert2';
+
+function generateTimeSlots(start = "09:00", end = "18:00", interval = 20) {
+  const slots = [];
+  let [hour, minute] = start.split(":").map(Number);
+  const [endHour, endMinute] = end.split(":").map(Number);
+  while (hour < endHour || (hour === endHour && minute < endMinute)) {
+    const slot = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+    slots.push(slot);
+    minute += interval;
+    if (minute >= 60) {
+      hour += 1;
+      minute = minute % 60;
+    }
+  }
+  return slots;
+}
+
+function to12HourFormat(time24) {
+  const [hourStr, minStr] = time24.split(':');
+  let hour = parseInt(hourStr, 10);
+  const min = minStr;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour.toString().padStart(2, '0')}:${min} ${ampm}`;
+}
+
+function isClinicOpen(date) {
+  if (!date) return false;
+  return date.getDay() !== 0;
+}
+
+function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
+  const [dentists, setDentists] = useState([]);
+  const [patients, setPatients] = useState([]);
+  const [selectedDentist, setSelectedDentist] = useState('');
+  const [selectedPatient, setSelectedPatient] = useState('');
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [blockedSlots, setBlockedSlots] = useState([]);
+  const [selectedSlot, setSelectedSlot] = useState('');
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
+  const [procedures, setProcedures] = useState([]);
+  const [selectedProcedure, setSelectedProcedure] = useState('');
+  const [otherNotes, setOtherNotes] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [validationErrors, setValidationErrors] = useState({});
+  const [doubleBookingChecked, setDoubleBookingChecked] = useState(false);
+
+  const slots = generateTimeSlots("09:00", "18:00", 20);
+  const socketRef = useRef();
+
+  useEffect(() => {
+    setSelectedDentist(appointment ? String(appointment.dentist_id) : '');
+    setSelectedPatient(appointment ? String(appointment.patient_id) : '');
+    setSelectedDate(appointment ? new Date(appointment.appointment_time) : new Date());
+    setSelectedSlot(appointment ? new Date(appointment.appointment_time).toTimeString().slice(0,5) : '');
+    setOtherNotes('');
+    setError('');
+    setSuccess('');
+    setValidationErrors({});
+    setDoubleBookingChecked(false);
+    fetchBookedSlots();
+    fetchBlockedSlots();
+    // eslint-disable-next-line
+  }, [appointment]);
+
+  useEffect(() => {
+    supabase
+      .from('dentists')
+      .select('*')
+      .eq('clinic_id', clinicId)
+      .then(res => setDentists(res.data || []));
+    supabase
+      .from('patients')
+      .select('*')
+      .eq('clinic_id', clinicId)
+      .then(res => setPatients(res.data || []));
+    supabase
+      .from('procedure_categories')
+      .select('*, procedures:procedures(*)')
+      .eq('clinic_id', clinicId)
+      .then(res => setCategories(res.data || []));
+  }, [clinicId]);
+
+  useEffect(() => {
+    fetchBookedSlots();
+    fetchBlockedSlots();
+    // eslint-disable-next-line
+  }, [selectedDentist, selectedDate, appointment, clinicId]);
+
+  useEffect(() => {
+    socketRef.current = io('http://localhost:5000');
+    socketRef.current.on('appointment-updated', () => {
+      fetchBookedSlots();
+      fetchBlockedSlots();
+    });
+    return () => {
+      if (socketRef.current) socketRef.current.disconnect();
+    };
+    // eslint-disable-next-line
+  }, [selectedDentist, selectedDate, appointment]);
+
+  useEffect(() => {
+    const found = categories.find(cat => String(cat.id) === String(selectedCategory));
+    setProcedures(found ? found.procedures : []);
+    setSelectedProcedure(''); // reset procedure when category changes
+  }, [selectedCategory, categories]);
+
+  useEffect(() => {
+    if (appointment && categories.length > 0) {
+      let foundProc = null, foundCat = null;
+      for (const cat of categories) {
+        foundProc = cat.procedures.find(proc => appointment.reason && appointment.reason.includes(proc.name));
+        if (foundProc) {
+          foundCat = cat;
+          break;
+        }
+      }
+      setSelectedCategory(foundCat ? String(foundCat.id) : '');
+      setSelectedProcedure(foundProc ? String(foundProc.id) : '');
+    }
+  }, [appointment, categories]);
+
+  const fetchBookedSlots = async () => {
+    if (!selectedDentist || !selectedDate) {
+      setBookedSlots([]);
+      return;
+    }
+    const dateStr = selectedDate.toLocaleDateString('sv-SE');
+    try {
+      const { data, error } = await supabase
+        .from('appointments')
+        .select('id, appointment_time, patient_id, reason')
+        .eq('dentist_id', selectedDentist)
+        .eq('clinic_id', clinicId)
+        .eq('deleted', false);
+      if (error) {
+        setBookedSlots([]);
+        return;
+      }
+      let slotsList = (data || [])
+        .filter(appt => {
+          const apptDate = new Date(appt.appointment_time);
+          const apptDateStr = apptDate.toLocaleDateString('sv-SE');
+          return apptDateStr === dateStr;
+        })
+        .map(appt => {
+          const date = new Date(appt.appointment_time);
+          return {
+            time: date.toTimeString().slice(0,5),
+            id: appt.id,
+            patientName: appt.patient_name || '', // assuming patient_name is a column, else just blank
+            reason: appt.reason || '',
+          };
+        });
+      if (appointment) {
+        slotsList = slotsList.filter(slotObj => slotObj.id !== appointment.id);
+      }
+      setBookedSlots(slotsList);
+    } catch (err) {
+      setBookedSlots([]);
+    }
+  };
+
+  const LUNCH_START = 12 * 60;
+  const LUNCH_END = 13 * 60;
+  function getLunchSlots() {
+    return slots.filter(slot => {
+      const [h, m] = slot.split(':').map(Number);
+      const slotMinutes = h * 60 + m;
+      return slotMinutes >= LUNCH_START && slotMinutes < LUNCH_END;
+    });
+  }
+
+  const fetchBlockedSlots = async () => {
+    if (!selectedDentist || !selectedDate) {
+      setBlockedSlots([]);
+      return;
+    }
+    const dateStr = selectedDate.toLocaleDateString('sv-SE');
+    try {
+      const { data: blocks, error } = await supabase
+        .from('dentist_availability')
+        .select('*')
+        .eq('dentist_id', selectedDentist)
+        .eq('clinic_id', clinicId)
+        .eq('is_available', false)
+        .eq('specific_date', dateStr);
+      let blocked = [];
+      blocked = [...getLunchSlots()];
+      (blocks || []).forEach(block => {
+        const [startHour, startMin] = block.start_time.split(':').map(Number);
+        const [endHour, endMin] = block.end_time.split(':').map(Number);
+        slots.forEach(slot => {
+          const [h, m] = slot.split(':').map(Number);
+          const slotMinutes = h * 60 + m;
+          const startMinutes = startHour * 60 + startMin;
+          const endMinutes = endHour * 60 + endMin;
+          if (slotMinutes >= startMinutes && slotMinutes < endMinutes) {
+            if (!blocked.includes(slot)) {
+              blocked.push(slot);
+            }
+          }
+        });
+      });
+      setBlockedSlots(blocked);
+    } catch (err) {
+      setBlockedSlots(getLunchSlots());
+    }
+  };
+
+  const isTileDisabled = ({ date }) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    return date.getDay() === 0 || date < today;
+  };
+
+  const isSlotAvailable = (slot) =>
+    !bookedSlots.some(s => s.time === slot) && !blockedSlots.includes(slot);
+
+  function isSlotInPast(time) {
+    if (!selectedDate) return false;
+    const now = new Date();
+    const slotDate = new Date(selectedDate);
+    const [h, m] = time.split(':').map(Number);
+    slotDate.setHours(h, m, 0, 0);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    if (selectedDate.toLocaleDateString() === today.toLocaleDateString()) {
+      return slotDate < now;
+    }
+    return false;
+  }
+
+  const validateForm = () => {
+    const errors = {};
+    if (!selectedDentist) errors.selectedDentist = 'Dentist is required.';
+    if (!selectedPatient) errors.selectedPatient = 'Patient is required.';
+    if (!selectedSlot) errors.selectedSlot = 'Time slot is required.';
+    if (!selectedCategory) errors.selectedCategory = 'Procedure category is required.';
+    if (!selectedProcedure) errors.selectedProcedure = 'Procedure is required.';
+    if (selectedDate && !isClinicOpen(selectedDate)) errors.selectedDate = 'Clinic is closed on this day.';
+    if (selectedDate && selectedDate < new Date(new Date().setHours(0,0,0,0))) errors.selectedDate = 'Date must not be in the past.';
+    return errors;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setValidationErrors({});
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setError('Please fix the highlighted errors.');
+      Swal.fire({
+        icon: 'error',
+        title: 'Validation Error',
+        html: 'Please fix the highlighted errors.',
+        timer: 2200,
+        timerProgressBar: true
+      });
+      return;
+    }
+    if (!isSlotAvailable(selectedSlot) || isSlotInPast(selectedSlot)) {
+      setError('This slot is either booked, blocked, or in the past. Please choose another.');
+      Swal.fire({
+        icon: 'error',
+        title: 'Invalid Slot',
+        html: 'This slot is either booked, blocked, or in the past. Please choose another.',
+        timer: 2200,
+        timerProgressBar: true
+      });
+      fetchBookedSlots();
+      fetchBlockedSlots();
+      return;
+    }
+    const dateStr = selectedDate.toLocaleDateString('sv-SE');
+    const datetime = `${dateStr}T${selectedSlot}:00+08:00`;
+
+    try {
+      const { data: patientAppointments } = await supabase
+        .from('appointments')
+        .select('*')
+        .eq('patient_id', selectedPatient)
+        .eq('clinic_id', clinicId)
+        .eq('deleted', false);
+      let otherAppointments;
+      if (appointment) {
+        otherAppointments = (patientAppointments || []).filter(a => a.id !== appointment.id && a.appointment_time && a.appointment_time.startsWith(dateStr));
+      } else {
+        otherAppointments = (patientAppointments || []).filter(a => a.appointment_time && a.appointment_time.startsWith(dateStr));
+      }
+      if (otherAppointments.length > 0 && !doubleBookingChecked) {
+        const conflictingAppointment = otherAppointments[0];
+        Swal.fire({
+          icon: 'warning',
+          title: 'Double Booking',
+          html: `This patient already has another appointment on this date.<br>
+            <b>Appointment Details:</b><br>
+            Time: ${new Date(conflictingAppointment.appointment_time).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}<br>
+            Dentist: ${dentists.find(d => String(d.id) === String(conflictingAppointment.dentist_id))?.name || conflictingAppointment.dentist_id}<br>
+            Reason: ${conflictingAppointment.reason}<br>
+            <br>
+            Would you like to edit that appointment instead?`,
+          showCancelButton: true,
+          confirmButtonText: 'Edit Existing Appointment',
+          cancelButtonText: 'Cancel',
+        }).then(result => {
+          if (result.isConfirmed) {
+            setDoubleBookingChecked(true);
+            onEdit && onEdit(conflictingAppointment); // parent sets appointment prop
+          }
+        });
+        return;
+      }
+      setDoubleBookingChecked(false);
+    } catch (err) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Validation Error',
+        html: 'Could not validate appointment. Please check connection.',
+        timer: 2200,
+        timerProgressBar: true
+      });
+      return;
+    }
+
+    let reasonToSave = '';
+    const selectedProcObj = procedures.find(proc => String(proc.id) === String(selectedProcedure));
+    if (selectedProcObj) {
+      reasonToSave = selectedProcObj.name;
+    }
+    if (otherNotes.trim() !== '') {
+      reasonToSave += ` — Notes: ${otherNotes.trim()}`;
+    }
+
+    try {
+      if (appointment) {
+        await supabase
+          .from('appointments')
+          .update({
+            dentist_id: selectedDentist,
+            patient_id: selectedPatient,
+            appointment_time: datetime,
+            reason: reasonToSave,
+            status: "Scheduled"
+          })
+          .eq('id', appointment.id)
+          .eq('clinic_id', clinicId);
+        setSuccess('Appointment updated!');
+        Swal.fire({
+          icon: 'success',
+          title: 'Appointment updated!',
+          timer: 1200,
+          timerProgressBar: true,
+          showConfirmButton: false
+        });
+      } else {
+        await supabase
+          .from('appointments')
+          .insert([{
+            dentist_id: selectedDentist,
+            patient_id: selectedPatient,
+            appointment_time: datetime,
+            reason: reasonToSave,
+            clinic_id: clinicId
+          }]);
+        setSuccess('Appointment booked!');
+        Swal.fire({
+          icon: 'success',
+          title: 'Appointment booked!',
+          timer: 1200,
+          timerProgressBar: true,
+          showConfirmButton: false
+        });
+      }
+      setTimeout(() => {
+        setSuccess('');
+        onClose();
+      }, 1200);
+    } catch (err) {
+      setError('Booking failed! This slot may already be taken or dentist is unavailable.');
+      Swal.fire({
+        icon: 'error',
+        title: 'Booking failed!',
+        html: 'This slot may already be taken or dentist is unavailable.',
+        timer: 2200,
+        timerProgressBar: true
+      });
+      fetchBookedSlots();
+      fetchBlockedSlots();
+    }
+  };
+
+  useEffect(() => {
+    setSelectedProcedure('');
+  }, [selectedCategory]);
+
+  const ICON_WIDTH = '2em';
+
+  function isLunchSlot(slot) {
+    const [h, m] = slot.split(':').map(Number);
+    const slotMinutes = h * 60 + m;
+    return slotMinutes >= LUNCH_START && slotMinutes < LUNCH_END;
+  }
+
+  return (
+    <section className="main-section appointment-modern">
+      <h2>{appointment ? 'Edit Appointment' : 'Add Appointment'}</h2>
+      {success && <div className="success-message">{success}</div>}
+      <form onSubmit={handleSubmit} noValidate>
+        <div className="appointment-grid">
+          <div>
+            <label>Dentist:</label>
+            <select
+              value={selectedDentist}
+              onChange={e => setSelectedDentist(e.target.value)}
+              className={validationErrors.selectedDentist ? 'input-error' : ''}
+            >
+              <option value="">Select Dentist</option>
+              {dentists.map(d => (
+                <option
+                  key={d.id}
+                  value={String(d.id)}
+                  disabled={!d.is_active}
+                  className={!d.is_active ? "dentist-option-inactive" : ""}
+                  style={!d.is_active ? { color: '#aaa', background: '#f4f4f4' } : {}}
+                  title={!d.is_active ? "Go to Dentists tab to change this." : undefined}
+                >
+                  {d.name} {!d.is_active ? "(Inactive)" : ""}
+                </option>
+              ))}
+            </select>
+            {validationErrors.selectedDentist && <div className="field-error">{validationErrors.selectedDentist}</div>}
+
+            <label>Patient:</label>
+            <select
+              value={selectedPatient}
+              onChange={e => setSelectedPatient(e.target.value)}
+              className={validationErrors.selectedPatient ? 'input-error' : ''}
+            >
+              <option value="">Select Patient</option>
+              {patients.map(p => <option key={p.id} value={String(p.id)}>{p.name}</option>)}
+            </select>
+            {validationErrors.selectedPatient && <div className="field-error">{validationErrors.selectedPatient}</div>}
+
+            <label>Date:</label>
+            <Calendar
+              value={selectedDate}
+              onChange={setSelectedDate}
+              minDate={new Date()}
+              tileDisabled={isTileDisabled}
+            />
+            {validationErrors.selectedDate && <div className="field-error">{validationErrors.selectedDate}</div>}
+            {!isClinicOpen(selectedDate) && selectedDate && (
+              <div style={{ color: "red", marginTop: 8 }}>
+                Clinic is closed on Sundays. Please select another day.
+              </div>
+            )}
+          </div>
+          <div>
+            <h3>
+              {selectedDentist && selectedDate && isClinicOpen(selectedDate)
+                ? `Available Slots for ${dentists.find(d => String(d.id) === String(selectedDentist))?.name || ''} on ${selectedDate.toLocaleDateString()}`
+                : 'Select a dentist and date'}
+            </h3>
+            <div className="slots-list">
+              {slots.map(time => {
+                const bookedSlotObj = bookedSlots.find(s => s.time === time);
+                const disabled =
+                  blockedSlots.includes(time)
+                  || !!bookedSlotObj
+                  || !selectedDentist
+                  || !isClinicOpen(selectedDate)
+                  || isSlotInPast(time);
+
+                let slotIcon = null;
+                let ariaLabel = undefined;
+                let title = undefined;
+                if (isLunchSlot(time)) {
+                  slotIcon = "🍽️";
+                  ariaLabel = "Lunch Break";
+                  title = "Lunch Break (12:00-1:00 PM)";
+                } else if (blockedSlots.includes(time)) {
+                  slotIcon = "🚫";
+                  ariaLabel = "Blocked";
+                  title = "Dentist Blocked";
+                } else if (bookedSlotObj) {
+                  slotIcon = "📒";
+                  ariaLabel = "Booked";
+                  title = `Booked: ${bookedSlotObj.patientName || 'Unknown'}\nProcedure: ${bookedSlotObj.reason || ''}`;
+                } else if (isSlotInPast(time)) {
+                  slotIcon = "⏰";
+                  ariaLabel = "Past";
+                  title = "Past";
+                }
+
+                return (
+                  <button
+                    type="button"
+                    key={time}
+                    className={
+                      disabled
+                        ? isLunchSlot(time)
+                          ? "slot-btn lunch"
+                          : blockedSlots.includes(time)
+                            ? "slot-btn blocked"
+                            : !!bookedSlotObj
+                              ? "slot-btn booked"
+                              : isSlotInPast(time)
+                                ? "slot-btn past"
+                                : "slot-btn disabled"
+                        : selectedSlot === time
+                          ? "slot-btn selected"
+                          : "slot-btn available"
+                    }
+                    disabled={disabled}
+                    onClick={() => setSelectedSlot(time)}
+                    title={title || "Available"}
+                  >
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: '100%',
+                      minHeight: '1em'
+                    }}>
+                      <span
+                        style={{
+                          color: isLunchSlot(time)
+                            ? '#FF9800'
+                            : blockedSlots.includes(time)
+                              ? '#b71c1c'
+                              : !!bookedSlotObj
+                                ? '#888'
+                                : isSlotInPast(time)
+                                  ? '#bdbdbd'
+                                  : undefined,
+                          fontWeight: isLunchSlot(time) ? 'bold' : blockedSlots.includes(time) ? 'bold' : undefined
+                        }}
+                      >
+                        {to12HourFormat(time)}
+                      </span>
+                      <span
+                        className={
+                          isLunchSlot(time)
+                            ? "lunch-icon"
+                            : blockedSlots.includes(time)
+                              ? "blocked-icon"
+                              : !!bookedSlotObj
+                                ? "booked-icon"
+                                : isSlotInPast(time)
+                                  ? "past-icon"
+                                  : "icon-placeholder"
+                        }
+                        aria-label={ariaLabel}
+                        title={title}
+                        style={{
+                          width: '2em',
+                          minWidth: '2em',
+                          height: '1em',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                          marginLeft: '4px',
+                          fontSize: '1.15em'
+                        }}
+                      >
+                        {slotIcon}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {validationErrors.selectedSlot && <div className="field-error">{validationErrors.selectedSlot}</div>}
+
+            <label>Procedure Category:</label>
+            <select
+              value={selectedCategory}
+              onChange={e => setSelectedCategory(e.target.value)}
+              required
+              className={validationErrors.selectedCategory ? 'input-error' : ''}
+            >
+              <option value="">Select Category</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+            {validationErrors.selectedCategory && <div className="field-error">{validationErrors.selectedCategory}</div>}
+
+            <label>Procedure:</label>
+            <select
+              value={selectedProcedure}
+              onChange={e => setSelectedProcedure(e.target.value)}
+              required
+              disabled={!selectedCategory}
+              className={validationErrors.selectedProcedure ? 'input-error' : ''}
+            >
+              <option value="">Select Procedure</option>
+              {procedures.map(proc => (
+                <option key={proc.id} value={proc.id}>
+                  {proc.name} {proc.price ? `₱${proc.price}` : ""}
+                </option>
+              ))}
+            </select>
+            {validationErrors.selectedProcedure && <div className="field-error">{validationErrors.selectedProcedure}</div>}
+
+            {selectedProcedure &&
+              <div style={{ marginTop: 6, color: '#185abd', fontWeight: 600 }}>
+                Price: ₱{procedures.find(p => String(p.id) === String(selectedProcedure))?.price || '0.00'}
+              </div>
+            }
+
+            <label>Additional Notes (optional):</label>
+            <input
+              type="text"
+              value={otherNotes}
+              onChange={e => setOtherNotes(e.target.value)}
+              placeholder="Add notes or details"
+            />
+            {error && <div className="modal-error">{error}</div>}
+            <div className="modal-actions" style={{marginTop: 22}}>
+              <button type="button" onClick={onClose}>Cancel</button>
+              <button type="submit"
+                disabled={
+                  !selectedDentist
+                  || !selectedPatient
+                  || !selectedSlot
+                  || !selectedCategory
+                  || !selectedProcedure
+                  || !isClinicOpen(selectedDate)
+                  || isSlotInPast(selectedSlot)
+                }
+              >
+                {appointment ? 'Save' : 'Book'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+export default AppointmentForm;

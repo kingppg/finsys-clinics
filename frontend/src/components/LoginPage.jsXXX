@@ -1,0 +1,185 @@
+import React, { useState } from 'react';
+
+const styles = {
+  container: {
+    minHeight: '100vh',
+    background: 'linear-gradient(120deg,#a3c9ff 0%, #f6f9fc 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontFamily: 'Inter,sans-serif',
+  },
+  card: {
+    background: 'white',
+    padding: '48px 32px 32px 32px',
+    borderRadius: '18px',
+    boxShadow: '0 8px 32px rgba(52,98,219,0.13)',
+    minWidth: 340,
+    maxWidth: 360,
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  logo: {
+    fontSize: 44,
+    marginBottom: 8,
+  },
+  title: {
+    fontWeight: 700,
+    fontSize: 22,
+    letterSpacing: 0.5,
+    color: '#3462db',
+    marginBottom: 16,
+  },
+  input: {
+    width: '100%',
+    padding: '12px 14px',
+    margin: '8px 0',
+    border: '1px solid #d0d7de',
+    borderRadius: 8,
+    fontSize: 16,
+    outline: 'none',
+    background: '#f6f9fc',
+    transition: 'border 0.2s',
+  },
+  inputFocus: {
+    border: '1.5px solid #3462db',
+    background: '#fff',
+  },
+  button: {
+    width: '100%',
+    padding: '13px 0',
+    background: 'linear-gradient(90deg,#3462db 60%,#4ac7fa 100%)',
+    color: 'white',
+    fontWeight: 600,
+    fontSize: 17,
+    border: 'none',
+    borderRadius: 8,
+    marginTop: 18,
+    cursor: 'pointer',
+    boxShadow: '0 2px 16px rgba(52,98,219,0.08)',
+    transition: 'box-shadow 0.2s',
+  },
+  buttonHover: {
+    boxShadow: '0 4px 24px rgba(52,98,219,0.13)',
+  },
+  error: {
+    color: '#e74c3c',
+    marginTop: 10,
+    marginBottom: 0,
+    fontWeight: 500,
+    fontSize: 14,
+    textAlign: 'center',
+    minHeight: 22,
+  },
+  showPassword: {
+    position: 'absolute',
+    right: 18,
+    top: 11,
+    fontSize: 18,
+    color: '#3462db',
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  spinner: {
+    margin: '10px 0',
+    width: 24,
+    height: 24,
+    border: '3px solid #3462db',
+    borderTop: '3px solid #f6f9fc',
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+  },
+  '@keyframes spin': {
+    to: { transform: 'rotate(360deg)' }
+  }
+};
+
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    // Simulate backend request (replace with your API)
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username, password })
+      });
+      if (!res.ok) throw new Error('Invalid credentials');
+      const user = await res.json();
+      console.log('LoginPage: received user object:', user); // <--- DEBUG LINE
+      setLoading(false);
+      if (user && onLogin) onLogin(user); // Pass user info up
+    } catch (err) {
+      setLoading(false);
+      setError('Invalid username or password');
+    }
+  }
+
+  return (
+    <div style={styles.container}>
+      <form style={styles.card} onSubmit={handleSubmit}>
+        <div style={styles.logo}>🦷</div>
+        <div style={styles.title}>Palodentcare</div>
+        <input
+          type="text"
+          style={styles.input}
+          placeholder="Username"
+          autoFocus
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          required
+        />
+        <div style={{position:'relative',width:'100%'}}>
+          <input
+            type={showPw ? 'text' : 'password'}
+            style={styles.input}
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+          />
+          <span
+            style={styles.showPassword}
+            onClick={() => setShowPw(x => !x)}
+            title={showPw ? "Hide password" : "Show password"}
+          >
+            {showPw ? '🙈' : '👁️'}
+          </span>
+        </div>
+        {loading && (
+          <div style={styles.spinner} />
+        )}
+        <div style={styles.error}>{error}</div>
+
+        <button
+          type="submit"
+          style={{
+            ...styles.button,
+            ...(loading ? { opacity: 0.7, cursor: 'not-allowed' } : {})
+          }}
+          disabled={loading}
+        >
+          {loading ? 'Logging in...' : 'Login'}
+        </button>
+      </form>
+      {/* Spinner animation keyframes */}
+      <style>
+        {`@keyframes spin { to { transform: rotate(360deg); } }`}
+      </style>
+    </div>
+  );
+}
+
+export default LoginPage;

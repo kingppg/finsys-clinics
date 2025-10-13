@@ -1,0 +1,28 @@
+/* Optional: further tweak react-select appearance for tight integration */
+
+.css-13cymwt-control,
+.css-1fdsijx-ValueContainer { /* react-select auto-generated classes */
+  font-size: 1em;
+  min-height: 36px;
+}
+
+.css-1nmdiq5-menu {
+  z-index: 9999 !important;
+}
+
+.css-1hb7zxy-IndicatorsContainer {
+  color: #185abd !important;
+}
+
+.css-1pahdxg-control {
+  border-color: #185abd !important;
+}
+
+.css-1okebmr-indicatorSeparator {
+  display: none;
+}
+.appointments-table-fixed {
+  position: relative;
+  overflow: visible !important;
+  z-index: 10;
+}

@@ -1,0 +1,236 @@
+import React, { useEffect, useState } from 'react';
+import Swal from 'sweetalert2';
+import './ClinicConfig.css';
+
+const initialClinicState = {
+  name: '',
+  fb_page_access_token: '',
+  reminder_time: '',
+  address: '',
+  contact_email: '',
+  contact_phone: '',
+  fb_page_id: '',
+  messenger_page_id: ''
+};
+
+function ClinicConfig({ user, clinicId, onBack }) {
+  const [clinics, setClinics] = useState([]);
+  const [selectedClinicId, setSelectedClinicId] = useState(clinicId ?? '');
+  const [formData, setFormData] = useState(initialClinicState);
+  const [isNew, setIsNew] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch clinics list
+  const fetchClinics = async (stayOnClinicId = null) => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/clinics');
+      const clinicsData = await response.json();
+      setClinics(clinicsData);
+
+      if (user.role === 'superadmin') {
+        if (selectedClinicId === '' || selectedClinicId === null || selectedClinicId === undefined) {
+          setSelectedClinicId(clinicsData[0]?.id ?? '');
+        }
+        if (stayOnClinicId) {
+          setSelectedClinicId(stayOnClinicId);
+        }
+      } else {
+        setSelectedClinicId(clinicId ?? '');
+      }
+    } catch {
+      setClinics([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchClinics();
+    // eslint-disable-next-line
+  }, [user.role, clinicId]);
+
+  // When selectedClinicId changes, fetch clinic data or reset for new clinic
+  useEffect(() => {
+    if (!selectedClinicId || selectedClinicId === 'new') {
+      setIsNew(true);
+      setFormData(initialClinicState);
+      return;
+    }
+    setIsNew(false);
+    const clinic = clinics.find(c => String(c.id) === String(selectedClinicId));
+    if (clinic) {
+      setFormData({
+        name: clinic.name ?? '',
+        fb_page_access_token: clinic.fb_page_access_token ?? '',
+        reminder_time: clinic.reminder_time ?? '',
+        address: clinic.address ?? '',
+        contact_email: clinic.contact_email ?? '',
+        contact_phone: clinic.contact_phone ?? '',
+        fb_page_id: clinic.fb_page_id ?? '',
+        messenger_page_id: clinic.messenger_page_id ?? ''
+      });
+    }
+  }, [selectedClinicId, clinics]);
+
+  function handleFieldChange(e) {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }
+
+  function handleAddClinic() {
+    setSelectedClinicId('new');
+    setIsNew(true);
+    setFormData(initialClinicState);
+  }
+
+  function handleBack() {
+    if (typeof onBack === 'function') {
+      onBack();
+    }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    // SweetAlert2 confirmation before update
+    const result = await Swal.fire({
+      title: isNew ? 'Add Clinic?' : 'Update Clinic Info?',
+      text: isNew
+        ? 'Do you want to add this new clinic?'
+        : 'Do you want to update the clinic information?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: isNew ? 'Yes, Add' : 'Yes, Update',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      focusCancel: true,
+    });
+
+    if (!result.isConfirmed) {
+      return; // Do not proceed if cancelled
+    }
+
+    setLoading(true);
+
+    try {
+      let updatedClinicId = selectedClinicId;
+      if (isNew) {
+        const response = await fetch('/api/clinics', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        const newClinic = await response.json();
+        updatedClinicId = newClinic.id;
+      } else {
+        await fetch(`/api/clinics/${selectedClinicId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+      }
+      // Refetch clinics and stay on the updated/created clinic
+      await fetchClinics(updatedClinicId);
+      setIsNew(false);
+      // SweetAlert2 success feedback
+      await Swal.fire({
+        title: 'Success!',
+        text: isNew
+          ? 'New clinic has been added.'
+          : 'Clinic information has been updated.',
+        icon: 'success',
+        confirmButtonText: 'OK',
+      });
+    } catch {
+      Swal.fire({
+        title: 'Error',
+        text: 'Failed to save clinic.',
+        icon: 'error',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="clinic-config-fullscreen">
+      <div className="clinic-config-card">
+        <h2>Clinic Configuration</h2>
+        {user.role === 'superadmin' && (
+          <div className="clinic-config-toolbar">
+            <label className="clinic-select-label">Select Clinic:&nbsp;</label>
+            <select
+              className="clinic-select-dropdown"
+              value={selectedClinicId}
+              onChange={e => setSelectedClinicId(e.target.value)}
+            >
+              {clinics.map(clinic => (
+                <option key={clinic.id} value={clinic.id}>{clinic.name}</option>
+              ))}
+              <option value="new">➕ Add Clinic</option>
+            </select>
+            <button className="add-clinic-btn" type="button" onClick={handleAddClinic}>
+              Add Clinic
+            </button>
+          </div>
+        )}
+        {(!user.role || clinics.length === 0) ? (
+          <p>No clinic selected or available.</p>
+        ) : (
+          <form className="clinic-form-modern" onSubmit={handleSubmit} autoComplete="off">
+            <div className="clinic-form-row">
+              <div className="clinic-form-field">
+                <label>Clinic Name*</label>
+                <input type="text" name="name" value={formData.name} onChange={handleFieldChange} required />
+              </div>
+              <div className="clinic-form-field">
+                <label>Reminder Time*</label>
+                <input type="time" name="reminder_time" value={formData.reminder_time} onChange={handleFieldChange} required />
+              </div>
+            </div>
+            <div className="clinic-form-row">
+              <div className="clinic-form-field">
+                <label>Messenger Page Access Token*</label>
+                <input type="text" name="fb_page_access_token" value={formData.fb_page_access_token} onChange={handleFieldChange} required />
+              </div>
+            </div>
+            <div className="clinic-form-row">
+              <div className="clinic-form-field">
+                <label>Address</label>
+                <input type="text" name="address" value={formData.address} onChange={handleFieldChange} />
+              </div>
+              <div className="clinic-form-field">
+                <label>Contact Email</label>
+                <input type="email" name="contact_email" value={formData.contact_email} onChange={handleFieldChange} />
+              </div>
+              <div className="clinic-form-field">
+                <label>Contact Phone</label>
+                <input type="text" name="contact_phone" value={formData.contact_phone} onChange={handleFieldChange} />
+              </div>
+            </div>
+            <div className="clinic-form-row">
+              <div className="clinic-form-field">
+                <label>Facebook Page ID</label>
+                <input type="text" name="fb_page_id" value={formData.fb_page_id} onChange={handleFieldChange} />
+              </div>
+              <div className="clinic-form-field">
+                <label>Messenger Page ID</label>
+                <input type="text" name="messenger_page_id" value={formData.messenger_page_id} onChange={handleFieldChange} />
+              </div>
+            </div>
+            <div className="clinic-form-actions">
+              <button type="submit" disabled={loading}>{isNew ? 'Save Clinic' : 'Update Clinic'}</button>
+              <button type="button" className="back-btn" onClick={handleBack}>Back</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default ClinicConfig;

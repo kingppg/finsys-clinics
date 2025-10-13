@@ -1,0 +1,341 @@
+section.dentists-section-relative {
+  position: relative;
+}
+
+/* Modal overlay only covers the section, not the viewport */
+.modal-bg-inside-section {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 27, 36, 0.18);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Dentists Section Styling */
+section {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 2px 20px 0 rgba(13,37,63,0.07), 0 1.5px 4px 0 rgba(44,62,80,0.03);
+  padding: 36px 30px 24px 30px;
+  margin-bottom: 36px;
+}
+
+/* Section Title */
+section h2 {
+  font-size: 1.8em;
+  font-weight: 700;
+  color: #24406e;
+  margin-bottom: 18px;
+  letter-spacing: 1px;
+}
+
+/* Form Styling */
+section form {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+section input[type="text"],
+section input[type="email"],
+section input[type="tel"] {
+  padding: 10px 14px;
+  border: 1px solid #dde6ef;
+  border-radius: 7px;
+  font-size: 1em;
+  outline: none;
+  transition: border-color 0.2s;
+  background: #f6f9fc;
+}
+
+section input:focus {
+  border-color: #2bc1ff;
+  background: #fff;
+}
+
+section button[type="submit"] {
+  background: linear-gradient(90deg, #2bc1ff, #24406e 90%);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 10px 22px;
+  font-size: 1em;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(13,37,63,0.05);
+  transition: background 0.18s, box-shadow 0.18s;
+}
+
+section button[type="submit"]:hover {
+  background: linear-gradient(90deg, #24406e, #2bc1ff 90%);
+  box-shadow: 0 4px 12px rgba(44,62,80,0.08);
+}
+
+/* Table Message Row - always reserved height */
+.dentists-message-row {
+  min-height: 28px;
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.dentists-error {
+  color: #e74c3c;
+  font-weight: 600;
+}
+.dentists-success {
+  color: #22b87c;
+  font-weight: 600;
+}
+
+/* Fixed Table Layout */
+.dentists-table-fixed {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #f9fbfd;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(13,37,63,0.03);
+  table-layout: fixed;
+}
+
+.dentists-table-fixed th,
+.dentists-table-fixed td {
+  padding: 13px 16px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.dentists-table-fixed th {
+  background: #eaf4fa;
+  font-weight: 700;
+  color: #24406e;
+  border-bottom: 2px solid #dde6ef;
+}
+
+.dentists-table-fixed tr:not(:last-child) td {
+  border-bottom: 1px solid #e3e9f3;
+}
+
+.dentists-table-fixed td {
+  color: #2c3e50;
+  font-size: 1em;
+}
+
+/* Actions column: fix min-width so buttons don't jump */
+.dentists-actions-cell {
+  min-width: 120px;
+  text-align: left;
+  white-space: nowrap;
+}
+.dentists-actions-cell button {
+  min-width: 70px;
+  margin-right: 6px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Delete Button */
+section td button {
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 15px;
+  font-size: 0.98em;
+  cursor: pointer;
+  transition: background 0.16s;
+  box-shadow: 0 1px 4px rgba(231,76,60,0.09);
+}
+
+section td button:hover {
+  background: #c0392b;
+}
+
+/* Modal styles */
+.modal.dentists-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 28px 24px 20px 24px;
+  min-width: 0;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 4px 32px rgba(44,62,80,0.16);
+  margin: 0 auto;
+}
+.modal.dentists-modal h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #185abd;
+  font-size: 1.22em;
+  letter-spacing: 0.02em;
+}
+.dentists-modal label {
+  display: block;
+  font-weight: 600;
+  color: #234;
+  margin-bottom: 6px;
+  margin-top: 12px;
+  letter-spacing: 0.01em;
+}
+.dentists-table-edit-input {
+  width: 100%;
+  font-size: 1em;
+  font-family: inherit;
+  background: #f6f9fc;
+  color: #2c3e50;
+  border: 1px solid #dbe6fa;
+  border-radius: 7px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.16s;
+}
+.dentists-table-edit-input:focus {
+  border-color: #2bc1ff;
+  background: #fff;
+}
+
+.modal-actions {
+  margin-top: 18px;
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+}
+
+.modal-actions button {
+  padding: 11px 24px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 700;
+  font-size: 1.07em;
+  cursor: pointer;
+  background: #dde6ef;
+  color: #185abd;
+  transition: background 0.14s, color 0.14s;
+}
+
+.modal-actions button[type="submit"],
+.modal-actions button:last-child {
+  background: linear-gradient(90deg, #185abd 0%, #2bc1ff 90%);
+  color: #fff;
+  box-shadow: 0 2px 12px rgba(45,108,223,0.10);
+}
+
+.modal-actions button:disabled {
+  background: #e3e9f3;
+  color: #b8b8b8;
+  cursor: not-allowed;
+}
+
+.modal-error {
+  color: #e74c3c;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  font-size: 1.03em;
+  background: #fff1f3;
+  border-radius: 6px;
+  padding: 6px 11px;
+  border: 1px solid #f5c3cc;
+  font-weight: 500;
+}
+
+.modal-warning {
+  color: #b96e0e;
+  background: #fff7e7;
+  border: 1px solid #ffe8bb;
+  border-radius: 6px;
+  padding: 12px 13px;
+  margin-bottom: 10px;
+  font-size: 1.03em;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+/* Responsive Design */
+@media (max-width: 650px) {
+  section {
+    padding: 18px 6px 12px 6px;
+  }
+  .dentists-table-fixed,
+  .dentists-table-fixed th,
+  .dentists-table-fixed td {
+    font-size: 0.98em;
+    padding: 9px 7px;
+  }
+  section form {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
+  }
+  .modal.dentists-modal {
+    max-width: 98vw;
+    padding: 14px 3vw;
+  }
+}
+.appt-divider {
+  border-top: 2px solid #5e01ff;
+  margin: 12px 0;
+}
+.dentists-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #f6f9fc;
+  padding: 12px 0 4px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dentists-header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+  justify-content: space-between;
+}
+
+.dentists-title {
+  margin: 0;
+  font-size: 1.8em;
+  font-weight: 700;
+  color: #24406e;
+  letter-spacing: 1px;
+  line-height: 1.2;
+}
+
+.dentists-table-scroll {
+  max-height: calc(100vh - 180px); /* adjust as needed for your layout */
+  overflow-y: auto;
+  background: #fff;
+}
+
+/* Sticky table header */
+.dentists-table-fixed thead th {
+  position: sticky;
+  top: 0;
+  background: #f6f9fc;
+  z-index: 30;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+@media (max-width: 650px) {
+  .dentists-header-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .dentists-title {
+    font-size: 1.2em;
+    text-align: left;
+  }
+}

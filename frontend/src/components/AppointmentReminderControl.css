@@ -1,0 +1,314 @@
+/* --- Layout for 3 Card Modal --- */
+.reminder-modal-cards {
+  display: flex;
+  flex-direction: row;
+  gap: 32px;
+  max-width: 98vw;
+  margin: 0 auto;
+  padding: 16px 24px;
+  box-sizing: border-box;
+  justify-content: center;
+  align-items: stretch;
+}
+
+/* Card Styles */
+.reminder-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 24px #0001;
+  padding: 28px 22px 24px 22px;
+  min-width: 320px;
+  max-width: 420px;
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+/* Card backgrounds for visual distinction */
+.reminder-settings-card {
+  background: #e9f7ef; /* very light green */
+  border-left: 4px solid #2d6a4f22;
+}
+.reminder-manual-card {
+  background: #e3f2fd; /* very light blue */
+  border-left: 4px solid #0077b622;
+}
+.reminder-log-card {
+  background: #fff8e1; /* very light yellow */
+  border-left: 4px solid #f7b32b33;
+  max-height: 540px;
+  overflow-y: auto;
+}
+
+/* Headings - PUSHED HIGHER */
+.reminder-card h3,
+.reminder-card h4 {
+  font-weight: 700;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #2d6a4f;
+  margin-top: 0;
+  padding-top: 0;
+  /* Push headings higher */
+  position: relative;
+  top: -12px;
+}
+
+.reminder-card h4 {
+  font-size: 1.09em;
+  color: #264653;
+  margin-bottom: 14px;
+  /* Push headings higher */
+  position: relative;
+  top: -12px;
+}
+
+/* Form controls and spacing */
+.reminder-form > div,
+.reminder-manual-card > div {
+  margin-bottom: 10px;
+}
+
+.reminder-days-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.reminder-day-input {
+  width: 54px;
+  padding: 2px 8px;
+  font-size: 1em;
+  border: 1px solid #bbb;
+  border-radius: 5px;
+  margin-right: 5px;
+}
+
+.reminder-remove-btn,
+.reminder-add-btn,
+.reminder-submit-btn,
+.reminder-send-btn {
+  background: #2d6a4f;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 13px;
+  font-size: 1.09em;
+  min-height: 44px;
+  font-weight: bold;
+  margin-left: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+  box-sizing: border-box;
+}
+.reminder-remove-btn {
+  background: #d90429;
+  padding: 6px 13px;
+  font-size: 1.05em;
+  min-height: unset;
+}
+.reminder-remove-btn:hover {
+  background: #b00220;
+}
+.reminder-add-btn {
+  background: #43aa8b;
+}
+.reminder-add-btn:hover {
+  background: #257a63;
+}
+.reminder-submit-btn {
+  background: #2d6a4f;
+  width: 100%;
+}
+.reminder-send-btn {
+  background: #0077b6;
+  color: #fff;
+  margin-top: 12px;
+  width: 100%;
+}
+.reminder-submit-btn:hover {
+  background: #21523a;
+}
+.reminder-send-btn:hover {
+  background: #015082;
+}
+.reminder-remove-btn:disabled,
+.reminder-add-btn:disabled,
+.reminder-submit-btn:disabled,
+.reminder-send-btn:disabled {
+  background: #bbb !important;
+  color: #fff !important;
+  cursor: not-allowed;
+}
+
+/* Textarea and select styles */
+.reminder-textarea {
+  width: 100%;
+  min-height: 38px;
+  border-radius: 5px;
+  border: 1px solid #bbb;
+  padding: 7px 8px;
+  resize: vertical;
+  margin-top: 6px;
+  font-size: 1em;
+  box-sizing: border-box;
+}
+
+.reminder-select {
+  font-size: 1em;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid #bbb;
+  background: #fff;
+  margin-left: 6px;
+}
+
+/* Loading spinner */
+.reminder-loading {
+  text-align: center;
+  font-size: 1.12em;
+  color: #2d6a4f;
+  padding: 48px 0;
+}
+
+/* Sent Reminders Log Table */
+.reminder-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.98em;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.reminder-log-table th,
+.reminder-log-table td {
+  border-bottom: 1px solid #eee;
+  padding: 7px 6px;
+  text-align: left;
+}
+
+.reminder-log-table th {
+  background: #e9ecef;
+  font-weight: bold;
+  color: #222;
+}
+
+/* Responsive for mobile */
+@media (max-width: 1024px) {
+  .reminder-modal-cards {
+    gap: 14px;
+    padding: 8px 5vw;
+  }
+  .reminder-card {
+    min-width: 240px;
+    max-width: 99vw;
+    padding: 18px 8px 16px 8px;
+  }
+}
+
+@media (max-width: 700px) {
+  .reminder-modal-cards {
+    flex-direction: column;
+    gap: 18px;
+    padding: 4px 3vw;
+  }
+  .reminder-card {
+    min-width: 0;
+    max-width: 99vw;
+    padding: 12px 4px 10px 4px;
+  }
+}
+
+/* --- Legacy class for single column layout (if needed elsewhere) --- */
+.reminder-control {
+  max-width: 520px;
+  margin: 32px auto;
+  background: #f8f9fa;
+  border-radius: 16px;
+  padding: 28px 28px 18px 28px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.08);
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.reminder-control h3, .reminder-control h4 {
+  color: #2d6a4f;
+  margin-bottom: 14px;
+}
+
+.reminder-control h4 {
+  color: #264653;
+}
+
+.reminder-form label {
+  font-weight: 500;
+  margin-bottom: 8px;
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .reminder-control {
+    max-width: 100%;
+    padding: 10px;
+  }
+  .reminder-log-table th, .reminder-log-table td {
+    padding: 6px 4px;
+  }
+}
+
+.reminder-modal-patient-name {
+  width: 100%;
+  text-align: center;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #226;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.equal-height-card {
+  height: 100%;
+  min-height: 550px;
+  display: flex;
+  flex-direction: column;
+}
+.reminder-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.98em;
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.reminder-log-table th,
+.reminder-log-table td {
+  border-bottom: 1px solid #eee;
+  padding: 7px 6px;
+  text-align: left;
+}
+
+/* Sticky table header for Sent Reminders Log */
+.reminder-log-table th {
+  background: #e9ecef;
+  font-weight: bold;
+  color: #222;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.swal2-container {
+  z-index: 90000 !important;
+}
+.swal2-popup {
+  z-index: 90001 !important;
+}

@@ -1,0 +1,191 @@
+.admin-usersroles-section {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(52,98,219,.05);
+  padding: 32px 22px 22px 22px;
+  margin: 32px auto;
+  max-width: 880px;
+}
+
+.admin-usersroles-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.admin-usersroles-header-row h2 {
+  margin: 0;
+  color: #24406e;
+  font-size: 1.5em;
+  font-weight: 700;
+}
+
+.admin-usersroles-add-btn {
+  padding: 8px 16px;
+  background: linear-gradient(90deg,#3462db 60%,#4ac7fa 100%);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(52,98,219,0.10);
+  transition: box-shadow 0.2s;
+}
+.admin-usersroles-add-btn:hover {
+  box-shadow: 0 4px 18px rgba(52,98,219,0.13);
+}
+
+.admin-usersroles-table-scroll {
+  overflow-x: auto;
+}
+
+.admin-usersroles-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #f6f9fc;
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  font-size: 1em;
+}
+.admin-usersroles-table th,
+.admin-usersroles-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #e6efff;
+  text-align: left;
+}
+.admin-usersroles-table th {
+  background: #e5edff;
+  color: #24406e;
+  font-weight: 600;
+}
+.admin-usersroles-table tr:last-child td {
+  border-bottom: none;
+}
+
+.admin-usersroles-error {
+  color: #e74c3c;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 12px;
+}
+.admin-usersroles-success {
+  color: #2ecc71;
+  font-weight: 500;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.admin-usersroles-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(36,64,110,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99;
+}
+.admin-usersroles-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 32px 28px 24px 28px;
+  box-shadow: 0 8px 32px rgba(52,98,219,0.13);
+  min-width: 330px;
+  left: calc(120px);
+  max-width: 28vw;
+  position: relative;
+}
+.admin-usersroles-modal h3 {
+  margin: 0 0 18px 0;
+  color: #3462db;
+  font-weight: 700;
+  font-size: 1.2em;
+}
+.admin-usersroles-modal label {
+  display: block;
+  margin-bottom: 4px;
+  color: #24406e;
+  font-weight: 600;
+  font-size: 0.97em;
+  margin-top: 10px;
+}
+.admin-usersroles-modal input,
+.admin-usersroles-modal select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 7px;
+  margin-bottom: 6px;
+  font-size: 1em;
+  background: #f6f9fc;
+  transition: border 0.2s;
+}
+.admin-usersroles-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+.admin-usersroles-modal-actions button {
+  padding: 8px 18px;
+  border-radius: 7px;
+  border: none;
+  font-weight: 600;
+  font-size: 1em;
+  cursor: pointer;
+  background: #3462db;
+  color: #fff;
+  transition: background 0.16s;
+}
+.admin-usersroles-modal-actions button[type="button"] {
+  background: #eaeaea;
+  color: #3462db;
+  border: 1px solid #3462db;
+}
+.admin-usersroles-modal-actions button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ---- Add these lines for delete button and confirm modal ---- */
+.admin-usersroles-delete-btn {
+  padding: 2px 10px;
+  font-size: 1em;
+  background: #e74c3c;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s;
+}
+.admin-usersroles-delete-btn:hover {
+  background: #c0392b;
+}
+
+.admin-usersroles-confirm-modal-bg {
+  position: fixed;
+  inset: 0;
+  background: rgba(36,64,110,0.21);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1040;
+}
+.admin-usersroles-confirm-modal {
+  background: #fff;
+  border-radius: 14px;
+  padding: 24px 22px 18px 22px;
+  box-shadow: 0 8px 32px rgba(52,98,219,0.16);
+  min-width: 320px;
+  max-width: 440px;
+  position: relative;
+}
+.admin-usersroles-confirm-modal h4 {
+  margin: 0 0 10px 0;
+  color: #e74c3c;
+  font-weight: 700;
+  font-size: 1.1em;
+}

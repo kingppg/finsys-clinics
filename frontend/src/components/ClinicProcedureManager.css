@@ -1,0 +1,228 @@
+/* Main container */
+.ClinicProcedureManager-container {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 2px 16px 0 #185abd18;
+  padding: 32px 24px;
+  margin: 10px auto;
+  max-width: 950px;
+}
+
+/* Title */
+.ClinicProcedureManager-container h2 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 18px;
+  color: #185abd;
+  letter-spacing: 0.5px;
+}
+
+/* Clinic select */
+.ClinicProcedureManager-select {
+  background: #f6f9fc;
+  border-radius: 12px;
+  padding: 10px 16px;
+  border: 1px solid #185abd55;
+  font-size: 1.05rem;
+  margin-bottom: 20px;
+  outline: none;
+}
+
+.ClinicProcedureManager-select:focus {
+  border-color: #185abd;
+}
+
+/* Add category input and button */
+.ClinicProcedureManager-category-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.ClinicProcedureManager-input {
+  background: #f6f9fc;
+  border: 1px solid #185abd33;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 1rem;
+  color: #185abd;
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+.ClinicProcedureManager-input:focus {
+  border-color: #185abd;
+  box-shadow: 0 0 0 2px #185abd22;
+}
+
+/* Add Category Button */
+.ClinicProcedureManager-category-add button {
+  background: #2ecc40;
+  color: #fff;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.18s, box-shadow 0.18s;
+  box-shadow: 0 1px 6px #185abd10;
+}
+
+.ClinicProcedureManager-category-add button:disabled {
+  background: #b7eac4;
+  color: #fff;
+  cursor: not-allowed;
+}
+
+.ClinicProcedureManager-category-add button:hover:not(:disabled) {
+  background: #27ae60;
+}
+
+/* Category header */
+.ClinicProcedureManager-category {
+  margin-bottom: 32px;
+}
+
+.ClinicProcedureManager-category h3 {
+  font-size: 1.18rem;
+  font-weight: 600;
+  color: #185abd;
+  margin-bottom: 12px;
+  margin-top: 15px;
+  letter-spacing: 0.5px;
+}
+
+/* Table styling */
+.ClinicProcedureManager-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #f6f9fc;
+  border-radius: 14px;
+  box-shadow: 0 1px 8px #185abd12;
+  overflow: hidden;
+}
+
+.ClinicProcedureManager-table th, 
+.ClinicProcedureManager-table td {
+  padding: 14px 12px;
+  text-align: left;
+  font-size: 1rem;
+}
+
+.ClinicProcedureManager-table th {
+  background: #eaf2ff;
+  font-weight: 700;
+  color: #185abd;
+  border-bottom: 2px solid #185abd22;
+}
+
+.ClinicProcedureManager-table tr:not(:last-child) td {
+  border-bottom: 1px solid #185abd14;
+}
+
+/* Inputs */
+.ClinicProcedureManager-table input {
+  width: 90%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #185abd33;
+  font-size: 1rem;
+  background: #fff;
+  color: #185abd;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.ClinicProcedureManager-table input:focus {
+  border-color: #185abd;
+  box-shadow: 0 0 0 2px #185abd22;
+}
+
+/* Buttons */
+.ClinicProcedureManager-table button {
+  background: #185abd;
+  color: #fff;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.97rem;
+  margin-right: 6px;
+  margin-bottom: 2px;
+  cursor: pointer;
+  transition: background 0.18s, box-shadow 0.18s;
+  box-shadow: 0 1px 6px #185abd10;
+}
+
+.ClinicProcedureManager-table button:disabled {
+  background: #b7c6de;
+  color: #fff;
+  cursor: not-allowed;
+}
+
+.ClinicProcedureManager-table button:hover:not(:disabled) {
+  background: #2bc1ff;
+}
+
+/* Add button special */
+.ClinicProcedureManager-table tr:last-child button {
+  background: #2ecc40;
+}
+
+.ClinicProcedureManager-table tr:last-child button:disabled {
+  background: #b7eac4;
+}
+
+/* Responsive */
+@media (max-width: 650px) {
+  .ClinicProcedureManager-container {
+    padding: 10px 2px;
+    font-size: 0.98rem;
+    max-width: 99vw;
+  }
+  .ClinicProcedureManager-table th,
+  .ClinicProcedureManager-table td {
+    padding: 7px 4px;
+    font-size: 0.92rem;
+  }
+  .ClinicProcedureManager-category-add {
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+  }
+}
+.ClinicProcedureManager-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: #f6f9fc;
+  padding: 18px 0 8px 0;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 2px 6px -2px #0001;
+}
+
+.ClinicProcedureManager-sticky-header h2 {
+  margin: 0 0 8px 0;
+  font-size: 1.7em;
+  font-weight: 700;
+  color: #24406e;
+  letter-spacing: 1px;
+}
+.ClinicProcedureManager-category-add {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Remove number input spinner/arrows for all browsers */
+.ClinicProcedureManager-table input[type="number"]::-webkit-inner-spin-button,
+.ClinicProcedureManager-table input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.ClinicProcedureManager-table input[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+  appearance: textfield;
+}

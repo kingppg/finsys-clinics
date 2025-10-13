@@ -1,0 +1,53 @@
+import React, { useState } from 'react';
+import AppointmentsTable from './AppointmentsTable';
+import AppointmentForm from './AppointmentForm';
+import AppointmentReminderControl from './AppointmentReminderControl';
+
+function AppointmentsModern() {
+  const [view, setView] = useState('table'); // 'table', 'add', or 'edit'
+  const [editAppointment, setEditAppointment] = useState(null);
+
+  const handleAddClick = () => {
+    setEditAppointment(null);
+    setView('add');
+  };
+
+  const handleEditClick = (appointment) => {
+    setEditAppointment(appointment);
+    setView('edit');
+  };
+
+  const handleFormClose = () => {
+    setEditAppointment(null);
+    setView('table');
+  };
+
+  return (
+    <div>
+      {view === 'table' && (
+        <AppointmentsTable 
+          onAdd={handleAddClick} 
+          onEdit={handleEditClick}
+        />
+      )}
+      {(view === 'add' || view === 'edit') && (
+        <div>
+          <AppointmentForm 
+            appointment={editAppointment}
+            onClose={handleFormClose}
+            onEdit={handleEditClick}
+          />
+          {/* Show reminder controls only when editing an existing appointment */}
+          {view === 'edit' && editAppointment?.id && (
+            <div style={{ marginTop: 32 }}>
+              <h3>Appointment Reminders</h3>
+              <AppointmentReminderControl appointmentId={editAppointment.id} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default AppointmentsModern;

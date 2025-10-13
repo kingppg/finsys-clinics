@@ -1,0 +1,19 @@
+.main-section {
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 2px 20px 0 rgba(13,37,63,0.07), 0 1.5px 4px 0 rgba(44,62,80,0.03);
+  width: 100%;
+  max-width: 1800px;
+  margin: 0 auto 36px auto;
+  padding: 36px 5vw 24px 5vw;
+  box-sizing: border-box;
+}
+
+.main-section h2 {
+  font-size: 1.8em;
+  font-weight: 700;
+  color: #24406e;
+  margin-bottom: 24px;
+  margin-top: 0;
+  letter-spacing: 1px;
+}
