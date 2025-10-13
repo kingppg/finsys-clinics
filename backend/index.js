@@ -28,6 +28,8 @@ app.use(express.static('../public'));
 
 // PostgreSQL pool
 const pool = new Pool();
+console.log('STARTING BACKEND');
+console.log('ENVIRONMENT:', process.env);
 
 // Test PostgreSQL connection on server start
 pool.query('SELECT NOW()', (err, res) => {
