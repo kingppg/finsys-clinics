@@ -4,6 +4,9 @@ import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import './AppointmentReminderControl.css';
 
+// Add API_BASE like in AppointmentsTable.jsx
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const MySwal = withReactContent(Swal);
 
 export default function AppointmentReminderControl({ appointmentId, patientName, clinicId }) {
@@ -199,8 +202,8 @@ export default function AppointmentReminderControl({ appointmentId, patientName,
     setManualSendLoading(true);
     let daysAhead = getDaysAhead();
     try {
-      // Call backend route to actually send the Messenger reminder (still required; only backend can send to Messenger)
-      await fetch(`/appointments/${appointmentId}/send-reminder?clinic_id=${clinicId}`, {
+      // Use API_BASE to reach backend
+      const res = await fetch(`${API_BASE}/appointments/${appointmentId}/send-reminder?clinic_id=${clinicId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -209,6 +212,11 @@ export default function AppointmentReminderControl({ appointmentId, patientName,
           recipient_override: manualRecipient || undefined
         }),
       });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to send reminder.');
+      }
 
       MySwal.fire({
         icon: 'success',
@@ -234,7 +242,7 @@ export default function AppointmentReminderControl({ appointmentId, patientName,
       MySwal.fire({
         icon: 'error',
         title: 'Failed to send reminder',
-        text: 'Could not send the reminder. Please try again.',
+        text: error.message || 'Could not send the reminder. Please try again.',
         customClass: {
           popup: 'swal2-reminder-above-modal'
         }
