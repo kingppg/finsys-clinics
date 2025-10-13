@@ -1,0 +1,5 @@
+[functions.testfunc2]
+enabled = true
+verify_jwt = false
+import_map = "./functions/testfunc2/deno.json"
+entrypoint = "./functions/testfunc2/index.ts"
