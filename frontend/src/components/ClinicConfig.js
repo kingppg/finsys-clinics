@@ -3,6 +3,9 @@ import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
 import './ClinicConfig.css';
 
+// Always use backend API base for production
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const initialClinicState = {
   name: '',
   fb_page_access_token: '',
@@ -178,9 +181,9 @@ function ClinicConfig({ user, clinicId, onBack }) {
     setFbConnecting(true);
     setFbPages(null);
 
-    // Step 1: Open OAuth window (still backend route)
+    // Use API_BASE for OAuth popup
     const oauthWindow = window.open(
-      `http://localhost:5000/api/clinics/${selectedClinicId}/facebook/connect`,
+      `${API_BASE}/api/clinics/${selectedClinicId}/facebook/connect`,
       '_blank',
       'width=600,height=700'
     );
@@ -191,8 +194,8 @@ function ClinicConfig({ user, clinicId, onBack }) {
     const pollInterval = setInterval(async () => {
       attempts++;
       try {
-        // No direct supabase for FB pages - keep fetch
-        const res = await fetch(`/api/clinics/${selectedClinicId}/facebook/pages`);
+        // Use API_BASE for polling FB pages
+        const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/facebook/pages`);
         if (res.status === 200) {
           const data = await res.json();
           if (Array.isArray(data.pages) && data.pages.length > 0) {
@@ -258,8 +261,8 @@ function ClinicConfig({ user, clinicId, onBack }) {
         messenger_page_id: page.id // <-- This makes Messenger Page ID work!
       }));
 
-      // Send selection to backend (still backend route)
-      const res = await fetch(`/api/clinics/${selectedClinicId}/facebook/select-page`, {
+      // Use API_BASE for select-page POST
+      const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/facebook/select-page`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pageId: page.id, pageAccessToken: page.access_token })
