@@ -1,0 +1,287 @@
+.availability-manager-container {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(33,68,109,0.07);
+  padding: 32px 24px 18px 24px;
+  margin: 20px 0;
+}
+
+/* Headings */
+.availability-manager-container h2 {
+  font-size: 1.35em;
+  font-weight: 600;
+  margin-bottom: 18px;
+  color: #21446d;
+  letter-spacing: 0.2px;
+}
+.availability-manager-container h3 {
+  font-size: 1.1em;
+  font-weight: 500;
+  margin-top: 22px;
+  margin-bottom: 8px;
+  color: #21446d;
+}
+
+/* Form Styles */
+.availability-form,
+.calendar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+  align-items: center;
+}
+.availability-form label,
+.calendar-controls label {
+  font-size: 0.98em;
+  font-weight: 400;
+  margin-right: 10px;
+  color: #21446d;
+}
+
+.availability-form select,
+.availability-form input[type="date"],
+.availability-form input[type="month"],
+.availability-form input[type="time"] {
+  padding: 5px 10px;
+  border: 1px solid #e6e6e6;
+  border-radius: 5px;
+  font-size: 1em;
+  outline: none;
+  background: #f6f9fc;
+  margin-right: 4px;
+}
+
+/* Mode toggle buttons */
+.availability-manager-container > div > button {
+  padding: 7px 18px;
+  border-radius: 5px;
+  border: none;
+  background-color: #e6e6e6;
+  color: #21446d;
+  font-weight: 500;
+  font-size: 1em;
+  cursor: pointer;
+  margin-right: 8px;
+  margin-bottom: 6px;
+  transition: background 0.18s;
+}
+.availability-manager-container > div > button.active,
+.availability-manager-container > div > button:focus {
+  background: #21446d;
+  color: #fff;
+}
+.availability-manager-container > div > button:hover:not(.active) {
+  background: #40a9ff;
+  color: #fff;
+}
+
+/* Calendar Grid for Day Mode */
+.calendar-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  width: 280px;
+  margin-bottom: 10px;
+}
+
+.calendar-day {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  border: none;
+  outline: none;
+  font-size: 1em;
+  font-weight: 500;
+  margin: 2px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, box-shadow 0.13s;
+  box-shadow: 0 1px 2px rgba(33,68,109,0.04);
+}
+
+.calendar-day.available {
+  background: #1976d2;
+  color: #fff;
+}
+
+.calendar-day.blocked {
+  background: #e53935;
+  color: #fff;
+}
+
+.calendar-day.sunday {
+  background: #eee !important;
+  color: #888 !important;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Calendar Grid for 7-day layout (Monday-first) */
+.calendar-grid-7day {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 280px;
+  margin-bottom: 10px;
+}
+.calendar-row {
+  display: flex;
+}
+.calendar-header > div {
+  background: #f0f7ff;
+  border-radius: 4px;
+  margin: 2px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hour Blocks for Hour Mode */
+.hour-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.hour-slot {
+  width: 70px;
+  height: 36px;
+  border-radius: 4px;
+  border: none;
+  outline: none;
+  font-size: 0.98em;
+  font-weight: 500;
+  margin: 2px 4px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, box-shadow 0.13s;
+  box-shadow: 0 1px 2px rgba(33,68,109,0.04);
+}
+.hour-slot.available {
+  background: #1976d2;
+  color: #fff;
+}
+.hour-slot.blocked {
+  background: #e53935;
+  color: #fff;
+}
+
+/* Table Styles */
+.availability-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  font-size: 0.97em;
+}
+
+.availability-table th,
+.availability-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #e6e6e6;
+  text-align: left;
+}
+
+.availability-table th {
+  background: #f0f7ff;
+  color: #21446d;
+  font-weight: 600;
+}
+
+.availability-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.availability-table td {
+  color: #2d5b91;
+}
+
+/* Status cell coloring */
+.availability-table td {
+  transition: color 0.12s;
+}
+.availability-table td[style*="red"] {
+  color: #e53935 !important;
+  font-weight: 600;
+}
+.availability-table td[style*="blue"] {
+  color: #1976d2 !important;
+  font-weight: 600;
+}
+
+/* Responsive styles */
+@media (max-width: 800px) {
+  .availability-manager-container {
+    padding: 10px 4vw;
+  }
+  .availability-form,
+  .calendar-controls {
+    gap: 7px;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .calendar-grid,
+  .calendar-grid-7day {
+    width: 94vw;
+    max-width: 350px;
+  }
+  .hour-grid {
+    width: 98vw;
+    max-width: 410px;
+  }
+}
+/* ...existing CSS above... */
+
+/* Hour Blocks for Hour Mode */
+.hour-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+/* Fix: Make button wide enough for 12-hour time labels to fit in one line */
+.hour-slot {
+  width: 90px;              /* <-- Increase width to fit "12:00 PM" comfortably */
+  min-width: 90px;          /* <-- Prevent shrinkage on small screens */
+  height: 36px;
+  border-radius: 4px;
+  border: none;
+  outline: none;
+  font-size: 1.04em;        /* <-- Slightly larger for readability */
+  font-weight: 500;
+  margin: 2px 4px;
+  cursor: pointer;
+  transition: background 0.18s, color 0.18s, box-shadow 0.13s;
+  box-shadow: 0 1px 2px rgba(33,68,109,0.04);
+  white-space: nowrap;      /* <-- Keep label on one line */
+  text-align: center;       /* <-- Center the label horizontally */
+  padding: 0 4px;           /* <-- Some horizontal padding */
+  overflow: hidden;         /* <-- Prevent overflow */
+}
+
+.hour-slot.available {
+  background: #1976d2;
+  color: #fff;
+}
+.hour-slot.blocked {
+  background: #e53935;
+  color: #fff;
+}
+
+/* ...rest of your CSS unchanged... */
+
+@media (max-width: 800px) {
+  /* Responsive: allow the slot buttons to shrink but keep labels visible */
+  .hour-grid {
+    width: 98vw;
+    max-width: 410px;
+  }
+  .hour-slot {
+    width: 24vw;
+    min-width: 70px; /* Don't go smaller than 70px */
+    font-size: 0.97em;
+    padding: 0 2px;
+  }
+}

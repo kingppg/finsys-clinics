@@ -1,0 +1,463 @@
+import './DentistAvailabilityManager.css';
+import React, { useEffect, useState } from 'react';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
+import Swal from 'sweetalert2'; // <--- ADD THIS LINE
+
+const BACKEND_URL = 'http://localhost:5000';
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const HOURS = Array.from({length: 9}, (_, i) => `${(9 + i).toString().padStart(2,'0')}:00`); // 09:00-17:00
+
+function parseLocalDate(dateStr) {
+  return dateStr ? new Date(dateStr) : null;
+}
+
+// Utility to format 24-hour "HH:00" to 12-hour "hh:mm AM/PM"
+function formatHourTo12Hr(hourStr) {
+  const [hour, minute] = hourStr.split(':');
+  let h = parseInt(hour, 10);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h.toString().padStart(2,'0')}:${minute} ${suffix}`;
+}
+
+// Helper to strip seconds from time strings
+function stripSeconds(timeStr) {
+  return timeStr ? timeStr.slice(0, 5) : "";
+}
+
+function DentistAvailabilityManager() {
+  const [dentists, setDentists] = useState([]);
+  const [selectedDentist, setSelectedDentist] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [availability, setAvailability] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // UI State for slots
+  const [slotStatus, setSlotStatus] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  // Fetch dentists on component mount
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/dentists`)
+      .then(res => res.json())
+      .then(data => setDentists(data))
+      .catch(() => setDentists([]));
+  }, []);
+
+  // Fetch availability whenever dentist changes
+  useEffect(() => {
+    if (!selectedDentist) {
+      setSelectedDate('');
+      setSlotStatus({});
+      setAvailability([]);
+      return;
+    }
+    const todayStr = new Date().toLocaleDateString('sv-SE');
+    setSelectedDate(todayStr);
+    setLoading(true);
+    fetch(`${BACKEND_URL}/availability/${selectedDentist}`)
+      .then(res => res.json())
+      .then(data => {
+        setAvailability(data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setAvailability([]);
+        setLoading(false);
+      });
+  }, [selectedDentist]);
+
+  // Always rebuild slotStatus when selectedDate, availability, or selectedDentist changes
+  useEffect(() => {
+    if (!selectedDentist || !selectedDate) {
+      setSlotStatus({});
+      return;
+    }
+    let status = Object.fromEntries(HOURS.map(h => [h, true]));
+    const blocks = availability.filter(a => {
+      const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
+      return dbDate === selectedDate && !a.is_available;
+    });
+    blocks.forEach(block => {
+      const startTime = stripSeconds(block.start_time);
+      const endTime = stripSeconds(block.end_time);
+      let startIdx = HOURS.indexOf(startTime);
+      let endIdx = HOURS.indexOf(endTime);
+      if (startIdx === -1) return;
+      if (endIdx === -1) endIdx = HOURS.length;
+      for (let i = startIdx; i < endIdx; i++) {
+        status[HOURS[i]] = false;
+      }
+    });
+    setSlotStatus(status);
+  }, [selectedDate, availability, selectedDentist]);
+
+  // Calendar disables Sundays
+  function tileDisabled({ date }) {
+    return date.getDay() === 0;
+  }
+
+  function handleCalendarChange(dateObj) {
+    const dateStr = dateObj.toLocaleDateString('sv-SE');
+    setSelectedDate(dateStr);
+  }
+
+  function handleSlotClick(hour) {
+    setSlotStatus(prev => ({
+      ...prev,
+      [hour]: !prev[hour]
+    }));
+  }
+
+  function handleBlockAll() {
+    setSlotStatus(Object.fromEntries(HOURS.map(h => [h, false])));
+  }
+
+  function handleUnblockAll() {
+    setSlotStatus(Object.fromEntries(HOURS.map(h => [h, true])));
+  }
+
+  // SweetAlert2 for notifications/warnings
+  function showNotification(msg, type = 'info', timeout = 1800) {
+    Swal.fire({
+      text: msg,
+      icon: type,
+      timer: timeout,
+      showConfirmButton: false,
+      position: 'top',
+      toast: true,
+    });
+  }
+
+  // Save logic
+  async function handleSave(e) {
+    e.preventDefault();
+    if (!selectedDentist || !selectedDate) {
+      showNotification('Dentist and date required!', 'warning');
+      return;
+    }
+    setSaving(true);
+    const allAvailable = HOURS.every(h => slotStatus[h]);
+    const allBlocked = HOURS.every(h => !slotStatus[h]);
+    const blocksForDate = availability.filter(a => {
+      const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
+      return dbDate === selectedDate;
+    });
+
+    for (let block of blocksForDate) {
+      await fetch(`${BACKEND_URL}/availability/${block.id}`, { method: 'DELETE' });
+    }
+
+    try {
+      if (allAvailable) {
+        // Do nothing (all available)
+      } else if (allBlocked) {
+        await fetch(`${BACKEND_URL}/availability`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dentist_id: selectedDentist,
+            specific_date: selectedDate,
+            start_time: '09:00',
+            end_time: '18:00',
+            is_available: false
+          })
+        });
+      } else {
+        for (let i = 0; i < HOURS.length; i++) {
+          if (!slotStatus[HOURS[i]]) {
+            let startHour = HOURS[i];
+            let endIdx = i + 1;
+            while (endIdx < HOURS.length && !slotStatus[HOURS[endIdx]]) {
+              endIdx++;
+            }
+            let endHour = HOURS[endIdx] || "18:00";
+            await fetch(`${BACKEND_URL}/availability`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                dentist_id: selectedDentist,
+                specific_date: selectedDate,
+                start_time: startHour,
+                end_time: endHour,
+                is_available: false
+              })
+            });
+            i = endIdx - 1;
+          }
+        }
+      }
+      fetch(`${BACKEND_URL}/availability/${selectedDentist}`)
+        .then(r => r.json())
+        .then(data => setAvailability(data));
+      showNotification('Saved!', 'success');
+    } catch (err) {
+      showNotification('Error saving!', 'error');
+    }
+    setSaving(false);
+  }
+
+  // Delete all blocks for selected date
+  async function handleDeleteDate(e) {
+    e.preventDefault();
+    if (!selectedDentist || !selectedDate) {
+      showNotification('Dentist and date required!', 'warning');
+      return;
+    }
+    const confirm = await Swal.fire({
+      title: 'Delete blocks?',
+      text: `Delete ALL blocks for ${selectedDate}? This cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete',
+      cancelButtonText: 'Cancel'
+    });
+    if (!confirm.isConfirmed) return;
+
+    setSaving(true);
+    const blocksForDate = availability.filter(a => {
+      const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
+      return dbDate === selectedDate;
+    });
+    for (let block of blocksForDate) {
+      await fetch(`${BACKEND_URL}/availability/${block.id}`, { method: 'DELETE' });
+    }
+    fetch(`${BACKEND_URL}/availability/${selectedDentist}`)
+      .then(r => r.json())
+      .then(data => setAvailability(data));
+    showNotification('All blocks deleted!', 'success');
+    setSaving(false);
+  }
+
+  async function handleDelete(id) {
+    const confirm = await Swal.fire({
+      title: 'Delete block?',
+      text: 'Delete this block?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, delete',
+      cancelButtonText: 'Cancel'
+    });
+    if (!confirm.isConfirmed) return;
+    await fetch(`${BACKEND_URL}/availability/${id}`, { method: 'DELETE' });
+    setAvailability(avail => avail.filter(a => a.id !== id));
+    showNotification('Deleted!', 'success');
+  }
+
+  const renderAvailabilityTable = () => (
+    <table className="availability-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Date</th>
+          <th>Day</th>
+          <th>Start</th>
+          <th>End</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {availability.length === 0 && (
+          <tr>
+            <td colSpan={7} style={{ textAlign: 'center' }}>No blocks found</td>
+          </tr>
+        )}
+        {availability.map(block => {
+          const d = parseLocalDate(block.specific_date);
+          return (
+            <tr key={block.id}>
+              <td>{block.id}</td>
+              <td>{d ? d.toLocaleDateString('sv-SE') : ''}</td>
+              <td>{d ? WEEKDAYS[d.getDay()] : ''}</td>
+              <td>{block.start_time}</td>
+              <td>{block.end_time}</td>
+              <td style={{color: block.is_available ? "blue":"red", fontWeight:600}}>
+                {block.is_available ? 'Available' : 'Blocked'}
+              </td>
+              <td>
+                <button
+                  className="availability-action-btn"
+                  style={{
+                    background:'#e53935',
+                    color:'#fff',
+                    border:'none',
+                    borderRadius:4,
+                    padding:'4px 12px',
+                    cursor:'pointer'
+                  }}
+                  onClick={() => handleDelete(block.id)}
+                  disabled={saving}
+                  title="Delete this block"
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
+  const availableCount = Object.values(slotStatus).filter(v => v).length;
+  const blockedCount = Object.values(slotStatus).filter(v => !v).length;
+
+  return (
+    <div className="availability-manager-container" style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+      <h2>Dentist Availability Manager</h2>
+      <label>
+        Dentist:&nbsp;
+        <select value={selectedDentist} onChange={e => setSelectedDentist(e.target.value)} required>
+          <option value="">Select Dentist</option>
+          {dentists.map(d => (
+            <option key={d.id} value={d.id}>{d.name}</option>
+          ))}
+        </select>
+      </label>
+
+      {selectedDentist && (
+        <div style={{
+          display:'flex',
+          gap:'32px',
+          alignItems:'flex-start',
+          marginTop:'24px',
+          marginBottom:'24px'
+        }}>
+          <div>
+            <Calendar
+              selectRange={false}
+              value={selectedDate ? parseLocalDate(selectedDate) : new Date()}
+              onChange={handleCalendarChange}
+              tileDisabled={tileDisabled}
+              locale="en-US"
+              minDate={new Date()}
+              allowPartialRange={false}
+              showNeighboringMonth={false}
+              showFixedNumberOfWeeks={false}
+              maxDetail="month"
+            />
+          </div>
+          <form onSubmit={handleSave} style={{minWidth:'320px'}}>
+            <div style={{fontWeight:600,marginBottom:'10px'}}>
+              Time Slots for {selectedDate} ({WEEKDAYS[parseLocalDate(selectedDate)?.getDay()]})
+            </div>
+            <div className="hour-grid" style={{
+              display:'grid',
+              gridTemplateColumns:'repeat(3,1fr)',
+              gap:'10px',
+              marginBottom:'16px',
+            }}>
+              {HOURS.map(hour => {
+                const isAvailable = slotStatus[hour];
+                return (
+                  <button
+                    type="button"
+                    key={hour}
+                    className={`hour-slot ${isAvailable ? 'available' : 'blocked'}`}
+                    style={{
+                      background: isAvailable ? '#1976d2' : '#e53935',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 4,
+                      height: 44,
+                      fontWeight:600,
+                      fontSize:'1em',
+                      cursor: 'pointer',
+                      boxShadow: isAvailable ? '0 2px 6px #1976d222' : '0 2px 6px #e5393522'
+                    }}
+                    onClick={() => handleSlotClick(hour)}
+                    title={isAvailable ? "Click to block this slot" : "Click to unblock this slot"}
+                  >
+                    {formatHourTo12Hr(hour)}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: '16px', marginBottom: '10px' }}>
+              <button type="button"
+                onClick={handleBlockAll}
+                style={{
+                  background:'#e53935',
+                  color:'#fff',
+                  fontWeight:600,
+                  padding:'6px 18px',
+                  border:'none',
+                  borderRadius:4,
+                  cursor:'pointer'
+                }}
+                disabled={saving}
+                title="Block all slots for the day"
+              >Block All</button>
+              <button type="button"
+                onClick={handleUnblockAll}
+                style={{
+                  background:'#1976d2',
+                  color:'#fff',
+                  fontWeight:600,
+                  padding:'6px 18px',
+                  border:'none',
+                  borderRadius:4,
+                  cursor:'pointer'
+                }}
+                disabled={saving}
+                title="Unblock all slots for the day"
+              >Unblock All</button>
+            </div>
+            <div style={{marginBottom: '8px'}}>
+              <span style={{color:'#1976d2',fontWeight:'bold'}}>Blue</span>: Available &nbsp;&nbsp;
+              <span style={{color:'#e53935',fontWeight:'bold'}}>Red</span>: Blocked
+            </div>
+            <div style={{marginBottom:'12px', fontWeight:600}}>
+              <span>{availableCount} available, {blockedCount} blocked</span>
+            </div>
+            <div style={{display: 'flex', gap: '12px'}}>
+              <button
+                type="submit"
+                style={{
+                  background:'#43a047',
+                  color:'#fff',
+                  fontWeight:600,
+                  padding:'10px 24px',
+                  border:'none',
+                  borderRadius:4,
+                  cursor:'pointer'
+                }}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Save"}
+              </button>
+              <button
+                type="button"
+                style={{
+                  background:'#e53935',
+                  color:'#fff',
+                  fontWeight:600,
+                  padding:'10px 24px',
+                  border:'none',
+                  borderRadius:4,
+                  cursor:'pointer'
+                }}
+                disabled={saving}
+                onClick={handleDeleteDate}
+                title="Delete all blocks for this date"
+              >
+                Delete
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <h3>Blocked Periods</h3>
+      {loading ? (
+        <div>Loading availability...</div>
+      ) : (
+        renderAvailabilityTable()
+      )}
+    </div>
+  );
+}
+
+export default DentistAvailabilityManager;
