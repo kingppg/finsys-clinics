@@ -1,0 +1,1219 @@
+// PART 1
+
+const express = require("express");
+const axios = require("axios");
+const { Pool } = require("pg");
+
+// --- IMPORT MENU COMPONENTS ---
+const sendIntroMenu = require('./menu/sendIntroMenu');
+const sendAppointmentForButtonTemplate = require('./menu/sendAppointmentForButtonTemplate');
+const sendTimeSlotButtonTemplate = require('./menu/sendTimeSlotButtonTemplate');
+const sendConfirmationButtonTemplate = require('./menu/sendConfirmationButtonTemplate');
+const sendBookingPromptButtonTemplate = require('./menu/sendBookingPromptButtonTemplate');
+const sendUnknownInputCard = require('./menu/sendUnknownInputCard');
+
+const router = express.Router();
+
+const VERIFY_TOKEN = "palodentcare_secret_token";
+
+// Fill in your DB credentials
+const pool = new Pool({
+  // connection config here
+});
+
+// --- WIT.AI INTENT DETECTION ---
+async function getWitIntent(message) {
+  const WIT_TOKEN = process.env.WIT_TOKEN;
+  try {
+    const resp = await axios.get(
+      `https://api.wit.ai/message?v=20210927&q=${encodeURIComponent(message)}`,
+      { headers: { Authorization: `Bearer ${WIT_TOKEN}` } }
+    );
+    return resp.data; // { intents: [...], entities: {...} }
+  } catch (err) {
+    console.error("❌ Error calling Wit.ai:", err.response?.data || err.message);
+    return {};
+  }
+}
+
+// --- NEW: Clinic lookup by Messenger Page ID ---
+async function getClinicByMessengerPageId(pageId) {
+  const { rows } = await pool.query(
+    'SELECT * FROM clinics WHERE messenger_page_id = $1 LIMIT 1',
+    [pageId]
+  );
+  return rows[0] || null;
+}
+
+// --- DO NOT USE STATIC CLINIC_ID ---
+// let userStates and justCancelled remain global
+let userStates = {};
+let justCancelled = {};
+
+function normalize(str) {
+  return str.toLowerCase().replace(/[^\w ]/g, '').trim();
+}
+const greetKeywords = [
+  "gandang umaga", "Gandang umaga", "menu", "gandang araw", "gandang gabi", "hello", "hi", "hey", "good morning", "magandang umaga", "good am", "good afternoon",
+  "magandang hapon", "good pm", "gud pm", "magandang araw", "greetings", "gud am", "good day"
+];
+const appointmentKeywords = [
+  'appointment', 'book', 'booking', 'pa book', 'schedule', 'gusto ko ng appointment',
+  'pa-appointment', 'pa schedule', 'pabook', 'pabook', 'magpaappointment', 'mag pa appointment', 'magpaschedule'
+];
+const cancelKeywords = [
+  'cancel', "exit", 'no', 'never mind', 'next time', 'next time na lang', 'ayaw', 'wag na lang', 'wag na', 'hindi na lang', 'hindi', 'i-cancel', 'icancel', 'cancel po', 'huwag na', 'no thanks', 'not now'
+];
+const gratitudeMessages = [
+  "thanks", "ok", "okay", "okey", "k", "k", "tnx", "salamt", "slamat", "slamat din", "maraming salamat", "maraming salamat po",  "thank you", "salamat",
+  "thankyou", "ty", "Slmat", "daghang salamat", "God bless", "god bless", "thx", "tenkyu", "salamat"
+];
+
+function toTitleCase(str) {
+  return str.replace(/\b\w+/g, function(txt){
+    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+  });
+}
+
+function to12HourFormat(time24) {
+  const [hourStr, minStr] = time24.split(':');
+  let hour = parseInt(hourStr, 10);
+  const min = minStr;
+  const ampm = hour >= 12 ? 'PM' : 'AM';
+  hour = hour % 12 || 12;
+  return `${hour.toString().padStart(2, '0')}:${min} ${ampm}`;
+}
+
+// Convert "05:40 PM" to "17:40"
+function to24HourFormat(time12) {
+  let [time, ampm] = time12.split(' ');
+  let [h, m] = time.split(':');
+  h = parseInt(h, 10);
+  if (ampm === 'PM' && h < 12) h += 12;
+  if (ampm === 'AM' && h === 12) h = 0;
+  return `${h.toString().padStart(2, '0')}:${m}`;
+}
+
+// REMOVE the global PAGE_ACCESS_TOKEN
+// const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
+
+async function sendMessage(sender_psid, response, pageAccessToken) {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v17.0/me/messages?access_token=${pageAccessToken}`,
+      {
+        recipient: { id: sender_psid },
+        message: { text: response },
+      }
+    );
+  } catch (err) {
+    console.error(
+      "❌ Error sending message:",
+      err.response?.data || err.message
+    );
+  }
+}
+
+// --- CLINIC SCOPED: Active dentists lookup ---
+async function getActiveDentists(clinicId) {
+  let query = "SELECT id, name FROM dentists WHERE is_active = true";
+  let params = [];
+  if (clinicId) {
+    query += " AND clinic_id = $1";
+    params.push(clinicId);
+  }
+  query += " ORDER BY name ASC";
+  const { rows } = await pool.query(query, params);
+  return rows;
+}
+
+// --- CLINIC SCOPED: Find or create patient ---
+async function findOrCreatePatient(name, messenger_id, clinicId) {
+  let query = 'SELECT * FROM patients WHERE messenger_id = $1';
+  let params = [messenger_id];
+  if (clinicId) {
+    query += ' AND clinic_id = $2';
+    params.push(clinicId);
+  }
+  const { rows } = await pool.query(query, params);
+  if (rows.length > 0) return rows[0];
+  let insert;
+  if (clinicId) {
+    insert = await pool.query(
+      'INSERT INTO patients (name, messenger_id, clinic_id) VALUES ($1, $2, $3) RETURNING *',
+      [name, messenger_id, clinicId]
+    );
+  } else {
+    insert = await pool.query(
+      'INSERT INTO patients (name, messenger_id) VALUES ($1, $2) RETURNING *',
+      [name, messenger_id]
+    );
+  }
+  return insert.rows[0];
+}
+
+// --- CLINIC SCOPED: Find patient by messenger_id ---
+async function findPatientByMessengerId(messenger_id, clinicId) {
+  let query = 'SELECT * FROM patients WHERE messenger_id = $1';
+  let params = [messenger_id];
+  if (clinicId) {
+    query += ' AND clinic_id = $2';
+    params.push(clinicId);
+  }
+  const { rows } = await pool.query(query, params);
+  if (rows.length > 0) return rows[0];
+  return null;
+}
+
+// --- CLINIC SCOPED: Find patient by name and phone ---
+async function findPatientByNameAndPhone(name, phone, clinicId) {
+  if (phone) {
+    let query = "SELECT * FROM patients WHERE LOWER(name) = LOWER($1) AND phone = $2";
+    let params = [name, phone];
+    if (clinicId) {
+      query += ' AND clinic_id = $3';
+      params.push(clinicId);
+    }
+    const { rows } = await pool.query(query, params);
+    if (rows.length > 0) return rows[0];
+  }
+  let query = "SELECT * FROM patients WHERE LOWER(name) = LOWER($1)";
+  let params = [name];
+  if (clinicId) {
+    query += ' AND clinic_id = $2';
+    params.push(clinicId);
+  }
+  const { rows } = await pool.query(query, params);
+  if (rows.length > 0) return rows[0];
+  return null;
+}
+
+function generateTimeSlots(start = "09:00", end = "18:00", interval = 20) {
+  const slots = [];
+  let [hour, minute] = start.split(":").map(Number);
+  const [endHour, endMinute] = end.split(":").map(Number);
+  while (hour < endHour || (hour === endHour && minute < endMinute)) {
+    const slot = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+    slots.push(slot);
+    minute += interval;
+    if (minute >= 60) {
+      hour += 1;
+      minute = minute % 60;
+    }
+  }
+  // Filter out lunch break slots
+  return slots.filter(slot => !["12:00", "12:20", "12:40"].includes(slot));
+}
+
+function isClinicOpen(dateStr) {
+  const date = new Date(dateStr);
+  return date.getDay() !== 0;
+}
+
+// --- CLINIC SCOPED: Booked slot counts ---
+async function getBookedSlotCountsForActiveDentists(activeDentists, dateStr, clinicId) {
+  const slotCounts = {};
+  if (!activeDentists.length) return slotCounts;
+  const dentistIds = activeDentists.map(d => d.id);
+  let query = `SELECT dentist_id, appointment_time
+     FROM appointments
+     WHERE dentist_id = ANY($1)
+       AND DATE(appointment_time AT TIME ZONE 'Asia/Manila') = $2
+       AND status != 'Cancelled'`;
+  let params = [dentistIds, dateStr];
+  if (clinicId) {
+    query += ' AND clinic_id = $3';
+    params.push(clinicId);
+  }
+  const { rows } = await pool.query(query, params);
+  rows.forEach(appt => {
+    const time = new Date(appt.appointment_time);
+    const slot = time.toTimeString().slice(0,5);
+    slotCounts[slot] = (slotCounts[slot] || 0) + 1;
+  });
+  return slotCounts;
+}
+
+// --- CLINIC SCOPED: Blocked slots for active dentists ---
+async function getBlockedSlotsForActiveDentists(activeDentists, dateStr, clinicId) {
+  const slots = generateTimeSlots("09:00", "18:00", 20);
+  let blockedSlots = new Set();
+  for (const dentist of activeDentists) {
+    const dateObj = new Date(dateStr);
+    const dayOfWeek = dateObj.getDay();
+    let query = `SELECT start_time, end_time FROM dentist_availability
+       WHERE dentist_id = $1
+         AND (specific_date = $2 OR day_of_week = $3)
+         AND is_available = false`;
+    let params = [dentist.id, dateStr, dayOfWeek];
+    if (clinicId) {
+      query += ' AND clinic_id = $4';
+      params.push(clinicId);
+    }
+    const { rows } = await pool.query(query, params);
+    rows.forEach(block => {
+      const [startHour, startMin] = block.start_time.split(':').map(Number);
+      const [endHour, endMin] = block.end_time.split(':').map(Number);
+      slots.forEach(slot => {
+        const [h, m] = slot.split(':').map(Number);
+        const slotMinutes = h * 60 + m;
+        const startMinutes = startHour * 60 + startMin;
+        const endMinutes = endHour * 60 + endMin;
+        if (slotMinutes >= startMinutes && slotMinutes < endMinutes) {
+          blockedSlots.add(slot);
+        }
+      });
+    });
+  }
+  return blockedSlots;
+}
+
+// --- CLINIC SCOPED: Available slots ---
+async function getAvailableSlots(dateStr, clinicId) {
+  const activeDentists = await getActiveDentists(clinicId);
+  if (!activeDentists.length) return { slots: [], activeDentists };
+  const N = activeDentists.length;
+  const allSlots = generateTimeSlots("09:00", "18:00", 20);
+  const blockedSlots = await getBlockedSlotsForActiveDentists(activeDentists, dateStr, clinicId);
+  const bookedSlotCounts = await getBookedSlotCountsForActiveDentists(activeDentists, dateStr, clinicId);
+
+  let availableSlots = allSlots.filter(slot => {
+    const bookedCount = bookedSlotCounts[slot] || 0;
+    return bookedCount < N && !blockedSlots.has(slot);
+  }).map(to12HourFormat);
+
+  // PATCH: Remove slots in the past if booking is for today
+  const now = new Date();
+  const bookingDate = new Date(dateStr);
+
+  if (
+    bookingDate.getFullYear() === now.getFullYear() &&
+    bookingDate.getMonth() === now.getMonth() &&
+    bookingDate.getDate() === now.getDate()
+  ) {
+    availableSlots = availableSlots.filter(slot => {
+      const slot24 = to24HourFormat(slot);
+      const [h, m] = slot24.split(':').map(Number);
+      const slotDate = new Date(dateStr);
+      slotDate.setHours(h, m, 0, 0);
+      return slotDate > now;
+    });
+  }
+
+  return { slots: availableSlots, activeDentists };
+}
+
+// --- CLINIC SCOPED: Double booking check ---
+async function hasDoubleBookingOnDate(patient_id, dateStr, clinicId) {
+  let query = "SELECT id FROM appointments WHERE patient_id = $1 AND DATE(appointment_time AT TIME ZONE 'Asia/Manila') = $2 AND status != 'Cancelled'";
+  let params = [patient_id, dateStr];
+  if (clinicId) {
+    query += ' AND clinic_id = $3';
+    params.push(clinicId);
+  }
+  const { rows } = await pool.query(query, params);
+  return rows.length > 0;
+}
+
+// --- WEBHOOK HANDLING ---
+
+router.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+  if (mode && token) {
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
+      console.log("✅ Webhook verified by Facebook");
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403);
+    }
+  } else {
+    res.sendStatus(400);
+  }
+});
+
+router.post("/webhook", async (req, res) => {
+  const body = req.body;
+  if (body.object === "page") {
+    for (const entry of body.entry) {
+      const webhook_event = entry.messaging[0];
+      const sender_psid = webhook_event.sender.id;
+      const page_id = webhook_event.recipient.id;
+      // Log the entire event
+      console.log('[DEBUG] webhook_event:', JSON.stringify(webhook_event, null, 2));
+      // --- Multi-clinic dynamic lookup ---
+      const clinic = await getClinicByMessengerPageId(page_id);
+      if (!clinic) {
+        await sendMessage(sender_psid, "Sorry, this Messenger page is not linked to any clinic. Please contact support.", null);
+        continue;
+      }
+      const clinicId = clinic.id; // Dynamic per event
+      const pageAccessToken = clinic.fb_page_access_token; // ADD THIS LINE!
+
+      try {
+        // IGNORE echo messages!
+        if (
+          webhook_event.message &&
+          webhook_event.message.text &&
+          !webhook_event.message.is_echo
+        ) {
+          const userMessage = webhook_event.message.text.trim();
+          await handleMessage(sender_psid, userMessage, webhook_event, req, clinicId, pageAccessToken);
+        }
+        else if (webhook_event.postback && webhook_event.postback.payload) {
+          await handleMessage(sender_psid, webhook_event.postback.payload, webhook_event, req, clinicId, pageAccessToken);
+        }
+      } catch (err) {
+        console.error('❌ Error in webhook handler:', err);
+        await sendMessage(sender_psid, "Sorry, something went wrong. Please try again.", pageAccessToken);
+      }
+    } // <-- THIS CLOSES THE FOR LOOP
+    res.status(200).send("EVENT_RECEIVED");
+  } else {
+    res.sendStatus(404);
+  }
+});
+// END PART 1
+
+// PART 2
+// --- MAIN LOGIC ---
+async function handleMessage(sender_psid, message, webhook_event, req, clinicId, pageAccessToken) {
+  // START DEBUG BLOCK
+  console.log(`[DEBUG] handleMessage called: state=${userStates[sender_psid]?.state} | message=${message}`);
+  console.log(`[DEBUG] sender_psid: ${sender_psid}, clinicId: ${clinicId}, pageAccessToken: ${pageAccessToken ? pageAccessToken.substring(0,10)+'...' : pageAccessToken}`);
+  // --- NLP: WIT.AI ---
+  let witResp = {};
+  let topIntent = undefined;
+  try {
+    witResp = await getWitIntent(message);
+    topIntent = witResp.intents?.[0]?.name;
+    console.log(`[DEBUG] Wit.ai topIntent: ${topIntent}, entities:`, witResp.entities);
+  } catch (e) {
+    console.error('[DEBUG] Wit.ai error:', e);
+  }
+
+  if (webhook_event) {
+    console.log('[DEBUG] webhook_event.sender.id:', webhook_event.sender?.id);
+    console.log('[DEBUG] webhook_event.recipient.id:', webhook_event.recipient?.id);
+    if (webhook_event.message) {
+      console.log('[DEBUG] webhook_event.message:', JSON.stringify(webhook_event.message));
+    }
+    if (webhook_event.postback) {
+      console.log('[DEBUG] webhook_event.postback:', JSON.stringify(webhook_event.postback));
+    }
+  }
+  // END DEBUG BLOCK
+  try {
+    if (!userStates[sender_psid]) {
+      userStates[sender_psid] = { state: "default", data: {} };
+      console.log('[DEBUG] userStates initialized for sender_psid');
+    }
+    let userState = userStates[sender_psid];
+
+    let normalizedMsg = normalize(message);
+    console.log('[DEBUG] normalizedMsg:', normalizedMsg);
+    if (typeof message === 'string' && message === 'CONFIRM_BOOKING') normalizedMsg = 'confirm_booking';
+    if (typeof message === 'string' && message === 'CANCEL_BOOKING') normalizedMsg = 'cancel_booking';
+
+    // --- Handle YES/NO for unknown input card ---
+    if (message === 'UNKNOWN_INPUT_YES') {
+      userStates[sender_psid] = { state: "default", data: {} };
+      console.log('[DEBUG] UNKNOWN_INPUT_YES, calling sendIntroMenu');
+      await sendIntroMenu(sender_psid, pageAccessToken);
+      return;
+    }
+    if (message === 'UNKNOWN_INPUT_NO') {
+      console.log('[DEBUG] UNKNOWN_INPUT_NO, sending thanks message');
+      await sendMessage(sender_psid, "Thank you! If you need anything, just message anytime. God bless!", pageAccessToken);
+      userStates[sender_psid] = { state: "default", data: {} };
+      return;
+    }
+
+    // --- MENU POSTBACK HANDLING ---
+    if (message === 'MENU_BOOK_APPOINTMENT') {
+      userState.state = "awaiting_date";
+      await sendMessage(sender_psid, "Please enter your preferred date (YYYY-MM-DD):", pageAccessToken);
+      return;
+    }
+    if (message === 'MENU_CONFIRM_BOOKING') {
+      userState.state = "awaiting_confirm_code";
+      await sendMessage(sender_psid, "Please enter your appointment code (ID):", pageAccessToken);
+      return;
+    }
+    if (message === 'MENU_CANCEL_APPOINTMENT') {
+      userState.state = "awaiting_cancel_code";
+      await sendMessage(sender_psid, "Please enter your appointment code (ID) to cancel:", pageAccessToken);
+      return;
+    }
+    // --- END MENU POSTBACK HANDLING ---
+
+    if (justCancelled[sender_psid] && cancelKeywords.some(k => normalizedMsg === k || normalizedMsg.includes(k))) {
+      await sendMessage(sender_psid, "Okay po, feel free to message anytime if you need an appointment. Ingat po!", pageAccessToken);
+      justCancelled[sender_psid] = false;
+      userStates[sender_psid] = { state: "default", data: {} };
+      return;
+    } else if (justCancelled[sender_psid]) {
+      justCancelled[sender_psid] = false;
+    }
+
+    const normalizedWords = normalizedMsg.split(/\s+/);
+    // Prevent global cancel handler in booking prompt state
+    if (userState.state === "awaiting_booking_prompt_response") {
+      // Let switch-case below handle it exclusively
+    } else {
+      if (cancelKeywords.some(k => normalizedWords.includes(k))) {
+        await sendMessage(sender_psid, "Thank you! If you need anything, just message anytime. God bless!", pageAccessToken);
+        userStates[sender_psid] = { state: "default", data: {} };
+        return;
+      }
+    }
+
+    switch (userState.state) {
+      case "default": {
+         // NLP INTENT BRANCHING
+    if (topIntent === 'greet') {
+      await sendIntroMenu(sender_psid, pageAccessToken);
+      userStates[sender_psid] = { state: "default", data: {} };
+      return;
+    }
+    if (topIntent === 'book_appointment') {
+      userState.state = "awaiting_date";
+      await sendMessage(sender_psid, "Please enter your preferred date (YYYY-MM-DD):", pageAccessToken);
+      return;
+    }
+    if (topIntent === 'cancel_appointment') {
+      userState.state = "awaiting_cancel_code";
+      await sendMessage(sender_psid, "Please enter your appointment code (ID) to cancel:", pageAccessToken);
+      return;
+    }
+        // Appointment keywords are checked FIRST!
+          console.log("DEBUG: Entered default case with message:", normalizedMsg);
+        if (appointmentKeywords.some(k => normalizedMsg.includes(k))) {
+          userState.state = "awaiting_date";
+          await sendMessage(sender_psid, "Please enter your preferred date (YYYY-MM-DD):", pageAccessToken);
+          return;
+        }
+        if (gratitudeMessages.some(g => normalizedMsg.includes(g))) {
+          await sendMessage(sender_psid, "Maraming Salamat, Jesus ❤️ you!", pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        if (greetKeywords.some(g => normalizedMsg.includes(g))) {
+          await sendIntroMenu(sender_psid, pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        // --- UPDATED UNKNOWN WORDS LOGIC ---
+        userStates[sender_psid].state = "awaiting_unknown_confirm";
+        await sendUnknownInputCard(sender_psid, pageAccessToken);
+        return;
+      }
+
+      case "awaiting_confirm_code": {
+        const code = message.trim();
+        console.log('DEBUG: Confirm/Cancel code lookup', { code, clinicId });
+        if (!/^\d+$/.test(code)) {
+          await sendMessage(sender_psid, "Invalid code format. Please enter your numeric appointment code (ID).", pageAccessToken);
+          return;
+        }
+        const { rows } = await pool.query(
+          "SELECT * FROM appointments WHERE id = $1 AND clinic_id = $2",
+          [code, clinicId]
+        );
+        if (rows.length === 0) {
+          await sendMessage(sender_psid, "No appointment found with that code. Please check and try again.", pageAccessToken);
+          return;
+        }
+        const appointment = rows[0];
+
+        // --- PATCH: Robust Messenger ID/Guardian Logic ---
+        const { rows: patientRows } = await pool.query(
+          "SELECT messenger_id FROM patients WHERE id = $1 AND clinic_id = $2",
+          [appointment.patient_id, clinicId]
+        );
+        const patientMessengerId = patientRows[0]?.messenger_id;
+
+        if (!patientMessengerId) {
+          const { rows: existing } = await pool.query(
+            "SELECT id FROM patients WHERE messenger_id = $1 AND clinic_id = $2",
+            [sender_psid, clinicId]
+          );
+          if (existing.length > 0 && existing[0].id !== appointment.patient_id) {
+            await pool.query(
+              "UPDATE appointments SET guardian_messenger_id = $1 WHERE id = $2 AND clinic_id = $3",
+              [sender_psid, appointment.id, clinicId]
+            );
+          } else {
+            await pool.query(
+              "UPDATE patients SET messenger_id = $1 WHERE id = $2 AND clinic_id = $3",
+              [sender_psid, appointment.patient_id, clinicId]
+            );
+            await pool.query(
+              "UPDATE appointments SET guardian_messenger_id = NULL WHERE id = $1 AND clinic_id = $2",
+              [appointment.id, clinicId]
+            );
+          }
+        }
+        // --- END PATCH ---
+
+        if (["Completed", "Cancelled", "No Show"].includes(appointment.status)) {
+          let statusMsg = "";
+          switch (appointment.status) {
+            case "Completed":
+              statusMsg = "This appointment is already completed. Would you like to book another appointment?";
+              break;
+            case "Cancelled":
+              statusMsg = "This appointment has been cancelled. Would you like to book a new appointment?";
+              break;
+            case "No Show":
+              statusMsg = "This appointment was marked as 'No Show'. Would you like to book a new appointment?";
+              break;
+          }
+          await sendBookingPromptButtonTemplate(sender_psid, statusMsg, pageAccessToken);
+          userStates[sender_psid] = { state: "awaiting_booking_prompt_response", data: {} };
+          return;
+        }
+
+        if (["Scheduled", "Confirmed"].includes(appointment.status)) {
+          const { rows: patientRows } = await pool.query(
+            "SELECT messenger_id FROM patients WHERE id = $1 AND clinic_id = $2",
+            [appointment.patient_id, clinicId]
+          );
+          const patientMessengerId = patientRows[0]?.messenger_id;
+          if (!patientMessengerId) {
+            await pool.query(
+              "UPDATE appointments SET status = 'Confirmed' WHERE id = $1 AND clinic_id = $2",
+              [appointment.id, clinicId]
+            );
+            if (req && req.io) {
+              req.io.emit("appointment-updated", {
+                id: appointment.id,
+                status: "Confirmed"
+              });
+            }
+            await sendMessage(sender_psid, "✅ Your Messenger ID is now linked and your appointment is confirmed! You will receive reminders for this appointment.", pageAccessToken);
+          } else {
+            await sendMessage(sender_psid, "✅ Your Messenger ID is already linked and your appointment is confirmed! You will receive reminders for this appointment.", pageAccessToken);
+          }
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        await sendMessage(sender_psid, "Something went wrong while processing your appointment code. Please contact the clinic if you need help.", pageAccessToken);
+        userStates[sender_psid] = { state: "default", data: {} };
+        return;
+      }
+
+      case "awaiting_cancel_code": {
+        const code = message.trim();
+        if (!/^\d+$/.test(code)) {
+          await sendMessage(sender_psid, "Invalid code format. Please enter your numeric appointment code (ID).", pageAccessToken);
+          return;
+        }
+        const { rows } = await pool.query(
+          `SELECT a.*, p.messenger_id AS patient_messenger_id, a.guardian_messenger_id
+           FROM appointments a
+           JOIN patients p ON a.patient_id = p.id
+           WHERE a.id = $1 AND a.clinic_id = $2`,
+          [code, clinicId]
+        );
+        if (rows.length === 0) {
+          await sendMessage(sender_psid, "No appointment found with that code. Type 'Cancel' to exit, or 'Try Again' to enter a different code.", pageAccessToken);
+          userStates[sender_psid].state = "awaiting_cancel_code_retry";
+          return;
+        }
+        const appointment = rows[0];
+
+        const isPatient = appointment.patient_messenger_id === sender_psid;
+        const isGuardian = appointment.guardian_messenger_id === sender_psid;
+
+        if (!isPatient && !isGuardian) {
+          await sendMessage(sender_psid, "You have no appointment with that code. Type 'Cancel' to exit, or 'Try Again' to enter a different code.", pageAccessToken);
+          userStates[sender_psid].state = "awaiting_cancel_code_retry";
+          return;
+        }
+
+        const apptDate = new Date(appointment.appointment_time);
+        const now = new Date();
+        now.setHours(0,0,0,0);
+        apptDate.setHours(0,0,0,0);
+
+        if (apptDate < now) {
+          await sendMessage(sender_psid, "You cannot cancel past appointments. Only today's and future appointments can be cancelled.", pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        const apptTime = new Date(appointment.appointment_time);
+        const nowTime = new Date();
+        const msDiff = apptTime.getTime() - nowTime.getTime();
+        if (msDiff <= 60 * 60 * 1000) {
+          await sendMessage(sender_psid, "Sorry, you cannot cancel your appointment less than 1 hour before the scheduled time. Please contact the clinic directly.", pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        if (["Cancelled", "No Show"].includes(appointment.status)) {
+          await sendMessage(sender_psid, "This appointment is already cancelled or marked as No Show.", pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        await pool.query(
+          "UPDATE appointments SET status = 'Cancelled', reason = 'Cancelled via Messenger' WHERE id = $1 AND clinic_id = $2",
+          [appointment.id, clinicId]
+        );
+        if (req && req.io) {
+          req.io.emit("appointment-updated", {
+            id: appointment.id,
+            status: "Cancelled"
+          });
+        }
+        await sendMessage(sender_psid, "Your appointment has been cancelled. If you need a new appointment, just message anytime.", pageAccessToken);
+        userStates[sender_psid] = { state: "default", data: {} };
+        return;
+      }
+
+      case "awaiting_cancel_code_retry": {
+        const norm = normalize(message);
+        if (cancelKeywords.includes(norm)) {
+          await sendMessage(sender_psid, "Thank you! If you need anything, just message anytime. God bless!", pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        if (norm === "try again" || norm === "tryagain") {
+          userStates[sender_psid].state = "awaiting_cancel_code";
+          await sendMessage(sender_psid, "Please enter your appointment code (ID) to cancel:", pageAccessToken);
+          return;
+        }
+        await sendMessage(sender_psid, "Type 'Cancel' to exit, or 'Try Again' to enter a different code.", pageAccessToken);
+        return;
+      }
+
+      case "awaiting_booking_prompt_response": {
+        const norm = normalize(message);
+        console.log('[DEBUG] booking_prompt_response entry | message:', message, '| norm:', norm);
+
+        if (
+          message === "DECLINE_BOOKING" ||
+          norm === "decline_booking" ||
+          norm === "no" ||
+          norm === "ayaw" ||
+          norm === "hindi" ||
+          norm === "no thanks" ||
+          norm === "not now"
+        ) {
+          console.log("[DEBUG] DECLINE branch hit");
+          await sendMessage(sender_psid, "Thank you! If you need a new appointment, just message anytime. Have a blessed day!", pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        if (
+          message === "BOOK_ANOTHER_APPOINTMENT" ||
+          norm === "book_another_appointment" ||
+          norm === "yes" ||
+          norm === "oo" ||
+          norm === "sige" ||
+          norm === "book" ||
+          norm === "appointment"
+        ) {
+          console.log("[DEBUG] ACCEPT branch hit");
+          userStates[sender_psid] = { state: "awaiting_date", data: {} };
+          await sendMessage(sender_psid, "Great! Let's book a new appointment. Please enter your preferred date (YYYY-MM-DD):", pageAccessToken);
+          return;
+        }
+
+        console.log("[DEBUG] FALLBACK branch hit");
+        await sendMessage(sender_psid, "Would you like to book a new appointment? Please type Yes or No.", pageAccessToken);
+        return;
+      }
+
+      case "awaiting_date": {
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(message.trim())) {
+          await sendMessage(sender_psid, "Please enter the date in YYYY-MM-DD format (e.g., 2025-09-20).", pageAccessToken);
+          return;
+        }
+        if (!isClinicOpen(message.trim())) {
+          await sendMessage(sender_psid, "Clinic is closed on Sundays. Please select another day.", pageAccessToken);
+          userStates[sender_psid].state = "awaiting_date";
+          userStates[sender_psid].data = {};
+          return;
+        }
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const selectedDate = new Date(message.trim());
+        if (selectedDate < today) {
+          await sendMessage(sender_psid, "Date must not be in the past. Please select another date.", pageAccessToken);
+          userStates[sender_psid].state = "awaiting_date";
+          userStates[sender_psid].data = {};
+          return;
+        }
+        userState.data.date = message.trim();
+
+        const patient = await findPatientByMessengerId(sender_psid, clinicId);
+        let doubleBooked = false;
+        if (patient) {
+          doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, clinicId);
+        }
+
+        if (patient) {
+          if (doubleBooked) {
+            userState.state = "awaiting_for_whom";
+            await sendAppointmentForButtonTemplate(sender_psid, pageAccessToken);
+            return;
+          } else {
+            userState.data.booking_for = "me";
+            userState.data.patient_id = patient.id;
+            userState.state = "awaiting_slot";
+            const { slots, activeDentists } = await getAvailableSlots(userState.data.date, clinicId);
+            userState.data.slots = slots;
+            userState.data.activeDentists = activeDentists;
+
+            if (!activeDentists.length) {
+              await sendMessage(sender_psid, "Sorry, no dentists are available for booking at the moment.", pageAccessToken);
+              userStates[sender_psid] = { state: "default", data: {} };
+              return;
+            }
+            if (slots.length === 0) {
+              await sendMessage(sender_psid, "Sorry, no available slots for that day. Please enter another date (YYYY-MM-DD):", pageAccessToken);
+              userStates[sender_psid].state = "awaiting_date";
+              userStates[sender_psid].data = {};
+            } else {
+              await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, pageAccessToken);
+            }
+            return;
+          }
+        } else {
+          userState.data.booking_for = "me";
+          userState.state = "awaiting_my_name";
+          await sendMessage(sender_psid, "Please enter your full name:", pageAccessToken);
+          return;
+        }
+      }
+
+      case "awaiting_my_name": {
+        userState.data.patient_name = toTitleCase(message.trim());
+        userState.state = "awaiting_my_phone";
+        await sendMessage(sender_psid, "If you want, enter your mobile number (or reply 'skip').", pageAccessToken);
+        return;
+      }
+
+      case "awaiting_my_phone": {
+        let phone = null;
+        if (normalize(message) !== "skip") {
+          phone = message.trim();
+          if (!/^\d{10,}$/.test(phone)) {
+            await sendMessage(sender_psid, "Invalid phone number format. Please enter numbers only, or reply 'skip'.", pageAccessToken);
+            return;
+          }
+        }
+        userState.data.patient_phone = phone;
+
+        const patient = await findPatientByNameAndPhone(userState.data.patient_name, phone, clinicId);
+        if (patient) {
+          userState.data.found_patient_id = patient.id;
+          userState.data.found_patient_name = patient.name;
+          userState.data.found_patient_phone = patient.phone;
+          userState.state = "awaiting_my_confirm_match";
+          let msg = `We found an existing record:\nName: ${patient.name}\n`;
+          if (patient.phone) msg += `Mobile: ${patient.phone}\n`;
+          msg += "\nIs this you? Reply YES to link your Messenger, or NO to create a new record.";
+          await sendMessage(sender_psid, msg, pageAccessToken);
+          return;
+        } else {
+          userState.data.patient_id = null;
+          userState.state = "awaiting_slot";
+          const { slots, activeDentists } = await getAvailableSlots(userState.data.date, clinicId);
+          userState.data.slots = slots;
+          userState.data.activeDentists = activeDentists;
+
+          if (!activeDentists.length) {
+            await sendMessage(sender_psid, "Sorry, no dentists are available for booking at the moment.", pageAccessToken);
+            userStates[sender_psid] = { state: "default", data: {} };
+            return;
+          }
+          if (slots.length === 0) {
+            await sendMessage(sender_psid, "Sorry, no available slots for that day. Please enter another date (YYYY-MM-DD):", pageAccessToken);
+            userStates[sender_psid].state = "awaiting_date";
+            userStates[sender_psid].data = {};
+          } else {
+            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, pageAccessToken);
+          }
+          return;
+        }
+      }
+
+      case "awaiting_my_confirm_match": {
+        if (["yes", "y", "oo", "opo"].includes(normalize(message))) {
+          await pool.query(
+            "UPDATE patients SET messenger_id = $1 WHERE id = $2 AND clinic_id = $3",
+            [sender_psid, userState.data.found_patient_id, clinicId]
+          );
+          userState.data.patient_id = userState.data.found_patient_id;
+          userState.state = "awaiting_slot";
+          const { slots, activeDentists } = await getAvailableSlots(userState.data.date, clinicId);
+          userState.data.slots = slots;
+          userState.data.activeDentists = activeDentists;
+
+          if (!activeDentists.length) {
+            await sendMessage(sender_psid, "Sorry, no dentists are available for booking at the moment.", pageAccessToken);
+            userStates[sender_psid] = { state: "default", data: {} };
+            return;
+          }
+          if (slots.length === 0) {
+            await sendMessage(sender_psid, "Sorry, no available slots for that day. Please enter another date (YYYY-MM-DD):", pageAccessToken);
+            userStates[sender_psid].state = "awaiting_date";
+            userStates[sender_psid].data = {};
+          } else {
+            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, pageAccessToken);
+          }
+          return;
+        } else if (["no", "n", "hindi"].includes(normalize(message))) {
+          userState.data.patient_id = null;
+          userState.state = "awaiting_slot";
+          const { slots, activeDentists } = await getAvailableSlots(userState.data.date, clinicId);
+          userState.data.slots = slots;
+          userState.data.activeDentists = activeDentists;
+
+          if (!activeDentists.length) {
+            await sendMessage(sender_psid, "Sorry, no dentists are available for booking at the moment.", pageAccessToken);
+            userStates[sender_psid] = { state: "default", data: {} };
+            return;
+          }
+          if (slots.length === 0) {
+            await sendMessage(sender_psid, "Sorry, no available slots for that day. Please enter another date (YYYY-MM-DD):", pageAccessToken);
+            userStates[sender_psid].state = "awaiting_date";
+            userStates[sender_psid].data = {};
+          } else {
+            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, pageAccessToken);
+          }
+          return;
+        } else {
+          await sendMessage(sender_psid, "Please reply YES to link, or NO to create a new record.", pageAccessToken);
+          return;
+        }
+      }
+
+      case "awaiting_for_whom": {
+        if (
+          normalizedMsg === "1" ||
+          normalize(normalizedMsg) === "for me" ||
+          normalizedMsg === "for_me"
+        ) {
+          await sendMessage(sender_psid, "You already have an appointment on this date. Please enter another date (YYYY-MM-DD):", pageAccessToken);
+          userStates[sender_psid].state = "awaiting_date";
+          userStates[sender_psid].data = {};
+          return;
+        } else if (
+          normalizedMsg === "2" ||
+          normalize(normalizedMsg) === "for someone else" ||
+          normalizedMsg === "for_someone_else"
+        ) {
+          userState.data.booking_for = "someone else";
+          userState.state = "awaiting_patient_name";
+          await sendMessage(sender_psid, "Please enter the full name of the person (e.g., your child) you want to book for:", pageAccessToken);
+          return;
+        }
+        await sendAppointmentForButtonTemplate(sender_psid, pageAccessToken);
+        return;
+      }
+
+      case "awaiting_patient_name": {
+        userState.data.patient_name = toTitleCase(message.trim());
+        userState.state = "awaiting_patient_phone";
+        await sendMessage(sender_psid, "If you want, enter their mobile number (or reply 'skip').", pageAccessToken);
+        return;
+      }
+
+      case "awaiting_patient_phone": {
+        let phone = null;
+        if (normalize(message) !== "skip") {
+          phone = message.trim();
+          if (!/^\d{10,}$/.test(phone)) {
+            await sendMessage(sender_psid, "Invalid phone number format. Please enter numbers only, or reply 'skip'.", pageAccessToken);
+            return;
+          }
+        }
+        userState.data.patient_phone = phone;
+
+        const patient = await findPatientByNameAndPhone(userState.data.patient_name, phone, clinicId);
+        if (patient) {
+          const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, clinicId);
+          if (doubleBooked) {
+            await sendMessage(sender_psid, `This person already has an appointment on ${userState.data.date}. Please enter another date (YYYY-MM-DD):`, pageAccessToken);
+            userStates[sender_psid].state = "awaiting_date";
+            userStates[sender_psid].data = {};
+            return;
+          }
+          userState.data.patient_id = patient.id;
+        } else {
+          userState.data.patient_id = null;
+        }
+
+        userState.state = "awaiting_slot";
+        const { slots, activeDentists } = await getAvailableSlots(userState.data.date, clinicId);
+        userState.data.slots = slots;
+        userState.data.activeDentists = activeDentists;
+
+        if (!activeDentists.length) {
+          await sendMessage(sender_psid, "Sorry, no dentists are available for booking at the moment.", pageAccessToken);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        if (slots.length === 0) {
+          await sendMessage(sender_psid, "Sorry, no available slots for that day. Please enter another date (YYYY-MM-DD):", pageAccessToken);
+          userStates[sender_psid].state = "awaiting_date";
+          userStates[sender_psid].data = {};
+        } else {
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, pageAccessToken);
+        }
+        return;
+      }
+
+      case "awaiting_slot": {
+        const availableSlots = userState.data.slots;
+        let slot = null;
+        if (normalizedMsg.startsWith("slot_")) {
+          slot = message.substring(5);
+        } else {
+          const idx = parseInt(normalizedMsg, 10) - 1;
+          if (!availableSlots || isNaN(idx) || idx < 0 || idx >= availableSlots.length) {
+            await sendMessage(sender_psid, "Invalid choice. Please reply or tap a slot button.", pageAccessToken);
+            return;
+          }
+          slot = availableSlots[idx];
+        }
+        if (!availableSlots.includes(slot)) {
+          await sendMessage(sender_psid, "Selected slot is invalid. Please choose another slot.", pageAccessToken);
+          return;
+        }
+        userState.data.slot = slot;
+        userState.state = "confirming";
+        let summary = `Booking summary:\nDate: ${userState.data.date}\nTime: ${slot}\n`;
+        if (userState.data.booking_for === "me") {
+          const patient = await findPatientByMessengerId(sender_psid, clinicId);
+          summary += `Name: ${patient ? patient.name : userState.data.patient_name}\n`;
+          if (patient && patient.phone) summary += `Mobile: ${patient.phone}\n`;
+          else if (userState.data.patient_phone) summary += `Mobile: ${userState.data.patient_phone}\n`;
+        } else {
+          summary += `Name: ${userState.data.patient_name}\n`;
+          if (userState.data.patient_phone) summary += `Mobile: ${userState.data.patient_phone}\n`;
+        }
+        await sendConfirmationButtonTemplate(sender_psid, summary, pageAccessToken);
+        return;
+      }
+
+      case "confirming": {
+        const slot24 = to24HourFormat(userState.data.slot);
+        const datetime = `${userState.data.date}T${slot24}:00+08:00`;
+        const activeDentists = userState.data.activeDentists;
+        let assignedDentist = null;
+
+        // Find first available dentist for this slot
+        for (const dentist of activeDentists) {
+          const dateObj = new Date(userState.data.date);
+          const dayOfWeek = dateObj.getDay();
+          const { rows: blocks } = await pool.query(
+            `SELECT start_time, end_time FROM dentist_availability
+            WHERE dentist_id = $1
+              AND (specific_date = $2 OR day_of_week = $3)
+              AND is_available = false
+              AND clinic_id = $4
+            `,
+            [dentist.id, userState.data.date, dayOfWeek, clinicId]
+          );
+          let isBlocked = false;
+          for (const block of blocks) {
+            const [startHour, startMin] = block.start_time.split(':').map(Number);
+            const [endHour, endMin] = block.end_time.split(':').map(Number);
+            const [h, m] = slot24.split(':').map(Number);
+            const slotMinutes = h * 60 + m;
+            const startMinutes = startHour * 60 + startMin;
+            const endMinutes = endHour * 60 + endMin;
+            if (slotMinutes >= startMinutes && slotMinutes < endMinutes) {
+              isBlocked = true;
+            }
+          }
+          if (isBlocked) continue;
+
+          // Check if already booked (not cancelled)
+          const { rows: bookings } = await pool.query(
+            "SELECT id FROM appointments WHERE dentist_id = $1 AND appointment_time = $2 AND status != 'Cancelled' AND clinic_id = $3",
+            [dentist.id, datetime, clinicId]
+          );
+          if (bookings.length > 0) continue;
+
+          assignedDentist = dentist;
+          break;
+        }
+
+        if (!assignedDentist) {
+          await sendMessage(sender_psid, "Sorry, no dentist is available for that slot. Please try another slot.", pageAccessToken);
+          userStates[sender_psid].state = "awaiting_slot";
+          return;
+        }
+
+        let patient_id = userState.data.patient_id;
+        let patient_name = userState.data.patient_name;
+        let patient_phone = userState.data.patient_phone;
+
+        if (!patient_id) {
+          let safePatientName = typeof patient_name === 'string'
+            ? patient_name
+            : String(patient_name);
+          let insert;
+          if (userState.data.booking_for === "me") {
+            insert = await pool.query(
+              'INSERT INTO patients (name, phone, messenger_id, clinic_id) VALUES ($1, $2, $3, $4) RETURNING *',
+              [safePatientName, patient_phone || null, sender_psid, clinicId]
+            );
+          } else {
+            insert = await pool.query(
+              'INSERT INTO patients (name, phone, clinic_id) VALUES ($1, $2, $3) RETURNING *',
+              [safePatientName, patient_phone || null, clinicId]
+            );
+          }
+          patient_id = insert.rows[0].id;
+        }
+
+        // Find if any appointment exists for this dentist + datetime (any status)
+        const { rows: existingAppointments } = await pool.query(
+          "SELECT id FROM appointments WHERE dentist_id = $1 AND appointment_time = $2 AND clinic_id = $3",
+          [assignedDentist.id, datetime, clinicId]
+        );
+
+        // CANCELLED logic
+        if (
+          cancelKeywords.some(k => normalizedMsg === k || normalizedMsg.includes(k)) ||
+          normalizedMsg === 'cancel_booking'
+        ) {
+          try {
+            if (existingAppointments.length > 0) {
+              await pool.query(
+                `UPDATE appointments SET status = 'Cancelled', reason = 'Messenger Booking', guardian_messenger_id = $1 WHERE id = $2 AND clinic_id = $3`,
+                [sender_psid, existingAppointments[0].id, clinicId]
+              );
+            } else {
+              await pool.query(
+                "INSERT INTO appointments (dentist_id, patient_id, appointment_time, booking_origin, status, reason, guardian_messenger_id, clinic_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                [
+                  assignedDentist.id,
+                  patient_id,
+                  datetime,
+                  'Messenger Booking',
+                  'Cancelled',
+                  'Messenger Booking',
+                  sender_psid,
+                  clinicId
+                ]
+              );
+            }
+          } catch (err) {
+            console.error("Error saving cancelled appointment:", err);
+          }
+
+          await sendMessage(
+            sender_psid,
+            "Your booking was cancelled. Would you like to book another appointment? Type 'appointment' or 'book' to start a new booking.",
+            pageAccessToken
+          );
+          justCancelled[sender_psid] = true;
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        // CONFIRMED logic
+        if (
+          normalizedMsg === 'yes' || normalizedMsg === 'y' || normalizedMsg === 'ok' || normalizedMsg === 'confirm' ||
+          normalizedMsg === 'confirm_booking'
+        ) {
+          try {
+            let appointmentId;
+            if (existingAppointments.length > 0) {
+              const updateResult = await pool.query(
+                `UPDATE appointments SET patient_id = $1, status = 'Confirmed', reason = 'Messenger Booking', guardian_messenger_id = $2 WHERE id = $3 AND clinic_id = $4 RETURNING id`,
+                [patient_id, sender_psid, existingAppointments[0].id, clinicId]
+              );
+              appointmentId = updateResult.rows[0]?.id || existingAppointments[0].id;
+            } else {
+              const insertResult = await pool.query(
+                "INSERT INTO appointments (dentist_id, patient_id, appointment_time, booking_origin, status, reason, guardian_messenger_id, clinic_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+                [
+                  assignedDentist.id,
+                  patient_id,
+                  datetime,
+                  'Messenger Booking',
+                  'Confirmed',
+                  'Messenger Booking',
+                  sender_psid,
+                  clinicId
+                ]
+              );
+              appointmentId = insertResult.rows[0]?.id;
+            }
+            const { rows } = await pool.query(`
+              SELECT a.*, p.name AS patient_name, p.phone AS patient_phone, d.name AS dentist_name
+              FROM appointments a
+              JOIN patients p ON a.patient_id = p.id
+              JOIN dentists d ON a.dentist_id = d.id
+              WHERE a.id = $1 AND a.clinic_id = $2
+            `, [appointmentId, clinicId]);
+            if (req && req.io && rows.length > 0) {
+              req.io.emit("appointment-updated", rows[0]);
+            }
+            if (rows.length > 0) {
+              const booked = rows[0];
+              await sendMessage(
+                sender_psid,
+                `Booking summary:\nDate: ${userState.data.date}\nTime: ${userState.data.slot}\nName: ${booked.patient_name}\nAppointment Code: ${booked.id}\n\n✅ Your appointment has been booked!`,
+                pageAccessToken
+              );
+            } else {
+              await sendMessage(
+                sender_psid,
+                `Booking summary:\nDate: ${userState.data.date}\nTime: ${userState.data.slot}\nName: ${userState.data.patient_name}\n\n✅ Your appointment has been booked!`,
+                pageAccessToken
+              );
+            }
+          } catch (err) {
+            console.error("Error booking appointment:", err);
+            await sendMessage(
+              sender_psid,
+              "Sorry, something went wrong while booking your appointment.",
+              pageAccessToken
+            );
+          }
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        await sendMessage(
+          sender_psid,
+          "Sorry, I didn't understand. Please tap a button to confirm or cancel your booking.",
+          pageAccessToken
+        );
+        return;
+      }
+
+      default: {
+        await sendMessage(sender_psid, "Sorry, something went wrong. Let's start over. Type 'appointment' or 'book' to begin.", pageAccessToken);
+        userStates[sender_psid] = { state: "default", data: {} };
+        return;
+      }
+    }
+  } catch (err) {
+    console.error('❌ Error in handleMessage:', err);
+    await sendMessage(sender_psid, "Sorry, something went wrong. Please try again.", pageAccessToken);
+    userStates[sender_psid] = { state: "default", data: {} };
+  }
+}
+// Export both router and sendMessage for other modules
+module.exports = {
+  router,
+  sendMessage
+};
+// END PART 2

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Who is this appointment for?</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: sans-serif; text-align: center; margin-top: 40px; }
+    .button { font-size: 1.2em; padding: 1em 2em; margin: 1em; border-radius: 8px; border: none; background: #2196F3; color: #fff; cursor: pointer; }
+    .button.secondary { background: #4CAF50; }
+    .status { margin-top: 2em; color: #333; }
+  </style>
+</head>
+<body>
+  <h2>Who is this appointment for?</h2>
+  <button class="button" onclick="submitChoice('me')">For Me</button>
+  <button class="button secondary" onclick="submitChoice('someone_else')">For Someone Else</button>
+  <div class="status" id="status"></div>
+
+  <script>
+    // Get Messenger sender_psid from query string
+    function getSenderPsid() {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('sender_psid');
+    }
+    function getDate() {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('date');
+    }
+
+    function submitChoice(choice) {
+      const sender_psid = getSenderPsid();
+      const date = getDate();
+      if (!sender_psid) {
+        document.getElementById('status').textContent = 'Missing sender_psid. Please open this in Messenger.';
+        return;
+      }
+      document.getElementById('status').textContent = 'Sending...';
+      fetch('/api/select-for-who', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sender_psid, choice, date })
+      })
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('status').textContent = 'Selection sent!';
+        // Optionally close webview if possible
+        setTimeout(() => { window.close(); }, 1000);
+      })
+      .catch(err => {
+        document.getElementById('status').textContent = 'Error sending selection.';
+      });
+    }
+  </script>
+</body>
+</html>

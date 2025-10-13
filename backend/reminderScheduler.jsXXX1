@@ -1,0 +1,174 @@
+// backend/reminderScheduler.js
+// Automated appointment reminders for Messenger bookings based on per-appointment reminder settings
+
+require('dotenv').config();
+
+const cron = require('node-cron');
+const { Pool } = require('pg');
+const axios = require('axios');
+
+// Database connection setup
+const pool = new Pool({
+  host: process.env.PGHOST || 'localhost',
+  user: process.env.PGUSER || 'postgres',
+  password: process.env.PGPASSWORD || '860261',
+  database: process.env.PGDATABASE || 'dental_clinic',
+  port: process.env.PGPORT || 5432
+});
+
+// Messenger API setup
+const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || 'your_facebook_page_access_token_here';
+
+// Send Messenger message
+async function sendMessengerMessage(messenger_id, text) {
+  if (!messenger_id) return;
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v17.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
+      {
+        recipient: { id: messenger_id },
+        message: { text },
+      }
+    );
+    console.log(`✅ Sent Messenger reminder to ${messenger_id}: ${text}`);
+  } catch (err) {
+    console.error("❌ Error sending Messenger reminder:", err.response?.data || err.message);
+  }
+}
+
+// Get all upcoming appointments with reminders enabled (not cancelled, Messenger booking)
+async function getAppointmentsWithReminders() {
+  const { rows } = await pool.query(`
+    SELECT a.*, p.messenger_id, p.name AS patient_name, a.guardian_messenger_id
+    FROM appointments a
+    JOIN patients p ON a.patient_id = p.id
+    WHERE a.status != 'Cancelled'
+      AND (
+      (p.messenger_id IS NOT NULL AND p.messenger_id <> '')
+      OR (a.guardian_messenger_id IS NOT NULL AND a.guardian_messenger_id <> '')
+    )
+      AND a.reminder_enabled = true
+      AND a.appointment_time > NOW()
+  `);
+  return rows;
+}
+
+// Returns true if today is X days before the appointment date (Asia/Manila timezone)
+function isDaysBefore(appointment_time, daysAhead) {
+  const appointmentDate = new Date(appointment_time);
+  appointmentDate.setHours(0, 0, 0, 0);
+
+  const now = new Date();
+  const nowPH = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+  nowPH.setHours(0, 0, 0, 0);
+
+  const timeDiff = appointmentDate.getTime() - nowPH.getTime();
+  const days = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+  return days === daysAhead;
+}
+
+// Parse reminder_days field from DB, user-friendly logic: no reminders if empty
+function parseReminderDays(reminder_days) {
+  if (!reminder_days || (Array.isArray(reminder_days) && reminder_days.length === 0)) return [];
+  if (Array.isArray(reminder_days)) {
+    const vals = reminder_days.map(d => Number(d)).filter(d => !isNaN(d));
+    return vals;
+  }
+  if (typeof reminder_days === 'string') {
+    try {
+      const arr = JSON.parse(reminder_days);
+      if (Array.isArray(arr)) {
+        const vals = arr.map(d => Number(d)).filter(d => !isNaN(d));
+        return vals;
+      }
+    } catch { /* Ignore error */ }
+    // Try comma-separated
+    const vals = reminder_days.split(',').map(d => Number(d.trim())).filter(d => !isNaN(d));
+    return vals;
+  }
+  return [];
+}
+
+// Send reminders for today
+async function sendRemindersForToday() {
+  console.log('[ReminderScheduler] sendRemindersForToday started');
+  const appointments = await getAppointmentsWithReminders();
+  console.log(`Found ${appointments.length} appointments with reminders enabled.`);
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+
+  for (const appt of appointments) {
+    console.log(`Checking appointment ${appt.id} for patient ${appt.patient_name}`);
+    const reminderDays = parseReminderDays(appt.reminder_days);
+    if (!reminderDays || reminderDays.length === 0) {
+      console.log(`No reminder days for appointment ${appt.id}. Skipping.`);
+      continue;
+    }
+    for (const daysAhead of reminderDays) {
+      if (isDaysBefore(appt.appointment_time, daysAhead)) {
+        console.log(`Reminder should be sent for appointment ${appt.id}, daysAhead=${daysAhead}`);
+        // Prevent duplicate reminders
+        const { rows: alreadySent } = await pool.query(`
+          SELECT 1 FROM appointment_reminders
+          WHERE appointment_id = $1 AND days_ahead = $2 AND DATE(sent_on) = $3
+        `, [appt.id, daysAhead, todayStr]);
+        if (alreadySent.length > 0) {
+          console.log(`Reminder already sent for appointment ${appt.id}, ${daysAhead} days ahead. Skipping.`);
+          continue;
+        }
+
+        // Format appointment date/time for message (Asia/Manila)
+        const apptDate = new Date(appt.appointment_time);
+        const dateStr = apptDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = apptDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+        // Use patient messenger_id if present, else guardian_messenger_id
+        let recipientMessengerId = appt.messenger_id || appt.guardian_messenger_id;
+        if (!recipientMessengerId) {
+          console.log(`No Messenger ID for appointment ${appt.id}. Skipping.`);
+          continue;
+        }
+
+        // Use custom reminder message if present, else fallback to default
+        let reminderText = appt.reminder_message && appt.reminder_message.trim().length > 0
+          ? appt.reminder_message
+          : `Hello ${appt.patient_name}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+
+        reminderText += `\n\nSee you soon!`;
+
+        // Send Messenger message
+        await sendMessengerMessage(recipientMessengerId, reminderText);
+
+        // Log reminder sent in DB
+        await pool.query(`
+          INSERT INTO appointment_reminders (appointment_id, sent_on, days_ahead, messenger_id, message)
+          VALUES ($1, now(), $2, $3, $4)
+        `, [
+          appt.id,
+          daysAhead,
+          recipientMessengerId,
+          reminderText
+        ]);
+        console.log(`Logged reminder for appointment ${appt.id}, ${daysAhead} days ahead.`);
+      }
+    }
+  }
+}
+
+cron.schedule('* * * * *', async () => {
+  console.log('[ReminderScheduler] Sending reminders for upcoming appointments (custom settings)...');
+  await sendRemindersForToday();
+  console.log('[ReminderScheduler] Reminders sent based on appointment settings.');
+});
+
+// For manual running/testing
+if (require.main === module) {
+  (async () => {
+    try {
+      await sendRemindersForToday();
+    } catch (err) {
+      console.error('Error in manual reminder run:', err);
+    }
+    process.exit(0);
+  })();
+}
