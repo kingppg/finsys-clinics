@@ -5,6 +5,8 @@ import './AppointmentsModern.css';
 import './MainSection.css';
 import Swal from 'sweetalert2';
 import io from 'socket.io-client';
+// Add this line near the top of your file, after imports:
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // ================= CONFIG =================
 const ENABLE_ROW_HOVER_AUTO_CLEAR = false;
@@ -51,15 +53,15 @@ const StatusUpdateModal = {
         .eq('clinic_id', appointment.clinic_id);
       if (updateError) throw updateError;
 
-      const res = await fetch(`/status-notifications/${appointment.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: newStatus,
-            message: customMessage || "",
-            clinic_id: appointment.clinic_id
-        })
-      });
+const res = await fetch(`${API_BASE}/status-notifications/${appointment.id}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    status: newStatus,
+    message: customMessage || "",
+    clinic_id: appointment.clinic_id
+  })
+});
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Messenger notification failed');
