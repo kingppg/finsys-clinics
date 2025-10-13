@@ -68,6 +68,15 @@ function App() {
           />
         </Routes>
       </BrowserRouter>
+      <footer style={{
+        textAlign: 'center',
+        padding: '1rem',
+        fontSize: '0.95em',
+        color: '#555',
+        marginTop: '2rem'
+      }}>
+        © 2025 Conquerors For Christ Mission, Inc. All rights reserved.
+      </footer>
     </div>
   );
 }
