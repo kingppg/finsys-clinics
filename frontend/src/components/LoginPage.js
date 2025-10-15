@@ -300,7 +300,7 @@ function LoginPage({ onLogin, onShowSignUp, logoSrc }) {
             : <>🦷</>
           }
         </div>
-        <div style={styles.title}>Palodentcare</div>
+        <div style={styles.title}>FinSys Clinics</div>
         <div style={styles.guidance}>
           Enter your email and password to login.<br/>
           Forgot your password? Click below and check your email!
