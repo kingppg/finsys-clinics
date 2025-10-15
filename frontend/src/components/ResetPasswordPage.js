@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { Link } from 'react-router-dom';
 
 // Helper to check if URL hash contains recovery type
 function isRecoveryFlow() {
@@ -125,6 +126,15 @@ export default function ResetPasswordPage() {
     success: {
       color: '#2ecc71',
     },
+    loginLink: {
+      color: '#3462db',
+      textDecoration: 'underline',
+      marginTop: 8,
+      display: 'inline-block',
+      fontSize: 15,
+      fontWeight: 600,
+      cursor: 'pointer',
+    },
   };
 
   return (
@@ -152,7 +162,14 @@ export default function ResetPasswordPage() {
           {error}
         </div>
         <div style={{ ...styles.feedback, ...styles.success }}>
-          {success}
+          {success && (
+            <>
+              {success} <br />
+              <Link to="/login" style={styles.loginLink}>
+                Go to Login
+              </Link>
+            </>
+          )}
         </div>
       </form>
       {/* Animation keyframes & mobile responsive */}
