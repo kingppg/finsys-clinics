@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 
-// Helper to get the token from hash
-function getAccessTokenFromHash() {
+// Helper to check if URL hash contains recovery type
+function isRecoveryFlow() {
   const hash = window.location.hash;
   const params = new URLSearchParams(hash.replace(/^#/, ''));
-  return params.get('access_token');
+  return params.get('type') === 'recovery' && params.get('access_token');
 }
 
 export default function ResetPasswordPage() {
@@ -13,11 +13,12 @@ export default function ResetPasswordPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [accessToken, setAccessToken] = useState('');
 
   useEffect(() => {
-    const token = getAccessTokenFromHash();
-    setAccessToken(token);
+    // If not a recovery flow, show error
+    if (!isRecoveryFlow()) {
+      setError('Invalid or expired reset link. Please request a new password reset.');
+    }
   }, []);
 
   async function handleSubmit(e) {
@@ -26,29 +27,13 @@ export default function ResetPasswordPage() {
     setSuccess('');
     setSubmitting(true);
 
-    if (!accessToken) {
-      setError('Missing access token. Please use the reset link from your email.');
-      setSubmitting(false);
-      return;
-    }
     if (!newPassword) {
       setError('Please enter a new password.');
       setSubmitting(false);
       return;
     }
 
-    // Set the Supabase session using the token
-    const { error: sessionError } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: accessToken,
-    });
-    if (sessionError) {
-      setError('Invalid or expired reset token.');
-      setSubmitting(false);
-      return;
-    }
-
-    // Now update the password
+    // The session should already be set by Supabase from the URL
     const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
 
     setSubmitting(false);
@@ -59,7 +44,10 @@ export default function ResetPasswordPage() {
     }
   }
 
-  // Style objects
+  // For input focus highlight
+  const [focusedInput, setFocusedInput] = useState(null);
+
+  // Styles (unchanged from your previous version, but you can adjust as needed)
   const styles = {
     container: {
       minHeight: '100vh',
@@ -138,9 +126,6 @@ export default function ResetPasswordPage() {
       color: '#2ecc71',
     },
   };
-
-  // For input focus highlight
-  const [focusedInput, setFocusedInput] = useState(null);
 
   return (
     <div style={styles.container}>
