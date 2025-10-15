@@ -2,7 +2,6 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
-const { Pool } = require('pg');
 const http = require('http');
 const socketio = require('socket.io');
 const axios = require('axios'); // For Facebook OAuth callback
@@ -20,47 +19,17 @@ const PORT = process.env.PORT || 5000;
 // Serve static files from public folder (for webview, etc.)
 app.use(express.static('../public'));
 
-// PostgreSQL pool
-const pool = new Pool();
 console.log('STARTING BACKEND');
 console.log('ENVIRONMENT:', process.env);
-
-// Test PostgreSQL connection on server start
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Database connection error:', err);
-  } else {
-    console.log('Database connected:', res.rows[0]);
-  }
-});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 // --- LOGIN ENDPOINT ---
+// TODO: MIGRATE TO SUPABASE -- currently not implemented
 app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
-  try {
-    const result = await pool.query(
-      `SELECT u.id, u.username, u.password, u.role, u.clinic_id, c.name AS clinic_name
-       FROM users u
-       LEFT JOIN clinics c ON u.clinic_id = c.id
-       WHERE u.username = $1`,
-      [username]
-    );
-    if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-    const user = result.rows[0];
-    if (user.password !== password) {
-      return res.status(401).json({ error: 'Invalid username or password' });
-    }
-    const { id, username: uname, role, clinic_id, clinic_name } = user;
-    res.json({ id, username: uname, role, clinic_id, clinic_name });
-  } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err.message });
-  }
+  res.status(501).json({ error: 'Login endpoint not yet migrated to Supabase' });
 });
 
 // --- FACEBOOK OAUTH CONNECT ENDPOINT ---
@@ -149,22 +118,9 @@ app.get('/api/clinics/:id/facebook/pages', (req, res) => {
 });
 
 // Save selected page to DB
+// TODO: MIGRATE TO SUPABASE -- currently not implemented
 app.post('/api/clinics/:id/facebook/select-page', async (req, res) => {
-  const clinicId = req.params.id;
-  const { pageId, pageAccessToken } = req.body;
-  if (!pageId || !pageAccessToken) {
-    return res.status(400).json({ error: 'Missing page selection.' });
-  }
-  try {
-    await pool.query(
-      'UPDATE clinics SET fb_page_access_token = $1, fb_page_id = $2, messenger_page_id = $3 WHERE id = $4',
-      [pageAccessToken, pageId, pageId, clinicId]
-    );
-    delete fbPagesCache[clinicId];
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to save Facebook page.', details: err.message });
-  }
+  res.status(501).json({ error: 'FB page selection endpoint not yet migrated to Supabase' });
 });
 
 // Test route
