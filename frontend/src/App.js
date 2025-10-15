@@ -6,18 +6,27 @@ import SignUpPage from './components/SignUpPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
 import './App.css';
 
-// This component auto-redirects #access_token...&type=recovery to /reset-password
+// This component auto-redirects #access_token...&type=recovery or type=signup to the correct page
 function RecoveryRedirector({ children }) {
   const navigate = useNavigate();
 
   useEffect(() => {
     const hash = window.location.hash;
+    // Handle password reset link
     if (hash && hash.includes('type=recovery')) {
-      // Redirect to /reset-password and preserve the hash
       navigate('/reset-password' + hash, { replace: true });
+      window.location.hash = '';
     }
-    // eslint-disable-next-line
-  }, []);
+    // Handle signup confirmation/verification link
+    else if (hash && hash.includes('type=signup')) {
+      navigate('/login', { replace: true });
+      window.location.hash = '';
+    }
+    // Optionally: redirect root to login if not authenticated (for clean initial load)
+    // else if (window.location.pathname === '/' && !user) {
+    //   navigate('/login', { replace: true });
+    // }
+  }, [navigate]);
 
   return children;
 }
