@@ -43,7 +43,7 @@ export default function ResetPasswordPage() {
     } else {
       // Sign out after password reset to force re-login and clear recovery hash
       await supabase.auth.signOut();
-      window.location.hash = '';
+      setTimeout(() => { window.location.hash = ''; }, 100); // Make sure the hash is cleared
       setSuccess('Password updated successfully! You may now log in with your new password.');
     }
   }
@@ -168,9 +168,17 @@ export default function ResetPasswordPage() {
           {success && (
             <>
               {success} <br />
-              <Link to="/login" style={styles.loginLink}>
+              <a
+                href="/login"
+                style={styles.loginLink}
+                onClick={e => {
+                  e.preventDefault();
+                  window.location.hash = '';
+                  window.location.href = '/login';
+                }}
+              >
                 Go to Login
-              </Link>
+              </a>
             </>
           )}
         </div>
