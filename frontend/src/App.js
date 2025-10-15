@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
@@ -32,6 +32,7 @@ function App() {
                 <LoginPage
                   onLogin={handleLogin}
                   onShowSignUp={() => window.location.replace('/signup')}
+                  logoSrc="/FinSys.png"
                 />
               ) : (
                 <Navigate to="/dashboard" replace />
