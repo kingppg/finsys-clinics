@@ -32,7 +32,7 @@ function App() {
                 <LoginPage
                   onLogin={handleLogin}
                   onShowSignUp={() => window.location.replace('/signup')}
-                  logoSrc="/FinSys.png"
+                  logoSrc="/FinSys.jpg"
                 />
               ) : (
                 <Navigate to="/dashboard" replace />
