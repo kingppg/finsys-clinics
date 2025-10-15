@@ -41,6 +41,9 @@ export default function ResetPasswordPage() {
     if (updateError) {
       setError(updateError.message || 'Failed to update password.');
     } else {
+      // Sign out after password reset to force re-login and clear recovery hash
+      await supabase.auth.signOut();
+      window.location.hash = '';
       setSuccess('Password updated successfully! You may now log in with your new password.');
     }
   }
