@@ -8,15 +8,9 @@ const socketio = require('socket.io');
 const axios = require('axios'); // For Facebook OAuth callback
 
 // Import routers
-const appointmentsRouter = require('./appointments');
-const dentistAvailabilityRouter = require('./dentistAvailability');
-const dentistsRouter = require('./dentists');
 const remindersRouter = require('./routes/reminders');
 const statusNotificationsRouter = require('./routes/statusNotifications');
 const { router: webhookRouter } = require('./webhook');
-const invoicesRouter = require('./routes/invoices');
-const paymentsRouter = require('./routes/payments');
-const proceduresRouter = require('./routes/procedures'); // <--- NEW
 
 require('./reminderScheduler');
 
@@ -179,14 +173,8 @@ app.get('/', (req, res) => {
 });
 
 // Use routers for module routes!
-app.use('/dentists', dentistsRouter);
-app.use('/appointments', appointmentsRouter);
 app.use('/appointments', remindersRouter);
-app.use('/availability', dentistAvailabilityRouter);
 app.use('/status-notifications', statusNotificationsRouter);
-app.use('/api/invoices', invoicesRouter);
-app.use('/api/payments', paymentsRouter);
-app.use('/api', proceduresRouter);
 
 // --- SOCKET.IO SETUP --- //
 const server = http.createServer(app);
