@@ -6,19 +6,15 @@ import SignUpPage from './components/SignUpPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
 import './App.css';
 
-// This component auto-redirects #access_token...&type=recovery or type=signup to the correct page
 function RecoveryRedirector({ children }) {
   const navigate = useNavigate();
 
   useEffect(() => {
     const hash = window.location.hash;
-    // Handle password reset link
     if (hash && hash.includes('type=recovery')) {
       navigate('/reset-password' + hash, { replace: true });
       window.location.hash = '';
-    }
-    // Handle signup confirmation/verification link
-    else if (hash && hash.includes('type=signup')) {
+    } else if (hash && hash.includes('type=signup')) {
       navigate('/login', { replace: true });
       window.location.hash = '';
     }
@@ -27,10 +23,71 @@ function RecoveryRedirector({ children }) {
   return children;
 }
 
+function AppRoutes({ user, handleLogin, handleLogout }) {
+  return (
+    <RecoveryRedirector>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            !user ? (
+              <LoginPage
+                onLogin={handleLogin}
+                onShowSignUp={() => window.location.replace('/signup')}
+                logoSrc="/FinSys.jpg"
+              />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            !user ? (
+              <SignUpPage onBackToLogin={() => window.location.replace('/login')} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          }
+        />
+        <Route
+          path="/reset-password"
+          element={<ResetPasswordPage />}
+        />
+        <Route
+          path="/dashboard"
+          element={
+            user ? (
+              <Dashboard user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/"
+          element={<RootRedirect user={user} />}
+        />
+      </Routes>
+    </RecoveryRedirector>
+  );
+}
+
+function RootRedirect({ user }) {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard', { replace: true });
+    } else {
+      navigate('/login', { replace: true });
+    }
+  }, [user, navigate]);
+  return null;
+}
+
 function App() {
   const [user, setUser] = useState(null);
-  const location = useLocation();
-  const navigate = useNavigate();
 
   function handleLogin(userInfo) {
     setUser(userInfo);
@@ -40,61 +97,9 @@ function App() {
     setUser(null);
   }
 
-  // Force redirect "/" to "/login" for unauthenticated users
-  useEffect(() => {
-    if (location.pathname === '/' && !user) {
-      navigate('/login', { replace: true });
-    }
-  }, [location, user, navigate]);
-
   return (
     <div className="App" style={{ padding: 0, margin: '0 auto', textAlign: 'left', width: '100%' }}>
-      <RecoveryRedirector>
-        <Routes>
-          <Route
-            path="/login"
-            element={
-              !user ? (
-                <LoginPage
-                  onLogin={handleLogin}
-                  onShowSignUp={() => window.location.replace('/signup')}
-                  logoSrc="/FinSys.jpg"
-                />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            }
-          />
-          <Route
-            path="/signup"
-            element={
-              !user ? (
-                <SignUpPage onBackToLogin={() => window.location.replace('/login')} />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            }
-          />
-          <Route
-            path="/reset-password"
-            element={<ResetPasswordPage />}
-          />
-          <Route
-            path="/dashboard"
-            element={
-              user ? (
-                <Dashboard user={user} onLogout={handleLogout} />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          />
-          <Route
-            path="/"
-            element={<Navigate to={user ? "/dashboard" : "/login"} replace />}
-          />
-        </Routes>
-      </RecoveryRedirector>
+      <AppRoutes user={user} handleLogin={handleLogin} handleLogout={handleLogout} />
       <footer style={{
         textAlign: 'center',
         padding: '1rem',
