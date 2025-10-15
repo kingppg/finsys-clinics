@@ -10,7 +10,6 @@ const axios = require('axios');
 // --- Supabase Client ---
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
   console.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables.");
-  process.exit(1); // Prevent running half-configured!
 }
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -32,7 +31,7 @@ async function sendMessengerMessage(messenger_id, text, page_access_token) {
     );
     console.log(`✅ Sent Messenger reminder to ${messenger_id}: ${text}`);
   } catch (err) {
-    console.error("❌ Error sending Messenger reminder:", err.response?.data || err.message, err.stack || '');
+    console.error("❌ Error sending Messenger reminder:", err.response?.data || err.message);
   }
 }
 
@@ -227,11 +226,7 @@ async function rescheduleJobs() {
     if (!scheduledJobs.has(clinic.id)) {
       const cronStr = getCronString(clinic.reminder_time);
       const job = cron.schedule(cronStr, async () => {
-        try {
-          await sendRemindersForClinic(clinic);
-        } catch (err) {
-          console.error(`[ReminderScheduler][${clinic.name}] Error in scheduled reminder:`, err.stack || err);
-        }
+        await sendRemindersForClinic(clinic);
       });
       scheduledJobs.set(clinic.id, {
         job,
@@ -249,22 +244,6 @@ rescheduleJobs();
 
 // Poll for changes every 1 minute
 setInterval(rescheduleJobs, 1 * 60000);
-
-// Graceful shutdown for local/Render worker
-process.on('SIGINT', () => {
-  for (const [_, jobMeta] of scheduledJobs) {
-    jobMeta.job.stop();
-  }
-  console.log('Gracefully stopped all scheduled jobs.');
-  process.exit(0);
-});
-process.on('SIGTERM', () => {
-  for (const [_, jobMeta] of scheduledJobs) {
-    jobMeta.job.stop();
-  }
-  console.log('Gracefully stopped all scheduled jobs.');
-  process.exit(0);
-});
 
 // For manual running/testing (single clinic)
 if (require.main === module) {
