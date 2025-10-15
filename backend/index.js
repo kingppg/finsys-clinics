@@ -164,7 +164,7 @@ app.post('/api/clinics/:id/facebook/select-page', async (req, res) => {
   try {
     await pool.query(
       'UPDATE clinics SET fb_page_access_token = $1, fb_page_id = $2, messenger_page_id = $3 WHERE id = $4',
-      [pageAccessToken, pageId, pageId, clinicId] // <-- This is the fix!
+      [pageAccessToken, pageId, pageId, clinicId]
     );
     delete fbPagesCache[clinicId];
     res.json({ success: true });
@@ -258,9 +258,9 @@ const server = http.createServer(app);
 const io = socketio(server, {
   cors: {
     origin: [
-  "http://localhost:3000",
-  "https://finsys-clinics.vercel.app"
-],
+      "http://localhost:3000",
+      "https://finsys-clinics.vercel.app"
+    ],
     methods: ["GET", "POST"]
   }
 });
