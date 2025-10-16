@@ -6,6 +6,13 @@ const http = require('http');
 const socketio = require('socket.io');
 const axios = require('axios'); // For Facebook OAuth callback
 
+// --- Supabase Client ---
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
+
 // Import routers
 const remindersRouter = require('./routes/reminders');
 const statusNotificationsRouter = require('./routes/statusNotifications');
@@ -26,10 +33,35 @@ console.log('ENVIRONMENT:', process.env);
 app.use(cors());
 app.use(express.json());
 
-// --- LOGIN ENDPOINT ---
-// TODO: MIGRATE TO SUPABASE -- currently not implemented
+// --- LOGIN ENDPOINT --- (NOW USING SUPABASE)
 app.post('/api/login', async (req, res) => {
-  res.status(501).json({ error: 'Login endpoint not yet migrated to Supabase' });
+  const { username, password } = req.body;
+  try {
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, username, password, role, clinic_id, clinics(name)')
+      .eq('username', username);
+
+    if (error) {
+      return res.status(500).json({ error: 'Database error', details: error.message });
+    }
+    if (!users || users.length === 0) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    const user = users[0];
+    if (user.password !== password) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+    res.json({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      clinic_id: user.clinic_id,
+      clinic_name: user.clinics?.name ?? ''
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Database error', details: err.message });
+  }
 });
 
 // --- FACEBOOK OAUTH CONNECT ENDPOINT ---
@@ -117,10 +149,31 @@ app.get('/api/clinics/:id/facebook/pages', (req, res) => {
   }
 });
 
-// Save selected page to DB
-// TODO: MIGRATE TO SUPABASE -- currently not implemented
+// Save selected page to DB -- NOW USING SUPABASE
 app.post('/api/clinics/:id/facebook/select-page', async (req, res) => {
-  res.status(501).json({ error: 'FB page selection endpoint not yet migrated to Supabase' });
+  const clinicId = req.params.id;
+  const { pageId, pageAccessToken } = req.body;
+  if (!pageId || !pageAccessToken) {
+    return res.status(400).json({ error: 'Missing page selection.' });
+  }
+  try {
+    const { error } = await supabase
+      .from('clinics')
+      .update({
+        fb_page_access_token: pageAccessToken,
+        fb_page_id: pageId,
+        messenger_page_id: pageId
+      })
+      .eq('id', clinicId);
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to save Facebook page.', details: error.message });
+    }
+    delete fbPagesCache[clinicId];
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save Facebook page.', details: err.message });
+  }
 });
 
 // Test route
