@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
-// Centralized messages (easy to translate later)
 const MESSAGES = {
   enterEmail: "Please enter your email above first.",
   sending: "Sending...",
@@ -16,7 +15,6 @@ const MESSAGES = {
 };
 
 const styles = {
-  // ... (all your previous styles, unchanged)
   container: {
     minHeight: '100vh',
     background: 'linear-gradient(120deg,#a3c9ff 0%, #f6f9fc 100%)',
@@ -140,20 +138,26 @@ const styles = {
   error: {
     color: '#e74c3c',
     marginTop: 10,
-    marginBottom: 0,
     fontWeight: 500,
     fontSize: 14,
     textAlign: 'center',
     minHeight: 22,
+    height: 22,
+    lineHeight: '22px',
+    width: '100%',
+    transition: 'opacity 0.2s'
   },
   success: {
     color: '#2ecc71',
     marginTop: 6,
-    marginBottom: 0,
     fontWeight: 500,
     fontSize: 14,
     textAlign: 'center',
     minHeight: 22,
+    height: 22,
+    lineHeight: '22px',
+    width: '100%',
+    transition: 'opacity 0.2s'
   },
   guidance: {
     color: '#3462db',
@@ -175,18 +179,18 @@ const styles = {
     zIndex: 2,
   },
   spinner: {
-    margin: '10px auto',
-    width: 24,
-    height: 24,
-    border: '3px solid #3462db',
-    borderTop: '3px solid #f6f9fc',
+    marginLeft: 8,
+    width: 18,
+    height: 18,
+    border: '2px solid #3462db',
+    borderTop: '2px solid #f6f9fc',
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
-    display: 'block',
+    display: 'inline-block',
+    verticalAlign: 'middle',
   },
   '@keyframes spin': { to: { transform: 'rotate(360deg)' } },
   '@keyframes fadeIn': { from: { opacity: 0, transform: 'translateY(24px)' }, to: { opacity: 1, transform: 'none' } },
-  // Responsive for mobile
   '@media (max-width:500px)': {
     card: {
       minWidth: '90vw',
@@ -282,7 +286,6 @@ function LoginPage({ onLogin, onShowSignUp, logoSrc }) {
       setError(forgotError.message || MESSAGES.passwordResetFailed);
     } else {
       setSuccess(MESSAGES.resetSent);
-      // Auto-focus password after sending reset
       setTimeout(() => {
         if (passwordInputRef.current) {
           passwordInputRef.current.focus();
@@ -359,9 +362,13 @@ function LoginPage({ onLogin, onShowSignUp, logoSrc }) {
         >
           {forgotLoading ? MESSAGES.sending : MESSAGES.forgot}
         </button>
-        {loading && <div style={styles.spinner} />}
-        <div style={styles.error}>{error}</div>
-        <div style={styles.success}>{success}</div>
+        {/* Reserve error/success space, never collapse */}
+        <div style={styles.error}>
+          {error ? error : <span style={{ opacity: 0 }}>_</span>}
+        </div>
+        <div style={styles.success}>
+          {success ? success : <span style={{ opacity: 0 }}>_</span>}
+        </div>
         <button
           type="submit"
           style={{
@@ -372,17 +379,7 @@ function LoginPage({ onLogin, onShowSignUp, logoSrc }) {
         >
           {loading ? (
             <span>
-              <span
-                style={{
-                  ...styles.spinner,
-                  width: 18,
-                  height: 18,
-                  borderWidth: 2,
-                  verticalAlign: 'middle',
-                  margin: '0 8px -2px 0',
-                  display: 'inline-block'
-                }}
-              /> {MESSAGES.loggingIn}
+              <span style={styles.spinner} /> {MESSAGES.loggingIn}
             </span>
           ) : MESSAGES.login}
         </button>
