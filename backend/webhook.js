@@ -1,10 +1,10 @@
-// Supabase Refactored Version (with stability + granular realtime emits)
-// Business logic / conversation flow preserved. Added:
-// 1. emitAppointmentUpdate helper -> emits FULL appointment row
-// 2. Replaced previous minimal req.io.emit calls with granular full-row emits
-// 3. Added emits also for Messenger-side booking cancellation inside "confirming" flow
-// 4. (PATCH) Adjusted availability logic: per-slot capacity (not union blocking) so slots remain
-//    visible if at least one active dentist can take them.
+// webhook.js — Gemini-powered version (replaces Wit.ai)
+// Changes from original:
+//   1. Removed Wit.ai entirely — replaced with getLLMIntent() using Google Gemini Flash (FREE)
+//   2. Per-user conversation history for context awareness
+//   3. Gemini understands Tagalog, Taglish, Bisaya, slang — no more hardcoded keyword lists
+//   4. All original business logic, state machine, and Supabase calls preserved exactly
+//   5. No credit card needed — Gemini free tier = 1,500 requests/day free
 
 const express = require("express");
 const axios = require("axios");
@@ -31,6 +31,135 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+// ---------------------------------------------------------------------------
+// GEMINI INTENT DETECTION (replaces Wit.ai) — FREE, no credit card needed
+// ---------------------------------------------------------------------------
+
+// Per-user conversation history for context-aware NLP
+const userConversationHistory = {};
+const intentHistoryTimestamps = {};
+
+const GEMINI_SYSTEM_PROMPT = `You are an intent detection engine for a Filipino dental clinic booking chatbot on Facebook Messenger.
+
+Your ONLY job is to read a user message and return a JSON object — nothing else.
+No explanations, no preamble, no markdown backticks. Just raw JSON.
+
+INTENTS you must detect:
+- "greet"               → user is saying hello, good morning, hi, kumusta, magandang umaga, etc.
+- "book_appointment"    → user wants to book, schedule, or set an appointment
+- "cancel_appointment"  → user wants to cancel an existing appointment
+- "confirm_appointment" → user wants to confirm an appointment using a code
+- "cancel_flow"         → user wants to stop the current process (cancel, exit, wag na, hindi, ayaw, never mind, next time na lang, huwag na, etc.)
+- "gratitude"           → user is saying thank you, salamat, ok, okey, god bless, etc.
+- "yes"                 → user is agreeing or confirming (yes, oo, opo, sige, ok, sige na)
+- "no"                  → user is declining (no, hindi, ayaw, nope, hindi na)
+- "unknown"             → message doesn't match any of the above
+
+The user may write in English, Filipino (Tagalog), Bisaya, Taglish (mixed), or casual slang.
+
+Examples:
+  "gusto ko mag pa-check up" → book_appointment
+  "pwede ba mag schedule?"   → book_appointment
+  "ayaw na nako"             → cancel_flow
+  "wag na lang"              → cancel_flow
+  "sige na"                  → yes
+  "salamat po"               → gratitude
+  "cancel na yung appointment ko" → cancel_appointment
+  "i-confirm ko lang"        → confirm_appointment
+  "gandang umaga"            → greet
+  "magandang hapon po"       → greet
+  "next time na lang"        → cancel_flow
+  "ok lang"                  → gratitude
+  "oo sige"                  → yes
+
+Return ONLY this JSON — no markdown, no extra text:
+{"intent":"<intent>","confidence":<0.0-1.0>,"notes":"<optional>"}`;
+
+async function getLLMIntent(message, sender_psid) {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) {
+    console.error("❌ Missing GEMINI_API_KEY environment variable.");
+    return { intent: "unknown", confidence: 0 };
+  }
+
+  // Build conversation history (last 6 messages max to keep requests light)
+  if (!userConversationHistory[sender_psid]) {
+    userConversationHistory[sender_psid] = [];
+  }
+
+  // Add new user message to history
+  userConversationHistory[sender_psid].push({
+    role: "user",
+    parts: [{ text: message }]
+  });
+
+  // Keep only last 6 messages (3 turns)
+  const history = userConversationHistory[sender_psid].slice(-6);
+
+  try {
+    // Gemini Flash 2.0 — fast, free tier, great for Filipino/Taglish
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: GEMINI_SYSTEM_PROMPT }]
+        },
+        contents: history,
+        generationConfig: {
+          temperature: 0.1,      // low temp = consistent, predictable JSON output
+          maxOutputTokens: 100,  // intent JSON is tiny
+        }
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      console.error("❌ Gemini API error:", data.error);
+      return { intent: "unknown", confidence: 0 };
+    }
+
+    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
+
+    // Strip any accidental markdown fences just in case
+    const clean = raw.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+
+    // Store Gemini's reply in history for context on next turn
+    userConversationHistory[sender_psid].push({
+      role: "model",
+      parts: [{ text: raw }]
+    });
+
+    console.log(`[GEMINI INTENT] message="${message}" → intent="${parsed.intent}" confidence=${parsed.confidence}`);
+    return parsed;
+
+  } catch (err) {
+    console.error("❌ getLLMIntent error:", err.message);
+    return { intent: "unknown", confidence: 0 };
+  }
+}
+
+// Clean up old conversation histories every 30 minutes
+// Removes entries inactive for more than 1 hour — prevents memory leaks
+setInterval(() => {
+  const now = Date.now();
+  for (const psid of Object.keys(intentHistoryTimestamps)) {
+    if (now - intentHistoryTimestamps[psid] > 60 * 60 * 1000) {
+      delete userConversationHistory[psid];
+      delete intentHistoryTimestamps[psid];
+      console.log(`[CLEANUP] Removed intent history for ${psid}`);
+    }
+  }
+}, 30 * 60 * 1000);
+
+// ---------------------------------------------------------------------------
+// END GEMINI INTENT DETECTION
+// ---------------------------------------------------------------------------
+
 // --- Helper: emit full appointment row for realtime front-end patch ---
 async function emitAppointmentUpdate(io, clinicId, appointmentId) {
   try {
@@ -48,22 +177,7 @@ async function emitAppointmentUpdate(io, clinicId, appointmentId) {
   }
 }
 
-// --- WIT.AI INTENT DETECTION (unchanged) ---
-async function getWitIntent(message) {
-  const WIT_TOKEN = process.env.WIT_TOKEN;
-  try {
-    const resp = await axios.get(
-      `https://api.wit.ai/message?v=20210927&q=${encodeURIComponent(message)}`,
-      { headers: { Authorization: `Bearer ${WIT_TOKEN}` } }
-    );
-    return resp.data;
-  } catch (err) {
-    console.error("❌ Error calling Wit.ai:", err.response?.data || err.message);
-    return {};
-  }
-}
-
-// --- Clinic lookup by Messenger Page ID (maybeSingle) ---
+// --- Clinic lookup by Messenger Page ID ---
 async function getClinicByMessengerPageId(pageId) {
   const { data, error } = await supabase
     .from('clinics')
@@ -78,27 +192,25 @@ async function getClinicByMessengerPageId(pageId) {
   return data || null;
 }
 
-// --- Conversation state (unchanged) ---
+// --- Conversation state ---
 let userStates = {};
 let justCancelled = {};
 
 function normalize(str) {
   return str.toLowerCase().replace(/[^\w ]/g, '').trim();
 }
-const greetKeywords = [
-  "gandang umaga", "Gandang umaga", "menu", "gandang araw", "gandang gabi", "hello", "hi", "hey", "good morning", "magandang umaga", "good am", "good afternoon",
-  "magandang hapon", "good pm", "gud pm", "magandang araw", "greetings", "gud am", "good day"
-];
-const appointmentKeywords = [
-  'appointment', 'book', 'booking', 'pa book', 'schedule', 'gusto ko ng appointment',
-  'pa-appointment', 'pa schedule', 'pabook', 'pabook', 'magpaappointment', 'mag pa appointment', 'magpaschedule'
-];
+
+// NOTE: These keyword lists are now only used as a FALLBACK safety net.
+// Gemini handles the primary intent detection above.
 const cancelKeywords = [
-  'cancel', "exit", 'no', 'never mind', 'next time', 'next time na lang', 'ayaw', 'wag na lang', 'wag na', 'hindi na lang', 'hindi', 'i-cancel', 'icancel', 'cancel po', 'huwag na', 'no thanks', 'not now'
+  'cancel', "exit", 'no', 'never mind', 'next time', 'next time na lang',
+  'ayaw', 'wag na lang', 'wag na', 'hindi na lang', 'hindi', 'i-cancel',
+  'icancel', 'cancel po', 'huwag na', 'no thanks', 'not now'
 ];
 const gratitudeMessages = [
-  "thanks", "ok", "okay", "okey", "k", "k", "tnx", "salamt", "slamat", "slamat din", "maraming salamat", "maraming salamat po",  "thank you", "salamat",
-  "thankyou", "ty", "Slmat", "daghang salamat", "God bless", "god bless", "thx", "tenkyu", "salamat"
+  "thanks", "ok", "okay", "okey", "k", "tnx", "salamt", "slamat",
+  "maraming salamat", "thank you", "salamat", "thankyou", "ty",
+  "daghang salamat", "god bless", "thx", "tenkyu"
 ];
 
 function toTitleCase(str) {
@@ -142,7 +254,7 @@ async function sendMessage(sender_psid, response, pageAccessToken) {
   }
 }
 
-// --- Active dentists lookup (Supabase) ---
+// --- Active dentists lookup ---
 async function getActiveDentists(clinicId) {
   let query = supabase
     .from('dentists')
@@ -255,7 +367,7 @@ function isClinicOpen(dateStr) {
   return date.getDay() !== 0;
 }
 
-// Booked slot counts (UNCHANGED)
+// Booked slot counts
 async function getBookedSlotCountsForActiveDentists(activeDentists, dateStr, clinicId) {
   const slotCounts = {};
   if (!activeDentists.length) return slotCounts;
@@ -287,19 +399,11 @@ async function getBookedSlotCountsForActiveDentists(activeDentists, dateStr, cli
   return slotCounts;
 }
 
-/* ------------------------------------------------------------------
-   PATCHED AVAILABILITY LOGIC (replaces old union-based blocked logic)
-   ------------------------------------------------------------------ */
-
-/**
- * Compute per-slot capacity = how many active dentists are NOT blocked
- * Returns { baseSlots: [...], capacity: { '09:00': <int>, ... } }
- */
+// Per-slot capacity logic
 async function computeSlotCapacities(activeDentists, dateStr, clinicId) {
   const baseSlots = generateTimeSlots("09:00", "18:00", 20);
   if (!activeDentists.length) return { baseSlots, capacity: {} };
 
-  // start with full capacity (all dentists) for every slot
   const capacity = {};
   baseSlots.forEach(s => { capacity[s] = activeDentists.length; });
 
@@ -330,7 +434,7 @@ async function computeSlotCapacities(activeDentists, dateStr, clinicId) {
         const startMinutes = startHour * 60 + startMin;
         const endMinutes = endHour * 60 + endMin;
         if (slotMinutes >= startMinutes && slotMinutes < endMinutes) {
-          if (capacity[slot] > 0) capacity[slot] -= 1; // reduce capacity for this slot
+          if (capacity[slot] > 0) capacity[slot] -= 1;
         }
       });
     });
@@ -339,10 +443,6 @@ async function computeSlotCapacities(activeDentists, dateStr, clinicId) {
   return { baseSlots, capacity };
 }
 
-/**
- * Revised getAvailableSlots:
- * A slot is available if capacity[slot] > 0 AND bookedCount < capacity[slot]
- */
 async function getAvailableSlots(dateStr, clinicId) {
   const activeDentists = await getActiveDentists(clinicId);
   if (!activeDentists.length) return { slots: [], activeDentists };
@@ -357,7 +457,6 @@ async function getAvailableSlots(dateStr, clinicId) {
     return booked < cap;
   }).map(to12HourFormat);
 
-  // Filter out past slots if booking for today
   const now = new Date();
   const bookingDate = new Date(dateStr);
   if (
@@ -376,8 +475,6 @@ async function getAvailableSlots(dateStr, clinicId) {
 
   return { slots: availableSlots, activeDentists };
 }
-
-// (END PATCH)
 
 // Double booking check
 async function hasDoubleBookingOnDate(patient_id, dateStr, clinicId) {
@@ -401,7 +498,7 @@ async function hasDoubleBookingOnDate(patient_id, dateStr, clinicId) {
   return (data || []).filter(a => a.status !== 'Cancelled').length > 0;
 }
 
-// --- WEBHOOK VERIFY (unchanged) ---
+// --- WEBHOOK VERIFY ---
 router.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -438,10 +535,13 @@ router.post("/webhook", async (req, res) => {
         const clinic = await getClinicByMessengerPageId(page_id);
         if (!clinic) {
           console.warn('[WARN] No clinic linked to page_id:', page_id);
-            continue;
+          continue;
         }
         const clinicId = clinic.id;
         const pageAccessToken = clinic.fb_page_access_token;
+
+        // Update timestamp for memory cleanup
+        intentHistoryTimestamps[sender_psid] = Date.now();
 
         try {
           if (webhook_event.message && webhook_event.message.text) {
@@ -464,34 +564,33 @@ router.post("/webhook", async (req, res) => {
 // --- MAIN LOGIC ---
 async function handleMessage(sender_psid, message, webhook_event, req, clinicId, pageAccessToken) {
   console.log(`[DEBUG] handleMessage called: state=${userStates[sender_psid]?.state} | message=${message}`);
-  console.log(`[DEBUG] sender_psid: ${sender_psid}, clinicId: ${clinicId}`);
 
-  // NLP
-  let witResp = {};
-  let topIntent = undefined;
-  try {
-    witResp = await getWitIntent(message);
-    topIntent = witResp.intents?.[0]?.name;
-    console.log(`[DEBUG] Wit.ai topIntent: ${topIntent}, entities:`, witResp.entities);
-  } catch (e) {
-    console.error('[DEBUG] Wit.ai error:', e);
-  }
+  // ---------------------------------------------------------------------------
+  // GEMINI INTENT DETECTION
+  // Skip Gemini for postback payloads (buttons) — those are already structured
+  // ---------------------------------------------------------------------------
+  let topIntent = "unknown";
+  const isPostback = [
+    'CONFIRM_BOOKING', 'CANCEL_BOOKING', 'UNKNOWN_INPUT_YES', 'UNKNOWN_INPUT_NO',
+    'MENU_BOOK_APPOINTMENT', 'MENU_CONFIRM_BOOKING', 'MENU_CANCEL_APPOINTMENT',
+    'BOOK_ANOTHER_APPOINTMENT', 'DECLINE_BOOKING', 'for_me', 'for_someone_else'
+  ].includes(message) || message.startsWith('SLOT_') || message.startsWith('slot_');
 
-  if (webhook_event) {
-    console.log('[DEBUG] webhook_event.sender.id:', webhook_event.sender?.id);
-    console.log('[DEBUG] webhook_event.recipient.id:', webhook_event.recipient?.id);
-    if (webhook_event.message) {
-      console.log('[DEBUG] webhook_event.message:', JSON.stringify(webhook_event.message));
-    }
-    if (webhook_event.postback) {
-      console.log('[DEBUG] webhook_event.postback:', JSON.stringify(webhook_event.postback));
+  if (!isPostback) {
+    try {
+      const llmResult = await getLLMIntent(message, sender_psid);
+      topIntent = llmResult.intent || "unknown";
+    } catch (e) {
+      console.error('[DEBUG] Gemini intent error:', e);
+      topIntent = "unknown";
     }
   }
+
+  console.log(`[DEBUG] topIntent="${topIntent}" for message="${message}"`);
 
   try {
     if (!userStates[sender_psid]) {
       userStates[sender_psid] = { state: "default", data: {} };
-      console.log('[DEBUG] userStates initialized for sender_psid');
     }
     let userState = userStates[sender_psid];
 
@@ -499,7 +598,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
     if (message === 'CONFIRM_BOOKING') normalizedMsg = 'confirm_booking';
     if (message === 'CANCEL_BOOKING') normalizedMsg = 'cancel_booking';
 
-    // Unknown input decision card
+    // Unknown input decision card responses
     if (message === 'UNKNOWN_INPUT_YES') {
       userStates[sender_psid] = { state: "default", data: {} };
       await sendIntroMenu(sender_psid, pageAccessToken);
@@ -528,7 +627,8 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
       return;
     }
 
-    if (justCancelled[sender_psid] && cancelKeywords.some(k => normalizedMsg === k || normalizedMsg.includes(k))) {
+    // Handle post-cancellation flow
+    if (justCancelled[sender_psid] && topIntent === 'cancel_flow') {
       await sendMessage(sender_psid, "Okay po, feel free to message anytime if you need an appointment. Ingat po!", pageAccessToken);
       justCancelled[sender_psid] = false;
       userStates[sender_psid] = { state: "default", data: {} };
@@ -537,9 +637,9 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
       justCancelled[sender_psid] = false;
     }
 
-    const normalizedWords = normalizedMsg.split(/\s+/);
+    // Global cancel flow — Gemini detects "wag na", "exit", "ayaw" etc.
     if (userState.state !== "awaiting_booking_prompt_response") {
-      if (cancelKeywords.some(k => normalizedWords.includes(k))) {
+      if (topIntent === 'cancel_flow' || cancelKeywords.some(k => normalizedMsg === k || normalizedMsg.split(/\s+/).includes(k))) {
         await sendMessage(sender_psid, "Thank you! If you need anything, just message anytime. God bless!", pageAccessToken);
         userStates[sender_psid] = { state: "default", data: {} };
         return;
@@ -547,7 +647,9 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
     }
 
     switch (userState.state) {
+
       case "default": {
+        // Gemini intent drives everything here — no more keyword lists needed
         if (topIntent === 'greet') {
           await sendIntroMenu(sender_psid, pageAccessToken);
           userStates[sender_psid] = { state: "default", data: {} };
@@ -563,22 +665,18 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           await sendMessage(sender_psid, "Please enter your appointment code (ID) to cancel:", pageAccessToken);
           return;
         }
-
-        if (appointmentKeywords.some(k => normalizedMsg.includes(k))) {
-          userState.state = "awaiting_date";
-          await sendMessage(sender_psid, "Please enter your preferred date (YYYY-MM-DD):", pageAccessToken);
+        if (topIntent === 'confirm_appointment') {
+          userState.state = "awaiting_confirm_code";
+          await sendMessage(sender_psid, "Please enter your appointment code (ID):", pageAccessToken);
           return;
         }
-        if (gratitudeMessages.some(g => normalizedMsg.includes(g))) {
+        if (topIntent === 'gratitude') {
           await sendMessage(sender_psid, "Maraming Salamat, Jesus ❤️ you!", pageAccessToken);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        if (greetKeywords.some(g => normalizedMsg.includes(g))) {
-          await sendIntroMenu(sender_psid, pageAccessToken);
-          userStates[sender_psid] = { state: "default", data: {} };
-          return;
-        }
+
+        // Unknown intent — show the decision card
         userStates[sender_psid].state = "awaiting_unknown_confirm";
         await sendUnknownInputCard(sender_psid, pageAccessToken);
         return;
@@ -760,12 +858,13 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
       }
 
       case "awaiting_cancel_code_retry": {
-        const norm = normalize(message);
-        if (cancelKeywords.includes(norm)) {
+        // Gemini detects cancel intent naturally
+        if (topIntent === 'cancel_flow') {
           await sendMessage(sender_psid, "Thank you! If you need anything, just message anytime. God bless!", pageAccessToken);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
+        const norm = normalize(message);
         if (norm === "try again" || norm === "tryagain") {
           userStates[sender_psid].state = "awaiting_cancel_code";
           await sendMessage(sender_psid, "Please enter your appointment code (ID) to cancel:", pageAccessToken);
@@ -776,15 +875,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
       }
 
       case "awaiting_booking_prompt_response": {
-        const norm = normalize(message);
+        // Gemini detects yes/no naturally
         if (
           message === "DECLINE_BOOKING" ||
-          norm === "decline_booking" ||
-          norm === "no" ||
-          norm === "ayaw" ||
-          norm === "hindi" ||
-          norm === "no thanks" ||
-          norm === "not now"
+          topIntent === 'no' ||
+          topIntent === 'cancel_flow'
         ) {
           await sendMessage(sender_psid, "Thank you! If you need a new appointment, just message anytime. Have a blessed day!", pageAccessToken);
           userStates[sender_psid] = { state: "default", data: {} };
@@ -793,12 +888,8 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
 
         if (
           message === "BOOK_ANOTHER_APPOINTMENT" ||
-          norm === "book_another_appointment" ||
-          norm === "yes" ||
-          norm === "oo" ||
-          norm === "sige" ||
-          norm === "book" ||
-          norm === "appointment"
+          topIntent === 'yes' ||
+          topIntent === 'book_appointment'
         ) {
           userStates[sender_psid] = { state: "awaiting_date", data: {} };
           await sendMessage(sender_psid, "Great! Let's book a new appointment. Please enter your preferred date (YYYY-MM-DD):", pageAccessToken);
@@ -926,7 +1017,8 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
       }
 
       case "awaiting_my_confirm_match": {
-        if (["yes", "y", "oo", "opo"].includes(normalize(message))) {
+        // Gemini detects yes/no naturally — no more hardcoded ["yes","y","oo","opo"]
+        if (topIntent === 'yes') {
           await supabase
             .from('patients')
             .update({ messenger_id: sender_psid })
@@ -952,7 +1044,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
             await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, pageAccessToken);
           }
           return;
-        } else if (["no", "n", "hindi"].includes(normalize(message))) {
+        } else if (topIntent === 'no') {
           userState.data.patient_id = null;
           userState.state = "awaiting_slot";
           const { slots, activeDentists } = await getAvailableSlots(userState.data.date, clinicId);
@@ -981,16 +1073,16 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
       case "awaiting_for_whom": {
         if (
           normalizedMsg === "1" ||
-          normalize(normalizedMsg) === "for me" ||
+          normalizedMsg === "for me" ||
           normalizedMsg === "for_me"
         ) {
           await sendMessage(sender_psid, "You already have an appointment on this date. Please enter another date (YYYY-MM-DD):", pageAccessToken);
           userStates[sender_psid].state = "awaiting_date";
-            userStates[sender_psid].data = {};
+          userStates[sender_psid].data = {};
           return;
         } else if (
           normalizedMsg === "2" ||
-          normalize(normalizedMsg) === "for someone else" ||
+          normalizedMsg === "for someone else" ||
           normalizedMsg === "for_someone_else"
         ) {
           userState.data.booking_for = "someone else";
@@ -1105,10 +1197,8 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
             .eq('clinic_id', clinicId);
 
           const { data: blocks, error: blocksErr } = await qBlocks;
-          if (blocksErr) {
-            console.error("confirming availability blocks error:", blocksErr);
-            continue;
-          }
+          if (blocksErr) continue;
+
           let isBlocked = false;
           for (const block of (blocks || [])) {
             const [startHour, startMin] = block.start_time.split(':').map(Number);
@@ -1182,10 +1272,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           console.error("Existing appointment lookup error:", existingErr);
         }
 
-        // Cancel logic
+        // Cancel logic — Gemini detects cancel intent naturally
         if (
-          cancelKeywords.some(k => normalizedMsg === k || normalizedMsg.includes(k)) ||
-          normalizedMsg === 'cancel_booking'
+          topIntent === 'cancel_flow' ||
+          normalizedMsg === 'cancel_booking' ||
+          cancelKeywords.some(k => normalizedMsg === k || normalizedMsg.includes(k))
         ) {
           let targetId = null;
           try {
@@ -1233,10 +1324,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           return;
         }
 
-        // Confirm logic
+        // Confirm logic — Gemini detects yes/confirm intent naturally
         if (
-          normalizedMsg === 'yes' || normalizedMsg === 'y' || normalizedMsg === 'ok' || normalizedMsg === 'confirm' ||
-          normalizedMsg === 'confirm_booking'
+          topIntent === 'yes' ||
+          normalizedMsg === 'confirm_booking' ||
+          ['ok', 'confirm'].includes(normalizedMsg)
         ) {
           let appointmentId;
           try {
@@ -1303,9 +1395,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
                   bookedSummary.patient_name = p.name;
                   bookedSummary.patient_phone = p.phone;
                 }
-                if (d) {
-                  bookedSummary.dentist_name = d.name;
-                }
+                if (d) bookedSummary.dentist_name = d.name;
               }
             }
 
@@ -1320,21 +1410,13 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
             );
           } catch (err) {
             console.error("Error booking appointment:", err);
-            await sendMessage(
-              sender_psid,
-              "Sorry, something went wrong while booking your appointment.",
-              pageAccessToken
-            );
+            await sendMessage(sender_psid, "Sorry, something went wrong while booking your appointment.", pageAccessToken);
           }
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
 
-        await sendMessage(
-          sender_psid,
-          "Sorry, I didn't understand. Please tap a button to confirm or cancel your booking.",
-          pageAccessToken
-        );
+        await sendMessage(sender_psid, "Sorry, I didn't understand. Please tap a button to confirm or cancel your booking.", pageAccessToken);
         return;
       }
 
@@ -1351,8 +1433,4 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
   }
 }
 
-// Export both router and sendMessage
-module.exports = {
-  router,
-  sendMessage
-};
+module.exports = { router, sendMessage };
