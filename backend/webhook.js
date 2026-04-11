@@ -98,7 +98,7 @@ async function getLLMIntent(message, sender_psid) {
 
   try {
     // Gemini Flash 2.0 — fast, free tier, great for Filipino/Taglish
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(url, {
       method: "POST",
