@@ -138,7 +138,6 @@ async function getGeminiResponse(message, sender_psid, currentState, extraContex
     userConversationHistory[sender_psid] = [];
   }
 
-  // Include current state and any extra context in the message so Gemini knows what's happening
   const contextualMessage = `[CURRENT STATE: ${currentState}${extraContext ? ` | CONTEXT: ${extraContext}` : ""}]
 Patient message: ${message}`;
 
@@ -147,11 +146,11 @@ Patient message: ${message}`;
     parts: [{ text: contextualMessage }]
   });
 
-  // Keep last 10 messages (5 turns) for good context without too many tokens
   const history = userConversationHistory[sender_psid].slice(-10);
 
   try {
-const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // Updated to gemini-2.5-flash — 2.0-flash deprecated March 2026
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const response = await fetch(url, {
       method: "POST",
@@ -162,8 +161,9 @@ const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-
         },
         contents: history,
         generationConfig: {
-          temperature: 0.7,      // slightly higher for more natural, varied responses
-          maxOutputTokens: 300,  // enough for a warm reply
+          temperature: 0.4,
+          maxOutputTokens: 400,
+          responseMimeType: "application/json"  // forces Gemini to always return valid JSON
         }
       })
     });
@@ -176,10 +176,40 @@ const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-
     }
 
     const raw = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
-    const clean = raw.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
 
-    // Store Gemini's reply in history
+    // Robust JSON parsing with multiple fallback strategies
+    let parsed = { intent: "unknown", confidence: 0, reply: null };
+    try {
+      // Step 1: strip markdown fences
+      let clean = raw.replace(/```json|```/g, "").trim();
+
+      // Step 2: extract JSON object if there's extra text around it
+      const jsonMatch = clean.match(/{[sS]*}/);
+      if (jsonMatch) clean = jsonMatch[0];
+
+      // Step 3: remove unescaped newlines inside strings
+      clean = clean.replace(/[
+]+/g, " ");
+
+      parsed = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error("❌ JSON parse failed, using regex fallback:", parseErr.message);
+
+      // Step 4: extract fields individually — handles partially malformed JSON
+      const intentMatch = raw.match(/"intent"s*:s*"([^"]+)"/);
+      const replyMatch = raw.match(/"reply"s*:s*"([sS]*?)(?:"|$)/);
+      const confidenceMatch = raw.match(/"confidence"s*:s*([d.]+)/);
+
+      parsed = {
+        intent: intentMatch?.[1] || "unknown",
+        confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5,
+        reply: replyMatch?.[1]?.replace(/\n/g, "
+") || null
+      };
+      console.log(`[GEMINI FALLBACK] intent="${parsed.intent}" reply="${parsed.reply?.substring(0, 40)}"`);
+    }
+
+    // Store reply in history
     userConversationHistory[sender_psid].push({
       role: "model",
       parts: [{ text: raw }]
