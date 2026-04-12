@@ -575,7 +575,20 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
       case "default": {
         if (topIntent === 'greet') {
           if (aiReply) await sendMessage(sender_psid, aiReply, pageAccessToken);
-          await sendIntroMenu(sender_psid, pageAccessToken);
+          // Only show menu if it's a PURE greeting (short message)
+          // Don't show menu if greeting is combined with a question
+          const hasQuestion = message.includes('?') || 
+            message.toLowerCase().includes('ba') ||
+            message.toLowerCase().includes('ask') ||
+            message.toLowerCase().includes('ano') ||
+            message.toLowerCase().includes('pano') ||
+            message.toLowerCase().includes('paano') ||
+            message.toLowerCase().includes('ai') ||
+            message.toLowerCase().includes('bot') ||
+            message.split(' ').length > 6;
+          if (!hasQuestion) {
+            await sendIntroMenu(sender_psid, pageAccessToken);
+          }
           return;
         }
         if (topIntent === 'book_appointment') {
