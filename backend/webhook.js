@@ -190,6 +190,10 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
         reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : null
       };
       console.log("[CLAUDE FALLBACK] intent=" + parsed.intent);
+      // If fallback also failed to get a reply, generate a safe default
+      if (!parsed.reply) {
+        parsed.reply = "Pasensya na po! Hindi ko po maunawaan ang inyong mensahe. Pwede po ba ninyong ulitin? 😊";
+      }
     }
 
     userConversationHistory[sender_psid].push({
@@ -545,18 +549,23 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
   const isPostback = ['for_me', 'for_someone_else'].includes(message) ||
     message.startsWith('SLOT_') || message.startsWith('slot_');
 
-  let geminiResult = { intent: "unknown", confidence: 0, reply: null };
+  let claudeResult = { intent: "unknown", confidence: 0, reply: null };
 
   if (!isPostback && message !== 'CONFIRM_BOOKING' && message !== 'CANCEL_BOOKING') {
     try {
-      geminiResult = await getClaudeResponse(message, sender_psid, userState.state);
+      claudeResult = await getClaudeResponse(message, sender_psid, userState.state);
+      // Safety check — make sure we always have valid intent and reply
+      if (!claudeResult || typeof claudeResult !== 'object') {
+        claudeResult = { intent: "unknown", confidence: 0, reply: null };
+      }
     } catch (e) {
-      console.error('[DEBUG] Gemini error:', e);
+      console.error('[DEBUG] Claude error:', e);
+      claudeResult = { intent: "unknown", confidence: 0, reply: null };
     }
   }
 
-  const topIntent = geminiResult.intent || "unknown";
-  const aiReply = geminiResult.reply;
+  const topIntent = claudeResult.intent || "unknown";
+  const aiReply = claudeResult.reply || null;
 
   console.log(`[DEBUG] topIntent="${topIntent}" aiReply="${aiReply?.substring(0, 60)}"`);
 
@@ -593,8 +602,15 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        // Unknown — show decision card with AI reply first
-        if (aiReply) await sendMessage(sender_psid, aiReply, pageAccessToken);
+        // Unknown — if Claude has a good reply, just send it naturally
+        // Only show the decision card if Claude has no reply at all
+        if (aiReply) {
+          await sendMessage(sender_psid, aiReply, pageAccessToken);
+          // Stay in default state — ready for next message
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        // Fallback: show decision card only if Claude gave no reply
         userStates[sender_psid].state = "awaiting_unknown_confirm";
         await sendUnknownInputCard(sender_psid, pageAccessToken);
         return;
@@ -1180,8 +1196,12 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
     }
   } catch (err) {
     console.error('❌ Error in handleMessage:', err);
-    await sendMessage(sender_psid, "Sorry po, may nangyari. Pakisubukan ulit. 😊", pageAccessToken);
-    userStates[sender_psid] = { state: "default", data: {} };
+    // Don't reset conversation on minor errors — just notify user
+    await sendMessage(sender_psid, "Pasensya na po, may nangyari sa aking sistema. Pakisubukan ulit. 😊", pageAccessToken);
+    // Only reset if state is undefined/corrupted
+    if (!userStates[sender_psid]) {
+      userStates[sender_psid] = { state: "default", data: {} };
+    }
   }
 }
 
