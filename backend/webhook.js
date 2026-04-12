@@ -135,7 +135,9 @@ EXAMPLES ng magandang HONEST replies:
 - Promo: "Hindi ko po updated sa mga current promos. Para sa latest offers, tumawag na lang po sa clinic. 😊"
 - Book: "Sige po! Pakitype lang po ang inyong preferred na petsa sa format na YYYY-MM-DD (halimbawa: 2026-05-20). 😊"
 - Gratitude: "Salamat din po! God bless kayo! 🙏 Kung may katanungan pa kayo, nandito lang kami. 😊"
-- Cancel flow: "Okay lang po! Kung kailangan ninyo ng tulong sa ibang pagkakataon, nandito lang kami. Ingat po! 😊"`e(message, sender_psid, currentState, extraContext = "") {
+- Cancel flow: "Okay lang po! Kung kailangan ninyo ng tulong sa ibang pagkakataon, nandito lang kami. Ingat po! 😊"`;
+
+async function getClaudeResponse(message, sender_psid, currentState, extraContext = "") {
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
   if (!ANTHROPIC_API_KEY) {
     console.error("Missing ANTHROPIC_API_KEY");
