@@ -454,6 +454,11 @@ router.get("/webhook", (req, res) => {
 router.post("/webhook", async (req, res) => {
   const body = req.body;
   if (body.object === "page") {
+    // ✅ Respond to Facebook IMMEDIATELY — prevents retries and duplicate messages
+    // Facebook requires a 200 OK within 20 seconds or it will retry the webhook
+    res.status(200).send("EVENT_RECEIVED");
+
+    // Process messages AFTER responding — runs in background
     for (const entry of body.entry) {
       const pageIdFromEntry = entry.id;
       for (const webhook_event of entry.messaging) {
@@ -478,7 +483,7 @@ router.post("/webhook", async (req, res) => {
         }
       }
     }
-    return res.status(200).send("EVENT_RECEIVED");
+    return;
   }
   res.sendStatus(404);
 });
