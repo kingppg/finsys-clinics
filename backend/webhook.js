@@ -753,9 +753,18 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         }
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!dateRegex.test(message.trim())) {
-          // ⚠️ ALWAYS use hardcoded message for validation errors
-          // Claude pre-generates replies without knowing if date is valid
-          await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng petsa. 😊 Pakitype po sa format na YYYY-MM-DD, halimbawa: 2026-05-05.", pageAccessToken);
+          // Check if user is ATTEMPTING a date (has numbers/slashes/dashes)
+          // vs just having a conversation ("sige po", "baguhin ko na lang", etc.)
+          const looksLikeDateAttempt = /\d/.test(message.trim());
+          if (looksLikeDateAttempt) {
+            // They tried to type a date but format is wrong — correct them
+            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng petsa. 😊 Pakitype po sa format na YYYY-MM-DD, halimbawa: 2026-05-05.", pageAccessToken);
+          } else {
+            // They said something conversational — let Claude reply naturally
+            // and keep waiting for the date
+            if (aiReply) await sendMessage(sender_psid, aiReply, pageAccessToken);
+            else await sendMessage(sender_psid, "Sige po! Pakitype lang ng petsa sa format na YYYY-MM-DD, halimbawa: 2026-05-05. 😊", pageAccessToken);
+          }
           return;
         }
         if (!isClinicOpen(message.trim())) {
