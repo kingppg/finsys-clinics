@@ -753,19 +753,20 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         }
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!dateRegex.test(message.trim())) {
-          const reply = aiReply || "Hmm, parang hindi tama ang format. Pakitype po sa format na YYYY-MM-DD, halimbawa: 2025-12-20. 😊";
-          await sendMessage(sender_psid, reply, pageAccessToken);
+          // ⚠️ ALWAYS use hardcoded message for validation errors
+          // Claude pre-generates replies without knowing if date is valid
+          await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng petsa. 😊 Pakitype po sa format na YYYY-MM-DD, halimbawa: 2026-05-05.", pageAccessToken);
           return;
         }
         if (!isClinicOpen(message.trim())) {
-          const reply = aiReply || "Pasensya na po, sarado kami tuwing Linggo! 😊 Pwede po kayong pumili ng Lunes hanggang Sabado.";
-          await sendMessage(sender_psid, reply, pageAccessToken);
+          // ⚠️ ALWAYS use hardcoded message — Claude doesn't know if date is Sunday
+          await sendMessage(sender_psid, "Pasensya na po, sarado kami tuwing Linggo! 😊 Pwede po kayong pumili ng ibang araw — Lunes hanggang Sabado lang po kami bukas.", pageAccessToken);
           return;
         }
         const today = new Date(); today.setHours(0, 0, 0, 0);
         if (new Date(message.trim()) < today) {
-          const reply = aiReply || "Ay, nakaraan na po ang petsang iyon! 😅 Pakitype ng petsa na hindi pa nakaraan.";
-          await sendMessage(sender_psid, reply, pageAccessToken);
+          // ⚠️ ALWAYS use hardcoded message — Claude doesn't know if date is in the past
+          await sendMessage(sender_psid, "Ay, nakaraan na po ang petsang iyon! 😅 Pakitype ng petsa na hindi pa nakaraan po.", pageAccessToken);
           return;
         }
         userState.data.date = message.trim();
