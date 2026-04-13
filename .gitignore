@@ -1,6 +1,18 @@
 node_modules/
-.env
+.env*
 .vscode/
 *.log
 dist/
 build/
+
+# Ignore backup and temp files
+*XXX*
+*.bak
+*bfg*
+test-claude.js
+webhook.separateAI
+*.jar
+*.txt
+/frontend/src/components/ResetPasswordPage.js.bak
+/public/FinSys.png
+/run_reminder.bat

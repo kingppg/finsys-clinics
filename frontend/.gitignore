@@ -21,3 +21,15 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Backup/temp files
+*XXX*
+*.bak
+*bfg*
+test-claude.js
+webhook.separateAI
+*.jar
+*.txt
+/frontend/src/components/ResetPasswordPage.js.bak
+/public/FinSys.png
+/run_reminder.bat
