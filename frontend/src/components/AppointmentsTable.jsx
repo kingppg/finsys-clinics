@@ -4,7 +4,7 @@ import StatusSelect from './StatusSelect';
 import './AppointmentsModern.css';
 import './MainSection.css';
 import Swal from 'sweetalert2';
-import io from 'socket.io-client';
+import socket from '../socket';
 // Add this line near the top of your file, after imports:
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -337,70 +337,69 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
   };
 
   useEffect(() => {
-    const socket = io(process.env.REACT_APP_SOCKET_URL || 'http://localhost:5000');
-    socket.on('appointment-updated', (updatedRow) => {
-      if (!updatedRow || String(updatedRow.clinic_id) !== String(clinicId)) return;
-      if (!passesCurrentFilter(updatedRow)) return;
+  function handleAppointmentUpdated(updatedRow) {
+    if (!updatedRow || String(updatedRow.clinic_id) !== String(clinicId)) return;
+    if (!passesCurrentFilter(updatedRow)) return;
 
-      if (collapsedDentists[updatedRow.dentist_id]) {
-        setCollapsedDentists(prev => ({
-          ...prev,
-          [updatedRow.dentist_id]: false
-        }));
-      }
+    if (collapsedDentists[updatedRow.dentist_id]) {
+      setCollapsedDentists(prev => ({
+        ...prev,
+        [updatedRow.dentist_id]: false
+      }));
+    }
 
-      setAppointments(prev => {
-        let found = false;
-        const patched = prev.map(a => {
-          if (a.id === updatedRow.id) {
-            found = true;
-            return { ...a, ...updatedRow };
-          }
-          return a;
-        });
-        return found ? patched : [...patched, updatedRow];
+    setAppointments(prev => {
+      let found = false;
+      const patched = prev.map(a => {
+        if (a.id === updatedRow.id) {
+          found = true;
+          return { ...a, ...updatedRow };
+        }
+        return a;
       });
-
-      setUnreadUpdates(prev => prev.includes(updatedRow.id) ? prev : [...prev, updatedRow.id]);
-
-      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-      setFlashRow({ id: updatedRow.id, status: updatedRow.status, ts: Date.now() });
-      flashTimerRef.current = setTimeout(() => {
-        setFlashRow(null);
-      }, FLASH_DURATION_MS);
-
-      playSound();
-      if (!document.hidden) {
-        showUpdateToast(updatedRow);
-      } else {
-        showBrowserNotification(updatedRow);
-      }
-      // ------ PATCH ADDED BELOW: REFRESH PATIENTS ------
-      fetchPatients(); // <-- This fixes the patient name display issue for new bookings
-      // -----------------------------------------------
+      return found ? patched : [...patched, updatedRow];
     });
 
-    function handleVisibilityChange() {
-      if (!document.hidden && unreadUpdates.length > 0) {
-        unreadUpdates.forEach(id => {
-          const appt = appointments.find(a => a.id === id);
-          if (appt) {
-            setFlashRow({ id, status: appt.status, ts: Date.now() });
-          }
-        });
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    setUnreadUpdates(prev => prev.includes(updatedRow.id) ? prev : [...prev, updatedRow.id]);
 
-    return () => {
-      socket.disconnect();
-      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-      Object.values(glowTimers.current).forEach(t => clearTimeout(t));
-      glowTimers.current = {};
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-    // eslint-disable-next-line
-  }, [clinicId, viewMode, selectedYear, selectedMonth, selectedWeekIdx, selectedDay, scrollToRow, collapsedDentists, unreadUpdates, appointments]);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    setFlashRow({ id: updatedRow.id, status: updatedRow.status, ts: Date.now() });
+    flashTimerRef.current = setTimeout(() => {
+      setFlashRow(null);
+    }, FLASH_DURATION_MS);
+
+    playSound();
+    if (!document.hidden) {
+      showUpdateToast(updatedRow);
+    } else {
+      showBrowserNotification(updatedRow);
+    }
+    fetchPatients(); // <-- This fixes the patient name display issue for new bookings
+  }
+
+  socket.on('appointment-updated', handleAppointmentUpdated);
+
+  function handleVisibilityChange() {
+    if (!document.hidden && unreadUpdates.length > 0) {
+      unreadUpdates.forEach(id => {
+        const appt = appointments.find(a => a.id === id);
+        if (appt) {
+          setFlashRow({ id, status: appt.status, ts: Date.now() });
+        }
+      });
+    }
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+
+  return () => {
+    socket.off('appointment-updated', handleAppointmentUpdated);
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    Object.values(glowTimers.current).forEach(t => clearTimeout(t));
+    glowTimers.current = {};
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+// eslint-disable-next-line
+}, [clinicId, viewMode, selectedYear, selectedMonth, selectedWeekIdx, selectedDay, scrollToRow, collapsedDentists, unreadUpdates, appointments]);
 
   function passesCurrentFilter(appt) {
     const d = new Date(appt.appointment_time);
