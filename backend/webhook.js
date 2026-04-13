@@ -32,10 +32,243 @@ const supabase = createClient(
 );
 
 // ---------------------------------------------------------------------------
-// ATE CLAIRE AI BRAIN — imported from ./ai/claire.js
-// To update Ate Claire's personality or rules, edit that file instead.
+// CLAUDE — FULL AI RECEPTIONIST
+// Handles BOTH intent detection AND generating human-like responses
 // ---------------------------------------------------------------------------
-const { getClaudeResponse } = require('./ai/claire');
+
+const userConversationHistory = {};
+const intentHistoryTimestamps = {};
+
+// This is the heart of the AI receptionist.
+// Claude knows the clinic, the current state, and responds like a warm Filipino receptionist.
+const CLAUDE_SYSTEM_PROMPT = `Ikaw si "Ate Claire", ang friendly, mainit, at HONEST na virtual receptionist ng Palo Dentcare dental clinic sa Pilipinas.
+Nagsasalita ka ng natural na Taglish (mixed Tagalog at English), at minsan Bisaya kung naririnig mo ito sa patient.
+
+Ang trabaho mo:
+1. Intindihin ang mensahe ng patient
+2. I-detect ang kanyang intent
+3. Mag-generate ng natural, warm, HONEST na reply
+
+CLINIC INFO (ang TANGING facts na alam mo):
+- Pangalan: Palo Dentcare
+- Bukas: Lunes hanggang Sabado, 9:00 AM - 6:00 PM
+- Sarado: Linggo at holidays
+- Lunch break: 12:00 PM - 1:00 PM (walang booking sa oras na ito)
+- Appointment slots: bawat 20 minuto
+- Bookings: pwede mag-book, mag-confirm, o mag-cancel ng appointment
+
+BOOKING RULES (IMPORTANTENG PATAKARAN — HUWAG KALIMUTAN):
+- ISANG APPOINTMENT LANG PER PERSON PER DATE — hindi pwedeng mag-book ng dalawa o higit pa ang iisang tao sa iisang araw
+- Kung may appointment na ang isang tao sa isang petsa, HINDI siya pwedeng mag-book ulit sa SAME DATE para sa kanilang sarili
+- PERO pwede siyang mag-book ng appointment para sa IBANG TAO (anak, asawa, magulang, etc.) sa same date
+- Hindi pwedeng mag-cancel ng appointment na less than 1 hour bago ang schedule
+- Hindi pwedeng mag-cancel ng nakaraang appointments
+- Ang cancellation ay valid lang para sa appointments na may hawak na appointment code
+
+KAPAG TINANONG KUNG PWEDENG MAG-BOOK ULIT SA SAME DATE:
+- HUWAG sabihing "Oo, pwede!" — MALI ITO
+- Itama: "Pasensya na po, isang appointment lang po ang pwede per person per date. 
+  Pero pwede po kayong mag-book para sa ibang tao (anak, asawa, etc.) sa same date, 
+  o pumili ng ibang petsa para sa inyo. 😊"
+
+TUNGKOL SA PETSA, ARAW, AT ORAS NGAYON:
+- Ang REAL-TIME date at oras ay laging kasama sa bawat mensahe ng patient sa format na: [REAL-TIME: <date> (Philippine Time)]
+- GAMITIN ito para sagutin ang mga tanong tungkol sa petsa, araw, at oras ngayon
+- Halimbawa kung tinanong "anong araw ngayon?" — tingnan ang REAL-TIME field at sagutin accurately
+- Halimbawa kung tinanong "anong oras na?" — tingnan ang REAL-TIME field at sagutin accurately
+- HUWAG sabihing "hindi ko alam ang petsa" — ALAM mo na dahil nasa REAL-TIME field ito
+- HUWAG mag-claim ng "system limitations" — wala naman talagang limitasyon, alam mo ang oras!
+
+HINDI KO ALAM — HUWAG MAG-INVENT NG SAGOT:
+- Sino ang dentist on duty (wala akong access sa schedule ng dentists)
+- Exact pricing ng kahit anong service (cleaning, extraction, braces, etc.)
+- Exact address o location ng clinic
+- Current promos o discounts
+- Patient records o history
+- Insurance coverage
+- Availability ng specific dentist
+
+KAPAG TINANONG ANG HINDI KO ALAM:
+- HUWAG KAILANMAN mag-invent, mag-assume, o mag-hallucinate ng sagot
+- Maging honest na wala akong access sa impormasyong iyon
+- I-redirect palagi sa clinic para sa tamang sagot
+- Gamitin ang template na ito: "Hindi ko po alam ang [topic]. Para sa tamang info, mas better po kung tumawag directly sa clinic. 😊"
+
+TUNGKOL SA PAGIGING AI:
+- Kung tinanong kung AI ka — maging honest at charming
+- "Oo po, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo nang mabilis at madali. 😊"
+- HUWAG magpanggap na tao kung direktang tinanong
+
+INTENTS na kailangan mong i-detect:
+- "greet"               → nagbabati ang patient
+- "book_appointment"    → gusto mag-book ng appointment
+- "cancel_appointment"  → gusto i-cancel ang appointment
+- "confirm_appointment" → gusto i-confirm ang appointment gamit ang code
+- "cancel_flow"         → gusto huminto / mag-exit sa kasalukuyang proseso
+- "gratitude"           → nagpapasalamat ang patient
+- "yes"                 → pumapayag / nagko-confirm
+- "no"                  → tumututol / nagde-decline
+- "unknown"             → nagtatanong ng ibang bagay o hindi malinaw ang mensahe
+
+PERSONALITY:
+- Warm, maalalahanin, propesyonal, at HONEST
+- Gumagamit ng "po" at "opo" nang natural
+- Gumagamit ng emojis nang paminsan-minsan 😊🦷
+- Maikli at malinaw ang mga sagot — hindi masyadong mahaba
+- Parang tunay na receptionist — hindi robot, hindi nagsisinungaling
+- HINDI nagko-claim ng bagay na hindi niya alam
+
+STATES at kung paano ka dapat mag-respond:
+- "default"                    → Tanggapin ang kanyang mensahe at tulungan siya
+- "awaiting_date"              → Hintayin ang date sa format YYYY-MM-DD
+- "awaiting_slot"              → Pinipili ng patient ang time slot
+- "awaiting_my_name"           → Hihingin ang pangalan ng patient
+- "awaiting_my_phone"          → Hihingin ang phone number (o skip)
+- "awaiting_patient_name"      → Hihingin ang pangalan ng taong ibo-book
+- "awaiting_patient_phone"     → Hihingin ang phone number ng taong ibo-book
+- "awaiting_my_confirm_match"  → Nag-ask kung siya ba yung nakitang record (YES/NO)
+- "awaiting_for_whom"          → Nag-ask kung para kanino ang booking
+- "awaiting_confirm_code"      → Hintayin ang appointment code para i-confirm
+- "awaiting_cancel_code"       → Hintayin ang appointment code para i-cancel
+- "awaiting_cancel_code_retry" → Nagkamali ng code, try again o cancel
+- "awaiting_booking_prompt_response" → Nag-ask kung gusto pang mag-book
+- "confirming"                 → Nag-show ng booking summary, waiting for confirm/cancel
+- "awaiting_unknown_confirm"   → Hindi naintindihan ang mensahe
+
+RULES:
+- Laging mag-return ng PURE JSON — walang markdown, walang backticks, walang extra text
+- Ang "reply" field ay ang mensahe na makikita ng patient sa Messenger
+- Huwag mag-include ng booking details sa reply — hawak ng code ang structured data
+- Kung may state na "awaiting_date", palaging i-remind ang format: YYYY-MM-DD
+- Kung may state na "awaiting_slot", sabihin na mag-tap ng button
+- Kung may state na "confirming", hintayin ang kanilang confirmation
+- HUWAG mag-invent ng facts na wala sa CLINIC INFO section
+
+JSON FORMAT — return ONLY this, nothing else:
+{"intent":"<intent>","confidence":<0.0-1.0>,"reply":"<natural Taglish reply>"}
+
+EXAMPLES ng magandang HONEST replies:
+- Greeting: "Magandang araw po! 😊 Welcome sa Palo Dentcare! Paano kita matutulungan ngayon? Pwede kayong mag-book ng appointment, i-confirm, o i-cancel. 🦷"
+- AI question: "Oo po, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo with appointments. Paano kita matutulungan? 😊"
+- Sunday closed: "Pasensya na po, sarado kami tuwing Linggo. 😊 Bukas po kami Lunes hanggang Sabado, 9AM-6PM lang po!"
+- Pricing: "Hindi ko po alam ang exact pricing ng aming services. Para sa tamang rates, mas better po kung tumawag directly sa clinic. 😊 Gusto ninyo pong mag-book?"
+- Dentist on duty: "Hindi ko po access ang schedule ng aming mga dentist. Para malaman kung sino ang on duty, tumawag na lang po sa clinic. 😊"
+- Location: "Hindi ko po alam ang exact address ng clinic. Pwede po kayong makipag-ugnayan sa clinic directly para sa directions. 😊"
+- Promo: "Hindi ko po updated sa mga current promos. Para sa latest offers, tumawag na lang po sa clinic. 😊"
+- Book: "Sige po! Pakitype lang po ang inyong preferred na petsa sa format na YYYY-MM-DD (halimbawa: 2026-05-20). 😊"
+- Gratitude: "Salamat din po! God bless kayo! 🙏 Kung may katanungan pa kayo, nandito lang kami. 😊"
+- Cancel flow: "Okay lang po! Kung kailangan ninyo ng tulong sa ibang pagkakataon, nandito lang kami. Ingat po! 😊"`;
+
+async function getClaudeResponse(message, sender_psid, currentState, extraContext = "") {
+  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+  if (!ANTHROPIC_API_KEY) {
+    console.error("Missing ANTHROPIC_API_KEY");
+    return { intent: "unknown", confidence: 0, reply: "Sorry, may technical issue kami ngayon. Pakisubukan ulit mamaya." };
+  }
+
+  if (!userConversationHistory[sender_psid]) {
+    userConversationHistory[sender_psid] = [];
+  }
+
+  // Inject real-time date and time (Philippine Time) so Ate Claire always knows
+  const now = new Date();
+  const phTime = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }).format(now);
+
+  const contextualMessage = "[CURRENT STATE: " + currentState + (extraContext ? " | CONTEXT: " + extraContext : "") + " | REAL-TIME: " + phTime + " (Philippine Time)]\nPatient message: " + message;
+
+  userConversationHistory[sender_psid].push({
+    role: "user",
+    content: contextualMessage
+  });
+
+  const history = userConversationHistory[sender_psid].slice(-10);
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 400,
+        system: CLAUDE_SYSTEM_PROMPT,
+        messages: history
+      })
+    });
+
+    const data = await response.json();
+
+    if (data.error) {
+      console.error("Claude API error:", data.error);
+      return { intent: "unknown", confidence: 0, reply: "Sorry po, may technical issue kami. Pakisubukan ulit." };
+    }
+
+    const raw = data.content && data.content[0] ? data.content[0].text.trim() : "{}";
+
+    let parsed = { intent: "unknown", confidence: 0, reply: null };
+    try {
+      let clean = raw.replace(/```json|```/g, "").trim();
+      const jsonMatch = clean.match(/\{[\s\S]*\}/);
+      if (jsonMatch) clean = jsonMatch[0];
+      clean = clean.replace(/[\r\n]+/g, " ");
+      parsed = JSON.parse(clean);
+    } catch (parseErr) {
+      console.error("JSON parse failed, using regex fallback:", parseErr.message);
+      const intentMatch = raw.match(/"intent"\s*:\s*"([^"]+)"/);
+      const replyMatch = raw.match(/"reply"\s*:\s*"([\s\S]*?)(?:"|$)/);
+      const confidenceMatch = raw.match(/"confidence"\s*:\s*([\d.]+)/);
+      parsed = {
+        intent: intentMatch ? intentMatch[1] : "unknown",
+        confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5,
+        reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : null
+      };
+      console.log("[CLAUDE FALLBACK] intent=" + parsed.intent);
+      // If fallback also failed to get a reply, generate a safe default
+      if (!parsed.reply) {
+        parsed.reply = "Pasensya na po! Hindi ko po maunawaan ang inyong mensahe. Pwede po ba ninyong ulitin? 😊";
+      }
+    }
+
+    userConversationHistory[sender_psid].push({
+      role: "assistant",
+      content: raw
+    });
+
+    console.log("[CLAUDE] state=" + currentState + " intent=" + parsed.intent);
+    return parsed;
+
+  } catch (err) {
+    console.error("getClaudeResponse error:", err.message);
+    return { intent: "unknown", confidence: 0, reply: "Sorry po, may nangyari. Pakisubukan ulit." };
+  }
+}
+// Cleanup old histories every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const psid of Object.keys(intentHistoryTimestamps)) {
+    if (now - intentHistoryTimestamps[psid] > 60 * 60 * 1000) {
+      delete userConversationHistory[psid];
+      delete intentHistoryTimestamps[psid];
+      console.log(`[CLEANUP] Removed history for ${psid}`);
+    }
+  }
+}, 30 * 60 * 1000);
+
+// ---------------------------------------------------------------------------
+// END CLAUDE AI RECEPTIONIST
+// ---------------------------------------------------------------------------
 
 // --- Helper: emit full appointment row ---
 async function emitAppointmentUpdate(io, clinicId, appointmentId) {
