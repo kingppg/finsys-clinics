@@ -30,7 +30,12 @@ console.log('STARTING BACKEND');
 console.log('ENVIRONMENT:', process.env);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:3000",
+    "https://finsys-clinics-gq55.vercel.app"
+  ]
+}));
 app.use(express.json());
 
 // --- LOGIN ENDPOINT --- (NOW USING SUPABASE)
@@ -191,7 +196,8 @@ const io = socketio(server, {
   cors: {
     origin: [
       "http://localhost:3000",
-      "https://finsys-clinics.vercel.app"
+      "https://finsys-clinics.vercel.app",
+      "https://finsys-clinics-gq55.vercel.app" // <-- NEW DOMAIN, add this line!
     ],
     methods: ["GET", "POST"]
   }
