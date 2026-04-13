@@ -57,6 +57,20 @@ CLINIC INFO (ang TANGING facts na alam mo):
 - Appointment slots: bawat 20 minuto
 - Bookings: pwede mag-book, mag-confirm, o mag-cancel ng appointment
 
+BOOKING RULES (IMPORTANTENG PATAKARAN — HUWAG KALIMUTAN):
+- ISANG APPOINTMENT LANG PER PERSON PER DATE — hindi pwedeng mag-book ng dalawa o higit pa ang iisang tao sa iisang araw
+- Kung may appointment na ang isang tao sa isang petsa, HINDI siya pwedeng mag-book ulit sa SAME DATE para sa kanilang sarili
+- PERO pwede siyang mag-book ng appointment para sa IBANG TAO (anak, asawa, magulang, etc.) sa same date
+- Hindi pwedeng mag-cancel ng appointment na less than 1 hour bago ang schedule
+- Hindi pwedeng mag-cancel ng nakaraang appointments
+- Ang cancellation ay valid lang para sa appointments na may hawak na appointment code
+
+KAPAG TINANONG KUNG PWEDENG MAG-BOOK ULIT SA SAME DATE:
+- HUWAG sabihing "Oo, pwede!" — MALI ITO
+- Itama: "Pasensya na po, isang appointment lang po ang pwede per person per date. 
+  Pero pwede po kayong mag-book para sa ibang tao (anak, asawa, etc.) sa same date, 
+  o pumili ng ibang petsa para sa inyo. 😊"
+
 HINDI KO ALAM — HUWAG MAG-INVENT NG SAGOT:
 - Sino ang dentist on duty (wala akong access sa schedule ng dentists)
 - Exact pricing ng kahit anong service (cleaning, extraction, braces, etc.)
@@ -878,10 +892,18 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           return;
         }
         let phone = null;
-        if (normalize(message) !== "skip") {
+        // Detect natural "skip" expressions in Filipino/English
+        const skipPhrases = ['wala', 'walang', 'wala po', 'wala siya', 'no number',
+          'no contact', 'none', 'nothing', 'di ko alam', 'hindi ko alam', 'not sure',
+          'di ko sure', 'wag na', 'skip', 'priv', 'private'];
+        const msgLower = message.toLowerCase().trim();
+        const isSkip = skipPhrases.some(p => msgLower.includes(p)) || 
+                       normalize(message) === 'skip' ||
+                       topIntent === 'no';
+        if (!isSkip) {
           phone = message.trim();
           if (!/^\d{10,}$/.test(phone)) {
-            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng number. Numbers lang po, o mag-type ng 'skip'. 😊", pageAccessToken);
+            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng number. Numbers lang po, o mag-type ng 'skip' kung wala pong contact number. 😊", pageAccessToken);
             return;
           }
         }
@@ -1002,10 +1024,18 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           return;
         }
         let phone = null;
-        if (normalize(message) !== "skip") {
+        // Detect natural "skip" expressions in Filipino/English
+        const skipPhrasesP = ['wala', 'walang', 'wala po', 'wala siya', 'no number',
+          'no contact', 'none', 'nothing', 'di ko alam', 'hindi ko alam', 'not sure',
+          'di ko sure', 'wag na', 'skip', 'priv', 'private'];
+        const msgLowerP = message.toLowerCase().trim();
+        const isSkipP = skipPhrasesP.some(p => msgLowerP.includes(p)) || 
+                        normalize(message) === 'skip' ||
+                        topIntent === 'no';
+        if (!isSkipP) {
           phone = message.trim();
           if (!/^\d{10,}$/.test(phone)) {
-            await sendMessage(sender_psid, "Hindi tama ang format ng number. Numbers lang po, o mag-type ng 'skip'. 😊", pageAccessToken);
+            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng number. Numbers lang po, o mag-type ng 'skip' kung wala pong contact number. 😊", pageAccessToken);
             return;
           }
         }
