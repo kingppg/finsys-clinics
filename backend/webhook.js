@@ -96,7 +96,7 @@ KAPAG TINANONG ANG HINDI KO ALAM:
 
 TUNGKOL SA PAGIGING AI:
 - Kung tinanong kung AI ka — maging honest at charming
-- "Oo po, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo nang mabilis at madali. 😊"
+- "Opo, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo nang mabilis at madali. 😊"
 - HUWAG magpanggap na tao kung direktang tinanong
 
 INTENTS na kailangan mong i-detect:
@@ -116,7 +116,7 @@ PERSONALITY:
 - Gumagamit ng emojis nang paminsan-minsan 😊🦷
 - Maikli at malinaw ang mga sagot — hindi masyadong mahaba
 - Parang tunay na receptionist — hindi robot, hindi nagsisinungaling
-- HINDI nagko-claim ng bagay na hindi niya alam
+- HINDI nagki-claim ng bagay na hindi niya alam
 
 STATES at kung paano ka dapat mag-respond:
 - "default"                    → Tanggapin ang kanyang mensahe at tulungan siya
@@ -149,13 +149,13 @@ JSON FORMAT — return ONLY this, nothing else:
 
 EXAMPLES ng magandang HONEST replies:
 - Greeting: "Magandang araw po! 😊 Welcome sa Palo Dentcare! Paano kita matutulungan ngayon? Pwede kayong mag-book ng appointment, i-confirm, o i-cancel. 🦷"
-- AI question: "Oo po, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo with appointments. Paano kita matutulungan? 😊"
+- AI question: "Opo, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo with appointments. Paano kita matutulungan? 😊"
 - Sunday closed: "Pasensya na po, sarado kami tuwing Linggo. 😊 Bukas po kami Lunes hanggang Sabado, 9AM-6PM lang po!"
 - Pricing: "Hindi ko po alam ang exact pricing ng aming services. Para sa tamang rates, mas better po kung tumawag directly sa clinic. 😊 Gusto ninyo pong mag-book?"
 - Dentist on duty: "Hindi ko po access ang schedule ng aming mga dentist. Para malaman kung sino ang on duty, tumawag na lang po sa clinic. 😊"
 - Location: "Hindi ko po alam ang exact address ng clinic. Pwede po kayong makipag-ugnayan sa clinic directly para sa directions. 😊"
-- Promo: "Hindi ko po updated sa mga current promos. Para sa latest offers, tumawag na lang po sa clinic. 😊"
-- Book: "Sige po! Pakitype lang po ang inyong preferred na petsa sa format na YYYY-MM-DD (halimbawa: 2026-05-20). 😊"
+- Promo: "Hindi po ako updated sa mga current promos. Para sa latest offers, tumawag na lang po sa clinic. 😊"
+- Book: "Sige po! Paki-type lang po ang inyong preferred na petsa sa format na YYYY-MM-DD (halimbawa: 2026-05-20). 😊"
 - Gratitude: "Salamat din po! God bless kayo! 🙏 Kung may katanungan pa kayo, nandito lang kami. 😊"
 - Cancel flow: "Okay lang po! Kung kailangan ninyo ng tulong sa ibang pagkakataon, nandito lang kami. Ingat po! 😊"`;
 
@@ -413,11 +413,13 @@ async function getBookedSlotCountsForActiveDentists(activeDentists, dateStr, cli
   const { data, error } = await query;
   if (error) { console.error("getBookedSlotCounts error:", error); return slotCounts; }
   (data || []).forEach(appt => {
-    if (appt.status === 'Cancelled') return;
+    if ((appt.status || '').toLowerCase() === 'cancelled') return; // PATCHED
     const time = new Date(appt.appointment_time);
     const slot = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
     slotCounts[slot] = (slotCounts[slot] || 0) + 1;
   });
+  // DIAGNOSTIC:
+  console.log('Slot booking counts:', slotCounts);
   return slotCounts;
 }
 
@@ -564,22 +566,22 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
   }
   if (message === 'MENU_BOOK_APPOINTMENT') {
     userState.state = "awaiting_date";
-    await sendMessage(sender_psid, "Sige po! Pakitype ang inyong preferred na petsa sa format: YYYY-MM-DD (halimbawa: 2025-12-20) 😊", pageAccessToken);
+    await sendMessage(sender_psid, "Sige po! Paki-type ang inyong preferred na petsa sa format: YYYY-MM-DD (halimbawa: 2025-12-20) 😊", pageAccessToken);
     return;
   }
   if (message === 'MENU_CONFIRM_BOOKING') {
     userState.state = "awaiting_confirm_code";
-    await sendMessage(sender_psid, "Pakitype po ang inyong appointment code (ID number) para ma-confirm namin. 😊", pageAccessToken);
+    await sendMessage(sender_psid, "Paki-type po ang inyong appointment code (ID number) para ma-confirm namin. 😊", pageAccessToken);
     return;
   }
   if (message === 'MENU_CANCEL_APPOINTMENT') {
     userState.state = "awaiting_cancel_code";
-    await sendMessage(sender_psid, "Pakitype po ang inyong appointment code (ID number) na gusto ninyong i-cancel.", pageAccessToken);
+    await sendMessage(sender_psid, "Paki-type po ang inyong appointment code (ID number) na gusto ninyong i-cancel.", pageAccessToken);
     return;
   }
   if (message === 'BOOK_ANOTHER_APPOINTMENT') {
     userStates[sender_psid] = { state: "awaiting_date", data: {} };
-    await sendMessage(sender_psid, "Sige po! Pakitype ang bagong petsa sa format: YYYY-MM-DD 😊", pageAccessToken);
+    await sendMessage(sender_psid, "Sige po! Paki-type ang bagong petsa sa format: YYYY-MM-DD 😊", pageAccessToken);
     return;
   }
   if (message === 'DECLINE_BOOKING') {
@@ -683,7 +685,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         }
         const code = message.trim();
         if (!/^\d+$/.test(code)) {
-          const reply = aiReply || "Hmm, parang hindi numero ang nitype ninyo. Pakitype po ang inyong appointment code (numbers only). 😊";
+          const reply = aiReply || "Hmm, parang hindi numero ang nitype ninyo. Paki-type po ang inyong appointment code (numbers only). 😊";
           await sendMessage(sender_psid, reply, pageAccessToken);
           return;
         }
@@ -726,12 +728,12 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
             if (req?.io) await emitAppointmentUpdate(req.io, clinicId, appointment.id);
             await sendMessage(sender_psid, "✅ Na-link na po ang inyong Messenger at nakumpirma na ang inyong appointment! Makakatanggap na kayo ng reminder bago ang inyong schedule. 🦷😊", pageAccessToken);
           } else {
-            await sendMessage(sender_psid, "✅ Nakumpirma na po ang inyong appointment! Makakatanggap kayo ng reminder. Ingat po! 🦷", pageAccessToken);
+            await sendMessage(sender_psid, "✅ Confirmed na po ang inyong appointment! Makakatanggap kayo ng reminder. Ingat po! 🦷", pageAccessToken);
           }
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        await sendMessage(sender_psid, "May nangyari po sa pagproseso ng inyong code. Pakicontact ang clinic para sa tulong. 😊", pageAccessToken);
+        await sendMessage(sender_psid, "May nangyari po sa pagproseso ng inyong code. Paki-contact ang clinic para sa assistance. 😊", pageAccessToken);
         userStates[sender_psid] = { state: "default", data: {} };
         return;
       }
@@ -744,14 +746,14 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         }
         const code = message.trim();
         if (!/^\d+$/.test(code)) {
-          await sendMessage(sender_psid, "Hmm, pakitype po ang inyong appointment code (numbers only). 😊", pageAccessToken);
+          await sendMessage(sender_psid, "Hmm, paki-type po ang inyong appointment code (numbers only). 😊", pageAccessToken);
           return;
         }
         const { data: apptData, error: apptErr } = await supabase
           .from('appointments').select('*, patient:patient_id (messenger_id)')
           .eq('id', code).eq('clinic_id', clinicId).maybeSingle();
         if (apptErr || !apptData) {
-          await sendMessage(sender_psid, "Wala po kaming nahanap na appointment sa code na iyon. Type po ng 'Cancel' para lumabas, o 'Try Again' para subukan ulit.", pageAccessToken);
+          await sendMessage(sender_psid, "Wala po kaming nahanap na appointment sa code na iyan. Type po ng 'Cancel' para lumabas, o 'Try Again' para subukan ulit.", pageAccessToken);
           userStates[sender_psid].state = "awaiting_cancel_code_retry";
           return;
         }
@@ -799,7 +801,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         }
         if (normalize(message) === "try again" || normalize(message) === "tryagain") {
           userStates[sender_psid].state = "awaiting_cancel_code";
-          await sendMessage(sender_psid, "Sige po! Pakitype ulit ang inyong appointment code. 😊", pageAccessToken);
+          await sendMessage(sender_psid, "Sige po! Paki-type ulit ang inyong appointment code. 😊", pageAccessToken);
           return;
         }
         await sendMessage(sender_psid, "Type po ng 'Cancel' para lumabas, o 'Try Again' para subukan ulit. 😊", pageAccessToken);
@@ -815,7 +817,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         }
         if (message === "BOOK_ANOTHER_APPOINTMENT" || topIntent === 'yes' || topIntent === 'book_appointment') {
           userStates[sender_psid] = { state: "awaiting_date", data: {} };
-          const reply = aiReply || "Sige po! Pakitype ang inyong preferred na petsa sa format: YYYY-MM-DD 😊";
+          const reply = aiReply || "Sige po! Paki-type ang inyong preferred na petsa sa format: YYYY-MM-DD 😊";
           await sendMessage(sender_psid, reply, pageAccessToken);
           return;
         }
@@ -837,12 +839,12 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           const looksLikeDateAttempt = /\d/.test(message.trim());
           if (looksLikeDateAttempt) {
             // They tried to type a date but format is wrong — correct them
-            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng petsa. 😊 Pakitype po sa format na YYYY-MM-DD, halimbawa: 2026-05-05.", pageAccessToken);
+            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng petsa. 😊 Paki-type po sa format na YYYY-MM-DD, halimbawa: 2026-05-05.", pageAccessToken);
           } else {
             // They said something conversational — let Claude reply naturally
             // and keep waiting for the date
             if (aiReply) await sendMessage(sender_psid, aiReply, pageAccessToken);
-            else await sendMessage(sender_psid, "Sige po! Pakitype lang ng petsa sa format na YYYY-MM-DD, halimbawa: 2026-05-05. 😊", pageAccessToken);
+            else await sendMessage(sender_psid, "Sige po! Paki-type lang ng petsa sa format na YYYY-MM-DD, halimbawa: 2026-05-05. 😊", pageAccessToken);
           }
           return;
         }
@@ -854,7 +856,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         const today = new Date(); today.setHours(0, 0, 0, 0);
         if (new Date(message.trim()) < today) {
           // ⚠️ ALWAYS use hardcoded message — Claude doesn't know if date is in the past
-          await sendMessage(sender_psid, "Ay, nakaraan na po ang petsang iyon! 😅 Pakitype ng petsa na hindi pa nakaraan po.", pageAccessToken);
+          await sendMessage(sender_psid, "Ay, nakaraan na po ang petsang iyon! 😅 Paki-type ng petsa na hindi pa nakaraan po.", pageAccessToken);
           return;
         }
         userState.data.date = message.trim();
@@ -889,7 +891,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         } else {
           userState.data.booking_for = "me";
           userState.state = "awaiting_my_name";
-          await sendMessage(sender_psid, "Pakitype lang po ang inyong buong pangalan para sa appointment. 😊", pageAccessToken);
+          await sendMessage(sender_psid, "Paki-type lang po ang inyong buong pangalan para sa appointment. 😊", pageAccessToken);
         }
         return;
       }
@@ -946,7 +948,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           userState.data.slots = slots;
           userState.data.activeDentists = activeDentists;
           if (!activeDentists.length) {
-            await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
+            await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
             userStates[sender_psid] = { state: "default", data: {} };
             return;
           }
@@ -972,7 +974,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           userState.data.slots = slots;
           userState.data.activeDentists = activeDentists;
           if (!activeDentists.length) {
-            await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
+            await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
             userStates[sender_psid] = { state: "default", data: {} };
             return;
           }
@@ -991,7 +993,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
           userState.data.slots = slots;
           userState.data.activeDentists = activeDentists;
           if (!activeDentists.length) {
-            await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
+            await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
             userStates[sender_psid] = { state: "default", data: {} };
             return;
           }
@@ -1011,7 +1013,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
 
       case "awaiting_for_whom": {
         if (normalizedMsg === "1" || normalizedMsg === "for me" || normalizedMsg === "for_me") {
-          await sendMessage(sender_psid, "Mayroon na po kayong appointment sa petsang iyon. Pakitype ng ibang petsa (YYYY-MM-DD). 😊", pageAccessToken);
+          await sendMessage(sender_psid, "Mayroon na po kayong appointment sa petsang iyon. Paki-type ng ibang petsa (YYYY-MM-DD). 😊", pageAccessToken);
           userStates[sender_psid].state = "awaiting_date";
           userStates[sender_psid].data = {};
           return;
@@ -1019,7 +1021,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         if (normalizedMsg === "2" || normalizedMsg === "for someone else" || normalizedMsg === "for_someone_else") {
           userState.data.booking_for = "someone else";
           userState.state = "awaiting_patient_name";
-          await sendMessage(sender_psid, "Pakitype po ang buong pangalan ng taong gusto ninyong i-book (halimbawa: inyong anak). 😊", pageAccessToken);
+          await sendMessage(sender_psid, "Paki-type po ang buong pangalan ng taong gusto ninyong i-book (halimbawa: inyong anak). 😊", pageAccessToken);
           return;
         }
         await sendAppointmentForButtonTemplate(sender_psid, pageAccessToken);
@@ -1065,7 +1067,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         if (patient) {
           const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, clinicId);
           if (doubleBooked) {
-            await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.patient_name} sa ${userState.data.date}. Pakitype ng ibang petsa. 😊`, pageAccessToken);
+            await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.patient_name} sa ${userState.data.date}. Paki-type ng ibang petsa. 😊`, pageAccessToken);
             userStates[sender_psid].state = "awaiting_date";
             userStates[sender_psid].data = {};
             return;
@@ -1079,7 +1081,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, clinicId,
         userState.data.slots = slots;
         userState.data.activeDentists = activeDentists;
         if (!activeDentists.length) {
-          await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
+          await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", pageAccessToken);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
