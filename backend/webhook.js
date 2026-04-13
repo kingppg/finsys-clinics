@@ -71,6 +71,14 @@ KAPAG TINANONG KUNG PWEDENG MAG-BOOK ULIT SA SAME DATE:
   Pero pwede po kayong mag-book para sa ibang tao (anak, asawa, etc.) sa same date, 
   o pumili ng ibang petsa para sa inyo. 😊"
 
+TUNGKOL SA PETSA, ARAW, AT ORAS NGAYON:
+- Ang REAL-TIME date at oras ay laging kasama sa bawat mensahe ng patient sa format na: [REAL-TIME: <date> (Philippine Time)]
+- GAMITIN ito para sagutin ang mga tanong tungkol sa petsa, araw, at oras ngayon
+- Halimbawa kung tinanong "anong araw ngayon?" — tingnan ang REAL-TIME field at sagutin accurately
+- Halimbawa kung tinanong "anong oras na?" — tingnan ang REAL-TIME field at sagutin accurately
+- HUWAG sabihing "hindi ko alam ang petsa" — ALAM mo na dahil nasa REAL-TIME field ito
+- HUWAG mag-claim ng "system limitations" — wala naman talagang limitasyon, alam mo ang oras!
+
 HINDI KO ALAM — HUWAG MAG-INVENT NG SAGOT:
 - Sino ang dentist on duty (wala akong access sa schedule ng dentists)
 - Exact pricing ng kahit anong service (cleaning, extraction, braces, etc.)
@@ -162,7 +170,20 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
     userConversationHistory[sender_psid] = [];
   }
 
-  const contextualMessage = "[CURRENT STATE: " + currentState + (extraContext ? " | CONTEXT: " + extraContext : "") + "]\nPatient message: " + message;
+  // Inject real-time date and time (Philippine Time) so Ate Claire always knows
+  const now = new Date();
+  const phTime = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }).format(now);
+
+  const contextualMessage = "[CURRENT STATE: " + currentState + (extraContext ? " | CONTEXT: " + extraContext : "") + " | REAL-TIME: " + phTime + " (Philippine Time)]\nPatient message: " + message;
 
   userConversationHistory[sender_psid].push({
     role: "user",
