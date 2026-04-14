@@ -5,6 +5,7 @@ import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
 import './App.css';
+import CompleteRegistrationPage from './components/CompleteRegistrationPage';
 
 // Helper to detect Supabase recovery hash
 function isSupabaseRecoveryHash() {
@@ -79,6 +80,10 @@ function AppRoutes({ user, handleLogin, handleLogout }) {
               <Navigate to="/login" replace />
             )
           }
+        />
+        <Route
+          path="/complete-registration"
+          element={<CompleteRegistrationPage />}
         />
         <Route
           path="/"

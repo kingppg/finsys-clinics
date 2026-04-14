@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { supabase } from '../supabaseClient';
+import { useNavigate } from 'react-router-dom';
 
 const MESSAGES = {
   enterEmail: "Please enter your email above first.",
@@ -210,6 +211,7 @@ function LoginPage({ onLogin, onShowSignUp, logoSrc }) {
   const [focusedInput, setFocusedInput] = useState(null);
   const [forgotLoading, setForgotLoading] = useState(false);
   const passwordInputRef = useRef(null);
+  const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -235,7 +237,9 @@ function LoginPage({ onLogin, onShowSignUp, logoSrc }) {
           .single();
 
         if (profileError || !profileData) {
-          setError(MESSAGES.userProfileFailed);
+          navigate('/complete-registration', {
+            state: { supabaseUser: data.user }
+          });
           return;
         }
 

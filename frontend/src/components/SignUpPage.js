@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { TIME_ZONES } from './TimeZones';
 
 const styles = {
   container: {
@@ -108,7 +109,7 @@ const styles = {
     animation: 'spin 0.8s linear infinite',
     display: 'block',
   },
-  '@keyframes spin': { to: { transform: 'rotate(360deg)' } },
+  '@keyframes spin': { to: { transform: 'rotate(360deg);' } },
   '@keyframes fadeIn': { from: { opacity: 0, transform: 'translateY(24px)' }, to: { opacity: 1, transform: 'none' } }
 };
 
@@ -117,74 +118,86 @@ function SignUpPage({ onBackToLogin }) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [clinicName, setClinicName] = useState('');
+  const [timeZone, setTimeZone] = useState('Asia/Manila');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [focusedInput, setFocusedInput] = useState(null);
 
-  async function handleSubmit(e) {
+    async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSuccess('');
     setLoading(true);
 
-    // 1. Register user with Supabase Auth
+    // 1. Try to sign up via supabase.auth.signUp
     const { data, error: supaError } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { name } }
     });
 
+    // 2. If there is any error, STOP
     if (supaError) {
       setLoading(false);
-      setError(supaError.message || 'Registration failed');
+      if (
+        supaError.message &&
+        supaError.message.toLowerCase().includes('already registered')
+      ) {
+        setError('A user with this email already exists. Please use a different email or login.');
+      } else {
+        setError(supaError.message || 'Registration failed');
+      }
       return;
     }
 
-    const supabaseUser = data.user || (data.session ? data.session.user : null);
+    // 3. Check for duplicate: Supabase returns empty identities[] when email already exists in auth.users
+const supabaseUser = data.user || (data.session ? data.session.user : null);
+if (!supabaseUser || !supabaseUser.id) {
+  setLoading(false);
+  setError('A user with this email already exists. Please use a different email or login.');
+  return;
+}
 
-    if (!supabaseUser) {
-      setLoading(false);
-      setSuccess('Registration initiated! Please check your email to confirm your account.');
-      return;
-    }
+// ✅ NEW CHECK: empty identities means the email already exists in auth.users
+if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
+  setLoading(false);
+  setError('This email is already registered. Please use a different email or login.');
+  return;
+}
 
-    // 2. Create a clinic record
-    const { data: clinicData, error: clinicError } = await supabase
-      .from('clinics')
-      .insert([{ name: clinicName }])
-      .select()
-      .single();
+    // 4. Only proceed to RPC if email is truly new
 
-    if (clinicError) {
-      setLoading(false);
-      setError('Clinic creation failed: ' + (clinicError.message || ''));
-      return;
-    }
-
-    // 3. Insert user details into custom users table
-    const { error: userInsertError } = await supabase
-      .from('users')
-      .insert([{
-        user_id: supabaseUser.id,
-        email: supabaseUser.email,
-        name,
-        role: 'admin',
-        clinic_id: clinicData.id
-      }]);
+    // 4. Only proceed to RPC if and only if supabaseUser.id exists.
+    const { error: rpcError } = await supabase.rpc('register_clinic_with_admin', {
+      p_clinic_name: clinicName,
+      p_time_zone: timeZone,
+      p_user_id: supabaseUser.id,
+      p_email: supabaseUser.email,
+      p_name: name,
+      // p_role: 'admin'
+    });
 
     setLoading(false);
-    if (userInsertError) {
-      setError('User profile creation failed: ' + (userInsertError.message || ''));
+
+    if (rpcError) {
+      if (
+        rpcError.code === '23505' ||
+        (rpcError.message && rpcError.message.toLowerCase().includes('duplicate key value'))
+      ) {
+        setError('A user with this email already exists. Please use a different email or login.');
+      } else {
+        setError('Registration failed: ' + (rpcError.message || ''));
+      }
     } else {
       setSuccess('Registration successful! Please check your email for confirmation.');
       setEmail('');
       setPassword('');
       setName('');
       setClinicName('');
+      setTimeZone('Asia/Manila');
     }
   }
-
   return (
     <div style={styles.container}>
       <form style={styles.card} onSubmit={handleSubmit} aria-label="Sign up form">
@@ -252,6 +265,23 @@ function SignUpPage({ onBackToLogin }) {
             onFocus={() => setFocusedInput('clinic')}
             onBlur={() => setFocusedInput(null)}
           />
+        </div>
+        {/* Timezone Dropdown */}
+        <div style={styles.inputWrapper}>
+          <label htmlFor="timeZoneSel" style={{ marginBottom: 4, color: "#3462db", fontWeight: 500 }}>
+            Clinic Time Zone
+          </label>
+          <select
+            id="timeZoneSel"
+            required
+            value={timeZone}
+            onChange={e => setTimeZone(e.target.value)}
+            style={styles.input}
+          >
+            {TIME_ZONES.map(tz => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+          </select>
         </div>
         {loading && <div style={styles.spinner} />}
         <div style={styles.error}>{error}</div>
