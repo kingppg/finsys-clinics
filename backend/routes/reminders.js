@@ -129,13 +129,23 @@ router.post('/:id/send-reminder', async (req, res) => {
     return res.status(400).json({ error: 'No Messenger ID found for patient or guardian.' });
   }
 
-  // Format reminder message
+  // Format reminder message - CORRECT TIMEZONE!
   const apptDate = new Date(appt.appointment_time);
-  const dateStr = apptDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const timeStr = apptDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const dateStr = apptDate.toLocaleDateString('en-US', { 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric',
+    timeZone: 'Asia/Manila' 
+  });
+  const timeStr = apptDate.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    hour12: true,
+    timeZone: 'Asia/Manila' 
+  });
   let reminderText = req.body.message_override ||
     appt.reminder_message ||
-    `Hello ${appt.patient?.name}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+  `   Hello ${appt.patient?.name}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
 
   // --- Get Messenger Page token for clinic ---
   const { data: clinicRow, error: clinicError } = await supabase
