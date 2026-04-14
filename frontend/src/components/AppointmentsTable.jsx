@@ -229,7 +229,16 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
         setPatients(patRes.data || []);
         setAppointments(appRes.data || []);
         const years = getYearList(appRes.data || []);
-        if (!selectedYear) setSelectedYear(years[years.length - 1]);
+        const currentYear = String(new Date().getFullYear());
+        if (!selectedYear) {
+          // If current year is in the list, use it; otherwise, use the most recent year
+          if (years.includes(Number(currentYear))) {
+            setSelectedYear(currentYear);
+          } else {
+            setSelectedYear(String(Math.max(...years)));
+          }
+        } 
+
         if (!selectedMonth) setSelectedMonth(String(new Date().getMonth() + 1).padStart(2, '0'));
       } catch {
         setDentists([]);
