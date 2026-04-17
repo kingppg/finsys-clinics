@@ -80,6 +80,69 @@
   box-shadow: 0 4px 16px rgba(36,102,209,0.17);
 }
 
+/* ---- SUBTAB BUTTONS ---- */
+.clinicconfig-tab-btn {
+  border: 1px solid #d4e3f4;
+  background: #f8fafc;
+  color: #185abd;
+  font-size: 1.06rem;
+  padding: 9px 30px 9px 30px;
+  font-weight: 650;
+  border-radius: 10px 10px 0 0;
+  cursor: pointer;
+  margin-bottom: -1px;
+  margin-right: 0;
+  margin-left: 0;
+  transition: background 0.16s, color 0.16s, border-color 0.16s;
+  position: relative;
+  min-width: 150px;
+  outline: none;
+  z-index: 2;
+}
+.clinicconfig-tab-btn:not(.active):hover {
+  background: #f1f8ff;
+  color: #2366d1;
+  border-color: #b6d0f8;
+}
+.clinicconfig-tab-btn.active {
+  background: #f1f7fd;
+  color: #185abd;
+  border-bottom: 2.5px solid #fff;
+  border-top: 2px solid #185abd;
+  border-left: 2px solid #185abd;
+  border-right: 2px solid #185abd;
+  font-weight: 800;
+  z-index: 3;
+}
+.clinicconfig-tab-btn:focus-visible {
+  border-color: #2366d1;
+  box-shadow: 0 0 0 2px #b4d0ff50;
+}
+
+@media (max-width: 650px) {
+  .clinicconfig-tab-btn {
+    padding: 8px 10px;
+    font-size: 1.01rem;
+    min-width: 90px;
+  }
+}
+
+/* maintains the crisp connection to the card below the tabs */
+.clinic-config-card {
+  position: relative;
+}
+.clinicconfig-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -2px;
+  height: 2.7px;
+  background: #fff;
+  z-index: 10;
+  border-radius: 0 0 9px 9px;
+}
+
+/* --- end subtabs --- */
+
 .clinic-form-modern {
   margin-top: 18px;
   width: 100%;
