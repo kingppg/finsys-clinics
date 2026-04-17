@@ -1,15 +1,21 @@
 import React from 'react';
-import { FiUsers, FiUserPlus, FiCalendar, FiCreditCard, FiLogOut, FiSettings, FiClipboard, FiShield, FiMessageCircle } from 'react-icons/fi';
+import {
+  FiHome, FiUsers, FiGrid, FiUserPlus, FiCalendar, FiCreditCard, FiLogOut,
+  FiSettings, FiClipboard, FiShield, FiMessageCircle
+} from 'react-icons/fi';
+import { FaTable } from "react-icons/fa";
+import { VscCalendar } from "react-icons/vsc";
 import './Sidebar.css';
 
 const navItems = [
-  { key: 'patients', label: 'Patients', icon: <FiUsers /> },
-  { key: 'appointments', label: 'Appointments', icon: <FiCalendar /> },
+  { key: 'dashboard', label: 'Calendar View', icon: <VscCalendar /> },        // NEW dashboard tab!
+  { key: 'appointments', label: 'Appointments', icon: <FiGrid /> },
   { key: 'dentists', label: 'Dentists', icon: <FiUserPlus /> },
+  { key: 'patients', label: 'Patients', icon: <FiUsers /> },
   { key: 'bills', label: 'Billing System', icon: <FiCreditCard /> },
   { key: 'procedures', label: 'Procedures', icon: <FiClipboard /> },
   { key: 'clinicconfig', label: 'Clinic Config', icon: <FiSettings /> },
-  { key: 'usersroles', label: 'Users & Roles', icon: <FiShield /> },
+//  { key: 'usersroles', label: 'Users & Roles', icon: <FiShield /> }, MOVED TO ConfigClinic tab
   { key: 'chat', label: 'Chat', icon: <FiMessageCircle /> },
 ];
 
@@ -17,7 +23,7 @@ function Sidebar({ active, onSelect, user, onLogout, allowedTabs, clinicName }) 
   return (
     <nav className="sidebar">
       <div className="sidebar-logo">
-        <span role="img" aria-label="Tooth" style={{fontSize: 20}}>🦷</span>
+        <span role="img" aria-label="Tooth" style={{ fontSize: 20 }}>🦷</span>
         <span className="sidebar-title">{clinicName || "Clinic"}</span>
       </div>
       <ul className="sidebar-nav">
@@ -43,7 +49,7 @@ function Sidebar({ active, onSelect, user, onLogout, allowedTabs, clinicName }) 
           </div>
         )}
         <button className="sidebar-logout-btn" onClick={onLogout}>
-          <FiLogOut style={{marginRight: 8}} /> Logout
+          <FiLogOut style={{ marginRight: 8 }} /> Logout
         </button>
       </div>
     </nav>

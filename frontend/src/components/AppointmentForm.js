@@ -83,7 +83,11 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
       .from('patients')
       .select('*')
       .eq('clinic_id', clinicId)
-      .then(res => setPatients(res.data || []));
+      .then(res => {
+        const sorted = (res.data || []).slice().sort((a, b) =>
+          a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+        );
+        setPatients(sorted);});
     supabase
       .from('procedure_categories')
       .select('*, procedures:procedures(*)')
@@ -352,8 +356,11 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
             patient_id: selectedPatient,
             appointment_time: datetime,
             reason: reasonToSave,
-            status: "Scheduled"
-          })
+            status: "Scheduled",
+            procedure_id: Number(selectedProcedure),
+            procedure_price: Number(procedures.find(p => String(p.id) === String(selectedProcedure))?.price || 0),
+            notes: otherNotes.trim() || null
+        })
           .eq('id', appointment.id)
           .eq('clinic_id', clinicId);
         setSuccess('Appointment updated!');
@@ -372,8 +379,11 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
             patient_id: selectedPatient,
             appointment_time: datetime,
             reason: reasonToSave,
-            clinic_id: clinicId
-          }]);
+            clinic_id: clinicId,
+            procedure_id: Number(selectedProcedure),
+            procedure_price: Number(procedures.find(p => String(p.id) === String(selectedProcedure))?.price || 0),
+            notes: otherNotes.trim() || null
+        }]);
         setSuccess('Appointment booked!');
         Swal.fire({
           icon: 'success',

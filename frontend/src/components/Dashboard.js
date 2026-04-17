@@ -8,13 +8,16 @@ import ClinicConfig from './ClinicConfig';
 import ClinicProcedureManager from './ClinicProcedureManager';
 import AdminUsersRoles from './AdminUsersRoles';
 import ChatBox from './chats/ChatBox';
+// 👇 NEW: Import the dashboard with the calendar
+import ClinicDashboard from './CalendarView';
 
 function Dashboard({ user, onLogout }) {
-  const [activeTab, setActiveTab] = useState('patients');
+  // Start with dashboard as default tab
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [modalContent, setModalContent] = useState(null);
 
-  // Define allowedTabs based on user.role
-  const allowedTabs = ['patients', 'appointments', 'bills', 'chat'];
+  // Define allowedTabs; add/remove 'dashboard' per your access policy
+  const allowedTabs = ['dashboard', 'patients', 'appointments', 'bills', 'chat'];
 
   if (user.role === 'superadmin' || user.role === 'admin' || user.role === 'receptionist') {
     allowedTabs.push('dentists');
@@ -47,23 +50,32 @@ function Dashboard({ user, onLogout }) {
           position: 'relative',
         }}
       >
-        {activeTab === 'patients' && <Patients setModalContent={setModalContent} clinicId={user.clinic_id} />}
-        {activeTab === 'dentists' && (user.role === 'superadmin' || user.role === 'admin' || user.role === 'receptionist') && <Dentists clinicId={user.clinic_id} />}
+        {/* --- NEW DASHBOARD TAB --- */}
+        {activeTab === 'dashboard' && (
+          <ClinicDashboard clinicId={user.clinic_id} user={user} />
+        )}
+
+        {activeTab === 'patients' && (
+          <Patients setModalContent={setModalContent} clinicId={user.clinic_id} />
+        )}
+        {activeTab === 'dentists' && 
+          (user.role === 'superadmin' || user.role === 'admin' || user.role === 'receptionist') && (
+          <Dentists clinicId={user.clinic_id} />
+        )}
         {activeTab === 'appointments' && <AppointmentsModern clinicId={user.clinic_id} />}
         {activeTab === 'bills' && <BillsPayment clinicId={user.clinic_id} />}
-        {activeTab === 'clinicconfig' && (user.role === 'superadmin' || user.role === 'admin') && (
+        {activeTab === 'clinicconfig' && 
+          (user.role === 'superadmin' || user.role === 'admin') && (
           <ClinicConfig
             clinicId={user.clinic_id}
             user={user}
             onBack={() => setActiveTab('patients')}
           />
         )}
-        {activeTab === 'procedures' && (user.role === 'superadmin' || user.role === 'admin' || user.role === 'receptionist') &&
+        {activeTab === 'procedures' && 
+          (user.role === 'superadmin' || user.role === 'admin' || user.role === 'receptionist') && (
           <ClinicProcedureManager clinicId={user.clinic_id} user={user} />
-        }
-        {activeTab === 'usersroles' && (user.role === 'superadmin' || user.role === 'admin') &&
-          <AdminUsersRoles clinicId={user.clinic_id} currentUser={user} />
-        }
+        )}
         {activeTab === 'chat' && <ChatBox user={user} />}
         {modalContent}
       </main>

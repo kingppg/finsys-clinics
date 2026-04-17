@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import AdminUsersRoles from './AdminUsersRoles';
 import './ClinicConfig.css';
 
 // Always use backend API base for production
@@ -26,6 +27,9 @@ function ClinicConfig({ user, clinicId, onBack }) {
   const [fbConnecting, setFbConnecting] = useState(false);
   const [fbPages, setFbPages] = useState(null);
   const [showFbPageModal, setShowFbPageModal] = useState(false);
+
+  // Subtab switching: 'fb' (FB Page Config), 'users' (Users & Roles)
+  const [subTab, setSubTab] = useState('fb');
 
   // Fetch clinics list (direct from Supabase)
   const fetchClinics = async (stayOnClinicId = null) => {
@@ -356,127 +360,183 @@ function ClinicConfig({ user, clinicId, onBack }) {
             </button>
           </div>
         )}
-        {renderFbPageModal()}
-        {(!user.role || clinics.length === 0) ? (
-          <p>No clinic selected or available.</p>
-        ) : (
-          <form
-            className="clinic-form-modern"
-            onSubmit={handleSubmit}
-            autoComplete="off"
+
+        {/* ---- SUBTAB BUTTONS ---- */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 24, marginTop: 6 }}>
+          <button
+            type="button"
+            className={subTab === 'fb' ? 'clinicconfig-tab-btn active' : 'clinicconfig-tab-btn'}
+            style={{
+              background: subTab === 'fb' ? '#eaf2ff' : '#fff',
+              color: subTab === 'fb' ? '#185abd' : '#333',
+              border: subTab === 'fb' ? '2px solid #185abd' : '1px solid #bbb',
+              borderBottomLeftRadius: 10,
+              borderBottomRightRadius: 0,
+              borderTopLeftRadius: 10,
+              borderTopRightRadius: 0,
+              fontWeight: 700,
+              padding: '7px 32px',
+              cursor: 'pointer'
+            }}
+            onClick={() => setSubTab('fb')}
           >
-            <div className="clinic-form-row">
-              <div className="clinic-form-field">
-                <label>Clinic Name*</label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleFieldChange}
-                  required
-                />
-              </div>
-              <div className="clinic-form-field">
-                <label>Reminder Time*</label>
-                <input
-                  type="time"
-                  name="reminder_time"
-                  value={formData.reminder_time}
-                  onChange={handleFieldChange}
-                  required
-                />
-              </div>
-            </div>
-            <div className="clinic-form-row">
-              <div className="clinic-form-field">
-                <label>Messenger Page Access Token*</label>
-                <div className="token-inline-row">
-                  <input
-                    type="text"
-                    name="fb_page_access_token"
-                    value={formData.fb_page_access_token}
-                    onChange={handleFieldChange}
-                    required
-                    readOnly
-                    className="token-input"
-                  />
-                  {!isNew && (
-                    <button
-                      type="button"
-                      className="connect-fb-btn"
-                      onClick={handleConnectFBPage}
-                      disabled={fbConnecting}
-                    >
-                      {fbConnecting ? 'Connecting...' : 'Connect Facebook Page'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="clinic-form-row">
-              <div className="clinic-form-field">
-                <label>Address</label>
-                <input
-                  type="text"
-                  name="address"
-                  value={formData.address}
-                  onChange={handleFieldChange}
-                />
-              </div>
-              <div className="clinic-form-field">
-                <label>Contact Email</label>
-                <input
-                  type="email"
-                  name="contact_email"
-                  value={formData.contact_email}
-                  onChange={handleFieldChange}
-                />
-              </div>
-              <div className="clinic-form-field">
-                <label>Contact Phone</label>
-                <input
-                  type="text"
-                  name="contact_phone"
-                  value={formData.contact_phone}
-                  onChange={handleFieldChange}
-                />
-              </div>
-            </div>
-            <div className="clinic-form-row">
-              <div className="clinic-form-field">
-                <label>Facebook Page ID</label>
-                <input
-                  type="text"
-                  name="fb_page_id"
-                  value={formData.fb_page_id}
-                  onChange={handleFieldChange}
-                  readOnly
-                />
-              </div>
-              <div className="clinic-form-field">
-                <label>Messenger Page ID</label>
-                <input
-                  type="text"
-                  name="messenger_page_id"
-                  value={formData.messenger_page_id}
-                  onChange={handleFieldChange}
-                  readOnly
-                />
-              </div>
-            </div>
-            <div className="clinic-form-actions">
-              <button type="submit" disabled={loading}>
-                {isNew ? 'Save Clinic' : 'Update Clinic'}
-              </button>
-              <button
-                type="button"
-                className="back-btn"
-                onClick={handleBack}
+            FB Page Config
+          </button>
+          {(user.role === 'superadmin' || user.role === 'admin') && (
+            <button
+              type="button"
+              className={subTab === 'users' ? 'clinicconfig-tab-btn active' : 'clinicconfig-tab-btn'}
+              style={{
+                background: subTab === 'users' ? '#eaf2ff' : '#fff',
+                color: subTab === 'users' ? '#185abd' : '#333',
+                border: subTab === 'users' ? '2px solid #185abd' : '1px solid #bbb',
+                borderBottomLeftRadius: 0,
+                borderBottomRightRadius: 10,
+                borderTopLeftRadius: 0,
+                borderTopRightRadius: 10,
+                fontWeight: 700,
+                padding: '7px 32px',
+                cursor: 'pointer'
+              }}
+              onClick={() => setSubTab('users')}
+            >
+              Users Config
+            </button>
+          )}
+        </div>
+
+        {/* ---- TAB CONTENT ---- */}
+        {subTab === 'fb' && (
+          <>
+            {renderFbPageModal()}
+            {(!user.role || clinics.length === 0) ? (
+              <p>No clinic selected or available.</p>
+            ) : (
+              <form
+                className="clinic-form-modern"
+                onSubmit={handleSubmit}
+                autoComplete="off"
               >
-                Back
-              </button>
-            </div>
-          </form>
+                <div className="clinic-form-row">
+                  <div className="clinic-form-field">
+                    <label>Clinic Name*</label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleFieldChange}
+                      required
+                    />
+                  </div>
+                  <div className="clinic-form-field">
+                    <label>Reminder Time*</label>
+                    <input
+                      type="time"
+                      name="reminder_time"
+                      value={formData.reminder_time}
+                      onChange={handleFieldChange}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="clinic-form-row">
+                  <div className="clinic-form-field">
+                    <label>Messenger Page Access Token*</label>
+                    <div className="token-inline-row">
+                      <input
+                        type="text"
+                        name="fb_page_access_token"
+                        value={formData.fb_page_access_token}
+                        onChange={handleFieldChange}
+                        required
+                        readOnly
+                        className="token-input"
+                      />
+                      {!isNew && (
+                        <button
+                          type="button"
+                          className="connect-fb-btn"
+                          onClick={handleConnectFBPage}
+                          disabled={fbConnecting}
+                        >
+                          {fbConnecting ? 'Connecting...' : 'Connect Facebook Page'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="clinic-form-row">
+                  <div className="clinic-form-field">
+                    <label>Address</label>
+                    <input
+                      type="text"
+                      name="address"
+                      value={formData.address}
+                      onChange={handleFieldChange}
+                    />
+                  </div>
+                  <div className="clinic-form-field">
+                    <label>Contact Email</label>
+                    <input
+                      type="email"
+                      name="contact_email"
+                      value={formData.contact_email}
+                      onChange={handleFieldChange}
+                    />
+                  </div>
+                  <div className="clinic-form-field">
+                    <label>Contact Phone</label>
+                    <input
+                      type="text"
+                      name="contact_phone"
+                      value={formData.contact_phone}
+                      onChange={handleFieldChange}
+                    />
+                  </div>
+                </div>
+                <div className="clinic-form-row">
+                  <div className="clinic-form-field">
+                    <label>Facebook Page ID</label>
+                    <input
+                      type="text"
+                      name="fb_page_id"
+                      value={formData.fb_page_id}
+                      onChange={handleFieldChange}
+                      readOnly
+                    />
+                  </div>
+                  <div className="clinic-form-field">
+                    <label>Messenger Page ID</label>
+                    <input
+                      type="text"
+                      name="messenger_page_id"
+                      value={formData.messenger_page_id}
+                      onChange={handleFieldChange}
+                      readOnly
+                    />
+                  </div>
+                </div>
+                <div className="clinic-form-actions">
+                  <button type="submit" disabled={loading}>
+                    {isNew ? 'Save Clinic' : 'Update Clinic'}
+                  </button>
+                  <button
+                    type="button"
+                    className="back-btn"
+                    onClick={handleBack}
+                  >
+                    Back
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
+        )}
+
+        {subTab === 'users' && (user.role === 'superadmin' || user.role === 'admin') && (
+          <div style={{ marginTop: 24 }}>
+            <AdminUsersRoles clinicId={selectedClinicId} currentUser={user} />
+          </div>
         )}
       </div>
     </div>

@@ -1,0 +1,153 @@
+.invoice-modal-receipt {
+  max-width: 900px;
+  min-width: 640px;
+  margin: 0 auto;
+  background: #fff;
+  font-family: Arial, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  padding: 32px 40px 20px 40px;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+
+.invoice-modal-header {
+  font-size: 2em;
+  font-weight: bold;
+  text-align: center;
+  color: #000;
+  margin-bottom: 0.1em;
+  letter-spacing: 0.04em;
+}
+
+.invoice-modal-clinic {
+  text-align: center;
+  font-weight: bold;
+  color: #222;
+  font-size: 1.2em;
+  margin-top: 0.2em;
+  margin-bottom: 28px;
+}
+
+.invoice-date-row {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 8px;
+  font-size: 1.07em;
+}
+
+.invoice-label {
+  font-weight: bold;
+  min-width: 100px;
+  color: #000;
+}
+
+.invoice-value {
+  margin-left: 6px;
+  font-size: 1.07em;
+  color: #1d3058;
+}
+
+.invoice-main-row {
+  width: 100%;
+  display: flex;
+  justify-content: left;
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+  gap: 60px;
+}
+
+.invoice-main-col {
+  display: flex;
+  align-items: baseline;
+  min-width: 130px;
+}
+
+/* PROCEDURE RECTANGLE */
+.invoice-proc-box {
+  border: 2px solid #222;
+  padding: 10px 13px;
+  margin: 18px 0 6px 0;
+  font-size: 1.14em;
+  background: #fff;
+  width: 100%;
+  min-height: 44px;
+}
+
+.invoice-proc-label {
+  font-weight: bold;
+  margin-bottom: 2px;
+  display: block;
+}
+
+/* AMOUNT */
+.invoice-amount-row {
+  margin: 18px 0 12px 0;
+  font-size: 1.19em;
+  font-weight: bold;
+  display: flex;
+  align-items: baseline;
+  text-align: left;
+}
+
+.invoice-amount-label {
+  min-width: 80px;
+  color: #000;
+  margin-right: 10px;
+}
+
+.invoice-amount {
+  font-weight: bold;
+  color: #000;
+  font-size: 1.16em;
+}
+
+/* CONFIRM WARNING */
+.invoice-confirm {
+  margin: 30px auto 0 auto;
+  text-align: center;
+  max-width: 90%;
+  font-size: 1.11em;
+  line-height: 1.5em;
+}
+
+.invoice-confirm .confirm-red {
+  color: #d60000;
+  font-weight: bold;
+}
+
+.invoice-confirm .confirm-blue {
+  color: #185abd;
+}
+
+.invoice-confirm .confirm-bold {
+  color: #d60000;
+  font-weight: bold;
+}
+
+.swal2-popup.invoice-modal-wide { 
+    width: 900px !important; 
+}
+
+.invoice-main-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between; /* This makes left & right justified */
+  flex-wrap: wrap;
+  margin-bottom: 26px;
+  gap: 0;
+}
+
+.invoice-main-col {
+  display: flex;
+  align-items: baseline;
+  /* min-width stays as is for label+value spacing */
+}
+
+/* Make patient block grow (left) and dentist shrink (right) */
+.invoice-main-col.left {
+  flex: 1 1 auto;
+}
+.invoice-main-col.right {
+  flex: 0 0 auto;
+}
