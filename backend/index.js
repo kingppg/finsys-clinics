@@ -186,6 +186,12 @@ app.get('/', (req, res) => {
   res.send('Dental Clinic Backend is running!');
 });
 
+// Keep-alive endpoint — forces full process wake on Render
+app.post('/api/keep-alive', (req, res) => {
+  console.log('[KeepAlive] Full process wake at', new Date().toISOString());
+  res.json({ ok: true });
+});
+
 // Use routers for module routes!
 app.use('/appointments', remindersRouter);
 app.use('/status-notifications', statusNotificationsRouter);
