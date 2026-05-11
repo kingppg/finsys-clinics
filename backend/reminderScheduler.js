@@ -60,6 +60,7 @@ async function getAppointmentsWithReminders(clinic_id) {
       patient:patient_id (messenger_id, name)
     `)
     .eq('clinic_id', clinic_id)
+    .eq('deleted', false)        // ← ADD THIS
     .neq('status', 'Cancelled')
     .eq('reminder_enabled', true)
     .gt('appointment_time', new Date().toISOString());

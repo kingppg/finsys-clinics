@@ -18,6 +18,7 @@ async function getAppointment(id, clinicId) {
     .select('*')
     .eq('id', id)
     .eq('clinic_id', clinicId)
+    .eq('deleted', false)        // ← ADD THIS
     .single();
   if (error) {
     console.error('Supabase error fetching appointment:', error);
