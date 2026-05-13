@@ -161,7 +161,7 @@ router.post('/:id/send-reminder', async (req, res) => {
 
   // Messenger Send
   try {
-    await sendMessage(messenger_id, reminderText, pageToken); // <-- Pass the token here!
+    await sendMessage(messenger_id, reminderText, { pageAccessToken: pageToken }); // <-- Pass the token here!
 
     // Log sent reminder, using the new uniqueness logic (with sent_on_date)
     const sent_on_date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
