@@ -246,7 +246,7 @@ function getCronStringUTC(reminderTime, timeZone) {
   const diffMinutes = (localHour * 60 + localMinute) - (displayedHour * 60 + displayedMinute);
 
   // Adjust naiveUTC by the difference to land on the correct UTC time
-  const correctUTC = new Date(naiveUTC.getTime() - diffMinutes * 60 * 1000);
+  const correctUTC = new Date(naiveUTC.getTime() + diffMinutes * 60 * 1000);
   const utcHour = correctUTC.getUTCHours();
   const utcMinute = correctUTC.getUTCMinutes();
 
