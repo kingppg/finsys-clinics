@@ -216,7 +216,7 @@ app.use((req, res, next) => {
 });
 
 // Messenger webhook endpoint
-app.use('/', webhookRouter);
+app.use('/webhook', webhookRouter);
 
 // Start the server (use server instead of app)
 server.listen(PORT, () => {

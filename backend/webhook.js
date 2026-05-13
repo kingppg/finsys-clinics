@@ -511,7 +511,7 @@ async function hasDoubleBookingOnDate(patient_id, dateStr, context) {
 }
 
 // --- WEBHOOK VERIFY ---
-router.get("/webhook", (req, res) => {
+router.get("/", (req, res) => {
   console.log("HIT: /webhook route");
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -525,7 +525,7 @@ router.get("/webhook", (req, res) => {
 });
 
 // --- WEBHOOK EVENT HANDLER ---
-router.post("/webhook", async (req, res) => {
+router.post("/", async (req, res) => {
   const body = req.body;
   if (body.object === "page") {
     res.status(200).send("EVENT_RECEIVED");
