@@ -32,11 +32,9 @@ const supabase = createClient(
 // ---------------------------------------------------------------------------
 // Single object passed through all functions containing clinic-level data
 // Structure: { clinicId, pageAccessToken, timeZone, clinicName, fb_page_id, ... }
-// This eliminates parameter drilling and makes adding new clinic data trivial
 
 // ---------------------------------------------------------------------------
 // CLAUDE — FULL AI RECEPTIONIST
-// Handles BOTH intent detection AND generating human-like responses
 // ---------------------------------------------------------------------------
 
 const userConversationHistory = {};
@@ -171,7 +169,6 @@ async function getClaudeResponse(message, sender_psid, currentState, context, ex
     userConversationHistory[sender_psid] = [];
   }
 
-  // ✅ Inject real-time date and time in the CLINIC'S timezone (not hardcoded)
   const timeZone = context.timeZone || 'Asia/Manila';
   const now = new Date();
   const phTime = new Intl.DateTimeFormat('en-PH', {
@@ -289,7 +286,7 @@ async function emitAppointmentUpdate(io, clinicId, appointmentId) {
   }
 }
 
-// --- ✅ Clinic lookup by Messenger Page ID — now returns full clinic record ---
+// --- Clinic lookup by Messenger Page ID ---
 async function getClinicByMessengerPageId(pageId) {
   const { data, error } = await supabase
     .from('clinics')
@@ -303,7 +300,7 @@ async function getClinicByMessengerPageId(pageId) {
   return data || null;
 }
 
-// --- ✅ Build context object from clinic record ---
+// --- Build context object from clinic record ---
 function buildContext(clinic) {
   return {
     clinicId: clinic.id,
@@ -343,7 +340,7 @@ function to24HourFormat(time12) {
   return `${h.toString().padStart(2, '0')}:${m}`;
 }
 
-// ✅ Get UTC offset for a timezone dynamically
+// Get UTC offset for a timezone dynamically
 function getUtcOffset(timeZone) {
   const now = new Date();
   const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
@@ -428,13 +425,12 @@ async function getAvailableSlots(dateStr, context) {
   const baseSlots = generateTimeSlots("09:00", "18:00", 20);
   const availableSlots = [];
   const dayOfWeek = new Date(dateStr).getDay();
-  const offset = getUtcOffset(context.timeZone); // ✅ dynamic offset
+  const offset = getUtcOffset(context.timeZone);
 
   for (const slot of baseSlots) {
     let slotAvailable = false;
 
     for (const dentist of activeDentists) {
-      // 1. Check if dentist is BLOCKED at this slot
       const { data: blocks } = await supabase
         .from('dentist_availability')
         .select('start_time,end_time,is_available')
@@ -458,8 +454,7 @@ async function getAvailableSlots(dateStr, context) {
       }
       if (isBlocked) continue;
 
-      // 2. Check if dentist is already BOOKED at this slot
-      const slotDateTime = `${dateStr}T${slot}:00${offset}`; // ✅ dynamic offset
+      const slotDateTime = `${dateStr}T${slot}:00${offset}`;
       const { data: bookings } = await supabase
         .from('appointments')
         .select('id,status')
@@ -480,13 +475,10 @@ async function getAvailableSlots(dateStr, context) {
 
   // For bookings on today: remove past slots (timezone-aware)
   const timeZone = context.timeZone || 'Asia/Manila';
-
-  // Get current date string in clinic timezone (e.g. "2026-05-13")
   const todayStrInTZ = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 
   let filteredSlots = availableSlots;
   if (dateStr === todayStrInTZ) {
-    // Get current time as minutes since midnight IN the clinic's timezone
     const nowInTZ = new Intl.DateTimeFormat('en-US', {
       timeZone,
       hour: '2-digit',
@@ -508,7 +500,7 @@ async function getAvailableSlots(dateStr, context) {
 }
 
 async function hasDoubleBookingOnDate(patient_id, dateStr, context) {
-  const offset = getUtcOffset(context.timeZone); // ✅ dynamic offset
+  const offset = getUtcOffset(context.timeZone);
   const startISO = `${dateStr}T00:00:00${offset}`;
   const endISO = `${dateStr}T23:59:59${offset}`;
   let query = supabase.from('appointments').select('id,status')
@@ -516,6 +508,28 @@ async function hasDoubleBookingOnDate(patient_id, dateStr, context) {
   const { data, error } = await query;
   if (error) { console.error("hasDoubleBookingOnDate error:", error); return false; }
   return (data || []).filter(a => a.status !== 'Cancelled').length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// SHARED HELPER: show slots or handle no-slot edge cases
+// Reused across multiple states to avoid duplication
+// ---------------------------------------------------------------------------
+async function proceedToSlotSelection(sender_psid, userState, context) {
+  const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
+  userState.data.slots = slots;
+  userState.data.activeDentists = activeDentists;
+
+  if (!activeDentists.length) {
+    await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist ngayon. Pakisubukan mamaya. 😊", context);
+    userStates[sender_psid] = { state: "default", data: {} };
+    return false;
+  }
+  if (slots.length === 0) {
+    await sendMessage(sender_psid, "Pasensya na po, puno na ang slots para sa araw na iyon. 😔 Pwede po kayong pumili ng ibang petsa?", context);
+    userStates[sender_psid] = { state: "awaiting_date", data: {} };
+    return false;
+  }
+  return true;
 }
 
 // --- WEBHOOK VERIFY ---
@@ -547,11 +561,10 @@ router.post("/", async (req, res) => {
         const page_id = pageIdFromEntry || webhook_event.recipient?.id || webhook_event.sender?.id;
         const clinic = await getClinicByMessengerPageId(page_id);
         if (!clinic) { console.warn('[WARN] No clinic linked to page_id:', page_id); continue; }
-        
-        // ✅ BUILD CONTEXT ONCE from clinic record
+
         const context = buildContext(clinic);
         intentHistoryTimestamps[sender_psid] = Date.now();
-        
+
         try {
           if (webhook_event.message?.text) {
             await handleMessage(sender_psid, webhook_event.message.text.trim(), webhook_event, req, context);
@@ -621,7 +634,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
   if (message === 'CONFIRM_BOOKING') normalizedMsg = 'confirm_booking';
   if (message === 'CANCEL_BOOKING') normalizedMsg = 'cancel_booking';
 
-  // --- For all free-text messages, ask Claude for intent + reply ---
   const isPostback = ['for_me', 'for_someone_else'].includes(message) ||
     message.startsWith('SLOT_') || message.startsWith('slot_');
 
@@ -629,7 +641,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
   if (!isPostback && message !== 'CONFIRM_BOOKING' && message !== 'CANCEL_BOOKING') {
     try {
-      claudeResult = await getClaudeResponse(message, sender_psid, userState.state, context); // ✅ pass context to Claude
+      claudeResult = await getClaudeResponse(message, sender_psid, userState.state, context);
       if (!claudeResult || typeof claudeResult !== 'object') {
         claudeResult = { intent: "unknown", confidence: 0, reply: null };
       }
@@ -846,12 +858,24 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         return;
       }
 
+      // -----------------------------------------------------------------------
+      // AWAITING DATE
+      // Gate order:
+      //   1. Format check
+      //   2. Sunday check
+      //   3. Past date check
+      //   4. Slot availability check  ← catches "no slots" AND "past office hours today"
+      //   5. Double booking check     ← only runs when date is confirmed bookable
+      //   6. Collect name/phone       ← only if patient is unknown
+      // -----------------------------------------------------------------------
       case "awaiting_date": {
         if (topIntent === 'cancel_flow') {
           if (aiReply) await sendMessage(sender_psid, aiReply, context);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
+
+        // Gate 1: format
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!dateRegex.test(message.trim())) {
           const looksLikeDateAttempt = /\d/.test(message.trim());
@@ -863,44 +887,62 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           }
           return;
         }
+
+        // Gate 2: Sunday
         if (!isClinicOpen(message.trim())) {
           await sendMessage(sender_psid, "Pasensya na po, sarado kami tuwing Linggo! 😊 Pwede po kayong pumili ng ibang araw — Lunes hanggang Sabado lang po kami bukas.", context);
           return;
         }
+
+        // Gate 3: past date
         const today = new Date(); today.setHours(0, 0, 0, 0);
         if (new Date(message.trim()) < today) {
           await sendMessage(sender_psid, "Ay, nakaraan na po ang petsang iyon! 😅 Paki-type ng petsa na hindi pa nakaraan po.", context);
           return;
         }
+
+        // Save date
         userState.data.date = message.trim();
+
+        // Gate 4: slot availability — covers full days AND today-past-office-hours
+        const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
+        userState.data.slots = slots;
+        userState.data.activeDentists = activeDentists;
+
+        if (!activeDentists.length) {
+          await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist ngayon. Pakisubukan mamaya. 😊", context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        if (slots.length === 0) {
+          await sendMessage(sender_psid, "Pasensya na po, wala nang available na slots para sa araw na iyon. 😔 Pwede po kayong pumili ng ibang petsa?", context);
+          // Stay in awaiting_date so they can immediately type a new date
+          userState.data = {};
+          return;
+        }
+
+        // Gate 5: double booking check (requires known patient)
         const patient = await findPatientByMessengerId(sender_psid, context);
+
         if (patient) {
+          // Known patient
           const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
           if (doubleBooked) {
+            // Has conflict — ask for whom BEFORE collecting any more info
+            userState.data.booking_for = null;
             userState.state = "awaiting_for_whom";
             await sendMessage(sender_psid, "Mukhang may appointment na kayo sa petsang iyon! 😊 Para kanino po ito — para sa inyo o para sa ibang tao?", context);
             await sendAppointmentForButtonTemplate(sender_psid, context.pageAccessToken);
             return;
           }
+          // No conflict — go straight to slots, no questions needed
           userState.data.booking_for = "me";
           userState.data.patient_id = patient.id;
           userState.state = "awaiting_slot";
-          const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
-          userState.data.slots = slots;
-          userState.data.activeDentists = activeDentists;
-          if (!activeDentists.length) {
-            await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist ngayon. Pakisubukan mamaya. 😊", context);
-            userStates[sender_psid] = { state: "default", data: {} };
-            return;
-          }
-          if (slots.length === 0) {
-            await sendMessage(sender_psid, "Pasensya na po, puno na ang slots para sa araw na iyon. 😔 Pwede po kayong pumili ng ibang petsa?", context);
-            userStates[sender_psid] = { state: "default", data: {} };
-            return;
-          }
-          await sendMessage(sender_psid, "Narito po ang mga available na time slots para sa " + userState.data.date + ". Pumili lang po kayo! 😊", context);
+          await sendMessage(sender_psid, `Narito po ang mga available na time slots para sa ${userState.data.date}. Pumili lang po kayo! 😊`, context);
           await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, context.pageAccessToken);
         } else {
+          // Unknown patient — must collect name/phone first, then check double booking
           userState.data.booking_for = "me";
           userState.state = "awaiting_my_name";
           await sendMessage(sender_psid, "Paki-type lang po ang inyong buong pangalan para sa appointment. 😊", context);
@@ -931,9 +973,9 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           'no contact', 'none', 'nothing', 'di ko alam', 'hindi ko alam', 'not sure',
           'di ko sure', 'wag na', 'skip', 'priv', 'private'];
         const msgLower = message.toLowerCase().trim();
-        const isSkip = skipPhrases.some(p => msgLower.includes(p)) || 
-                       normalize(message) === 'skip' ||
-                       topIntent === 'no';
+        const isSkip = skipPhrases.some(p => msgLower.includes(p)) ||
+          normalize(message) === 'skip' ||
+          topIntent === 'no';
         if (!isSkip) {
           phone = message.trim();
           if (!/^\d{10,}$/.test(phone)) {
@@ -942,8 +984,27 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           }
         }
         userState.data.patient_phone = phone;
+
         const patient = await findPatientByNameAndPhone(userState.data.patient_name, phone, context);
+
         if (patient) {
+          // Found existing record — check double booking BEFORE linking
+          const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
+          if (doubleBooked) {
+            // ✅ FIX: Same behaviour as known patient — offer "For Someone Else" instead of dead end
+            userState.data.found_patient_id = patient.id;
+            userState.data.found_patient_name = patient.name;
+            userState.data.found_patient_phone = patient.phone;
+            userState.state = "awaiting_for_whom";
+            await sendMessage(
+              sender_psid,
+              `Mukhang may appointment na si ${patient.name} sa petsang iyon! 😊 Para kanino po ito — para sa inyo o para sa ibang tao?`,
+              context
+            );
+            await sendAppointmentForButtonTemplate(sender_psid, context.pageAccessToken);
+            return;
+          }
+          // Not double booked — show confirm match as before
           userState.data.found_patient_id = patient.id;
           userState.data.found_patient_name = patient.name;
           userState.data.found_patient_phone = patient.phone;
@@ -953,24 +1014,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           msg += "\nKayo po ba ito? I-reply ng YES para i-link ang inyong Messenger, o NO para gumawa ng bagong record. 😊";
           await sendMessage(sender_psid, msg, context);
         } else {
+          // No existing record — proceed to slot selection (slots already checked in awaiting_date)
           userState.data.patient_id = null;
           userState.state = "awaiting_slot";
-          const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
-          userState.data.slots = slots;
-          userState.data.activeDentists = activeDentists;
-          if (!activeDentists.length) {
-            await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", context);
-            userStates[sender_psid] = { state: "default", data: {} };
-            return;
-          }
-          if (slots.length === 0) {
-            await sendMessage(sender_psid, "Pasensya na po, puno na ang slots para sa araw na iyon. Pumili po ng ibang petsa. 😊", context);
-            userStates[sender_psid].state = "awaiting_date";
-            userStates[sender_psid].data = {};
-          } else {
-            await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
-            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, context.pageAccessToken);
-          }
+          await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
         }
         return;
       }
@@ -981,41 +1029,15 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
             .eq('id', userState.data.found_patient_id).eq('clinic_id', context.clinicId);
           userState.data.patient_id = userState.data.found_patient_id;
           userState.state = "awaiting_slot";
-          const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
-          userState.data.slots = slots;
-          userState.data.activeDentists = activeDentists;
-          if (!activeDentists.length) {
-            await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", context);
-            userStates[sender_psid] = { state: "default", data: {} };
-            return;
-          }
-          if (slots.length === 0) {
-            await sendMessage(sender_psid, "Puno na po ang slots para sa araw na iyon. Pumili po ng ibang petsa. 😊", context);
-            userStates[sender_psid].state = "awaiting_date";
-            userStates[sender_psid].data = {};
-          } else {
-            await sendMessage(sender_psid, "Na-link na po kayo! Narito ang mga available na slots. Pumili lang po! 😊", context);
-            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, context.pageAccessToken);
-          }
+          // Slots already fetched and cached — use them directly
+          await sendMessage(sender_psid, "Na-link na po kayo! Narito ang mga available na slots. Pumili lang po! 😊", context);
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
         } else if (topIntent === 'no') {
           userState.data.patient_id = null;
           userState.state = "awaiting_slot";
-          const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
-          userState.data.slots = slots;
-          userState.data.activeDentists = activeDentists;
-          if (!activeDentists.length) {
-            await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", context);
-            userStates[sender_psid] = { state: "default", data: {} };
-            return;
-          }
-          if (slots.length === 0) {
-            await sendMessage(sender_psid, "Puno na po ang slots para sa araw na iyon. Pumili po ng ibang petsa. 😊", context);
-            userStates[sender_psid].state = "awaiting_date";
-            userStates[sender_psid].data = {};
-          } else {
-            await sendMessage(sender_psid, "Sige po! Gawa na kami ng bagong record para sa inyo. Narito ang mga available na slots! 😊", context);
-            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, context.pageAccessToken);
-          }
+          // Slots already fetched and cached — use them directly
+          await sendMessage(sender_psid, "Sige po! Gawa na kami ng bagong record para sa inyo. Narito ang mga available na slots! 😊", context);
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
         } else {
           await sendMessage(sender_psid, "I-reply lang po ng YES o NO. 😊", context);
         }
@@ -1024,6 +1046,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
       case "awaiting_for_whom": {
         if (normalizedMsg === "1" || normalizedMsg === "for me" || normalizedMsg === "for_me") {
+          // Patient wants it for themselves but is already double booked — pick another date
           await sendMessage(sender_psid, "Mayroon na po kayong appointment sa petsang iyon. Paki-type ng ibang petsa (YYYY-MM-DD). 😊", context);
           userStates[sender_psid].state = "awaiting_date";
           userStates[sender_psid].data = {};
@@ -1062,9 +1085,9 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           'no contact', 'none', 'nothing', 'di ko alam', 'hindi ko alam', 'not sure',
           'di ko sure', 'wag na', 'skip', 'priv', 'private'];
         const msgLowerP = message.toLowerCase().trim();
-        const isSkipP = skipPhrasesP.some(p => msgLowerP.includes(p)) || 
-                        normalize(message) === 'skip' ||
-                        topIntent === 'no';
+        const isSkipP = skipPhrasesP.some(p => msgLowerP.includes(p)) ||
+          normalize(message) === 'skip' ||
+          topIntent === 'no';
         if (!isSkipP) {
           phone = message.trim();
           if (!/^\d{10,}$/.test(phone)) {
@@ -1073,11 +1096,13 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           }
         }
         userState.data.patient_phone = phone;
+
         const patient = await findPatientByNameAndPhone(userState.data.patient_name, phone, context);
         if (patient) {
+          // Check double booking for the other person on this date
           const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
           if (doubleBooked) {
-            await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.patient_name} sa ${userState.data.date}. Paki-type ng ibang petsa. 😊`, context);
+            await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.patient_name} sa ${userState.data.date}. 😔 Paki-type ng ibang petsa (YYYY-MM-DD).`, context);
             userStates[sender_psid].state = "awaiting_date";
             userStates[sender_psid].data = {};
             return;
@@ -1086,23 +1111,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         } else {
           userState.data.patient_id = null;
         }
+
+        // Slots already fetched and cached in awaiting_date — use them directly
         userState.state = "awaiting_slot";
-        const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
-        userState.data.slots = slots;
-        userState.data.activeDentists = activeDentists;
-        if (!activeDentists.length) {
-          await sendMessage(sender_psid, "Pasensya na po, wala pong available na dentist. Pakisubukan mamaya. 😊", context);
-          userStates[sender_psid] = { state: "default", data: {} };
-          return;
-        }
-        if (slots.length === 0) {
-          await sendMessage(sender_psid, "Puno na po ang slots para sa araw na iyon. Pumili po ng ibang petsa. 😊", context);
-          userStates[sender_psid].state = "awaiting_date";
-          userStates[sender_psid].data = {};
-        } else {
-          await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
-          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, context.pageAccessToken);
-        }
+        await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
+        await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
         return;
       }
 
@@ -1147,7 +1160,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
       case "confirming": {
         const slot24 = to24HourFormat(userState.data.slot);
-        const offset = getUtcOffset(context.timeZone); // ✅ dynamic offset from context
+        const offset = getUtcOffset(context.timeZone);
         const datetime = `${userState.data.date}T${slot24}:00${offset}`;
         const activeDentists = userState.data.activeDentists;
         let assignedDentist = null;
