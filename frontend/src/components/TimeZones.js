@@ -13,13 +13,15 @@ export const TIME_ZONES = [
   { value: "Asia/Dubai", label: "Asia/Dubai (UAE)" },
   { value: "Asia/Kolkata", label: "Asia/Kolkata (India)" },
   { value: "Asia/Shanghai", label: "Asia/Shanghai (China)" },
-
+  // Middle East & South Asia
+  { value: "Asia/Riyadh", label: "Asia/Riyadh (Saudi Arabia)" },
+  { value: "Asia/Karachi", label: "Asia/Karachi (Pakistan)" },
+  { value: "Asia/Dhaka", label: "Asia/Dhaka (Bangladesh)" },
   // Oceania & Pacific
   { value: "Australia/Sydney", label: "Australia/Sydney (Australia)" },
   { value: "Pacific/Midway", label: "Pacific/Midway (UTC-11:00)" },
   { value: "Pacific/Honolulu", label: "Pacific/Honolulu (Hawaii, US)" },
   { value: "Pacific/Auckland", label: "Pacific/Auckland (New Zealand)" },
-
   // Americas
   { value: "America/Adak", label: "America/Adak (Alaska, US)" },
   { value: "America/Anchorage", label: "America/Anchorage (Alaska, US)" },
@@ -27,11 +29,18 @@ export const TIME_ZONES = [
   { value: "America/Denver", label: "America/Denver (Mountain US)" },
   { value: "America/Chicago", label: "America/Chicago (Central US)" },
   { value: "America/New_York", label: "America/New_York (Eastern US)" },
+  { value: "America/Toronto", label: "America/Toronto (Canada)" },
+  { value: "America/Mexico_City", label: "America/Mexico_City (Mexico)" },
   { value: "America/Sao_Paulo", label: "America/Sao_Paulo (Brazil)" },
-
-  // Europe, Africa, Russia
+  { value: "America/Buenos_Aires", label: "America/Buenos_Aires (Argentina)" },
+  // Europe
   { value: "Europe/London", label: "Europe/London (UK)" },
   { value: "Europe/Berlin", label: "Europe/Berlin (Germany)" },
-  { value: "Europe/Moscow", label: "Europe/Moscow (Russia)" }
-  // ...add more regions as needed!
+  { value: "Europe/Paris", label: "Europe/Paris (France)" },
+  { value: "Europe/Istanbul", label: "Europe/Istanbul (Turkey)" },
+  { value: "Europe/Moscow", label: "Europe/Moscow (Russia)" },
+  // Africa
+  { value: "Africa/Cairo", label: "Africa/Cairo (Egypt)" },
+  { value: "Africa/Nairobi", label: "Africa/Nairobi (Kenya)" },
+  { value: "Africa/Lagos", label: "Africa/Lagos (Nigeria)" },
 ];
