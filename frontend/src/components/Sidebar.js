@@ -10,8 +10,8 @@ import './Sidebar.css';
 const navItems = [
   { key: 'dashboard', label: 'Calendar View', icon: <VscCalendar /> },        // NEW dashboard tab!
   { key: 'appointments', label: 'Appointments', icon: <FiGrid /> },
-  { key: 'dentists', label: 'Dentists', icon: <FiUserPlus /> },
   { key: 'patients', label: 'Patients', icon: <FiUsers /> },
+  { key: 'dentists', label: 'Dentists', icon: <FiUserPlus /> },
   { key: 'bills', label: 'Billing System', icon: <FiCreditCard /> },
   { key: 'procedures', label: 'Procedures', icon: <FiClipboard /> },
   { key: 'clinicconfig', label: 'Clinic Config', icon: <FiSettings /> },
