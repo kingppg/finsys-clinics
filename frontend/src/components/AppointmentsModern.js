@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import AppointmentsTable from './AppointmentsTable';
 import AppointmentForm from './AppointmentForm';
 import AppointmentReminderControl from './AppointmentReminderControl';
+import { useClinic } from './ClinicContext'; // ✅ use context
 
 // Modal that utilizes full viewport width (less the dashboard side nav)
 // No scroll on modal itself; only Sent Reminders Log card should be scrollable
@@ -75,7 +76,11 @@ const Modal = ({ open, onClose, children }) => {
   );
 };
 
-function AppointmentsModern({ clinicId }) { // <-- Accept clinicId as prop
+function AppointmentsModern() {
+  // ✅ clinicId and clinicTimeZone now come from context — no props needed,
+  //    no local fetch needed. ClinicProvider in Dashboard.js handles it once.
+  const { clinicId, clinicTimeZone } = useClinic();
+
   const [view, setView] = useState('table'); // 'table', 'add', or 'edit'
   const [editAppointment, setEditAppointment] = useState(null);
   const [reminderAppointmentId, setReminderAppointmentId] = useState(null);
@@ -111,20 +116,22 @@ function AppointmentsModern({ clinicId }) { // <-- Accept clinicId as prop
   return (
     <div>
       {view === 'table' && (
-        <AppointmentsTable 
-          onAdd={handleAddClick} 
+        <AppointmentsTable
+          onAdd={handleAddClick}
           onEdit={handleEditClick}
           onReminder={handleReminderClick}
-          clinicId={clinicId} // <-- Pass down clinicId
+          clinicId={clinicId}
+          clinicTimeZone={clinicTimeZone}
         />
       )}
       {(view === 'add' || view === 'edit') && (
         <div>
-          <AppointmentForm 
+          <AppointmentForm
             appointment={editAppointment}
             onClose={handleFormClose}
             onEdit={handleEditClick}
-            clinicId={clinicId} // <-- Pass down clinicId
+            clinicId={clinicId}
+            clinicTimeZone={clinicTimeZone}
           />
         </div>
       )}
@@ -134,7 +141,7 @@ function AppointmentsModern({ clinicId }) { // <-- Accept clinicId as prop
           <AppointmentReminderControl
             appointmentId={reminderAppointmentId}
             patientName={reminderPatientName}
-            clinicId={clinicId} // <-- Pass down clinicId
+            clinicId={clinicId}
           />
         )}
       </Modal>

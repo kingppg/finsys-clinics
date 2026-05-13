@@ -5,7 +5,8 @@ import './AppointmentsModern.css';
 import './MainSection.css';
 import Swal from 'sweetalert2';
 import socket from '../socket';
-// Add this line near the top of your file, after imports:
+import { useClinic } from './ClinicContext'; // ✅ import context hook
+
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 // ================= CONFIG =================
@@ -53,15 +54,15 @@ const StatusUpdateModal = {
         .eq('clinic_id', appointment.clinic_id);
       if (updateError) throw updateError;
 
-const res = await fetch(`${API_BASE}/status-notifications/${appointment.id}`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    status: newStatus,
-    message: customMessage || "",
-    clinic_id: appointment.clinic_id
-  })
-});
+      const res = await fetch(`${API_BASE}/status-notifications/${appointment.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+          message: customMessage || "",
+          clinic_id: appointment.clinic_id
+        })
+      });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Messenger notification failed');
@@ -149,7 +150,12 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
+// ✅ clinicTimeZone removed from props — comes from context now
 function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
+  // ✅ Pull clinicTimeZone from context; clinicId still accepted as prop
+  //    since AppointmentsModern passes it directly for Supabase queries
+  const { clinicTimeZone } = useClinic();
+
   const [appointments, setAppointments] = useState([]);
   const [dentists, setDentists] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -231,14 +237,12 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
         const years = getYearList(appRes.data || []);
         const currentYear = String(new Date().getFullYear());
         if (!selectedYear) {
-          // If current year is in the list, use it; otherwise, use the most recent year
           if (years.includes(Number(currentYear))) {
             setSelectedYear(currentYear);
           } else {
             setSelectedYear(String(Math.max(...years)));
           }
-        } 
-
+        }
         if (!selectedMonth) setSelectedMonth(String(new Date().getMonth() + 1).padStart(2, '0'));
       } catch {
         setDentists([]);
@@ -272,14 +276,14 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
         }));
         setTimeout(() => {
           const row = document.querySelector(`tr[data-appt-id="${id}"]`);
-            if (row) {
-              row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              row.classList.add('row-scroll-focus');
-              if (glowTimers.current[id]) clearTimeout(glowTimers.current[id]);
-              glowTimers.current[id] = setTimeout(() => {
-                row.classList.remove('row-scroll-focus');
-              }, 4000);
-            }
+          if (row) {
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('row-scroll-focus');
+            if (glowTimers.current[id]) clearTimeout(glowTimers.current[id]);
+            glowTimers.current[id] = setTimeout(() => {
+              row.classList.remove('row-scroll-focus');
+            }, 4000);
+          }
         }, 350);
         return;
       }
@@ -314,7 +318,11 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
       toast: true,
       icon: isCancelled ? 'error' : 'info',
       title: `#${appt.id} ${appt.status}`,
-      html: `<small>${new Date(appt.appointment_time).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' })}</small>
+      html: `<small>${new Date(appt.appointment_time).toLocaleTimeString('en-US', {
+        timeZone: clinicTimeZone,
+        hour: '2-digit',
+        minute: '2-digit'
+      })}</small>
              <br/><button id="toast-view-btn" style="margin-top:6px; background:#185abd; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer;">View</button>`,
       position: 'top-end',
       showConfirmButton: false,
@@ -336,7 +344,11 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
     if (Notification.permission !== 'granted') return;
     if (!document.hidden) return;
     const n = new Notification(`Appt #${appt.id} ${appt.status}`, {
-      body: new Date(appt.appointment_time).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' }) + ' • Click to view',
+      body: new Date(appt.appointment_time).toLocaleTimeString('en-US', {
+        timeZone: clinicTimeZone,
+        hour: '2-digit',
+        minute: '2-digit'
+      }) + ' • Click to view',
       tag: `appt-${appt.id}`
     });
     n.onclick = () => {
@@ -346,69 +358,69 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
   };
 
   useEffect(() => {
-  function handleAppointmentUpdated(updatedRow) {
-    if (!updatedRow || String(updatedRow.clinic_id) !== String(clinicId)) return;
-    if (!passesCurrentFilter(updatedRow)) return;
+    function handleAppointmentUpdated(updatedRow) {
+      if (!updatedRow || String(updatedRow.clinic_id) !== String(clinicId)) return;
+      if (!passesCurrentFilter(updatedRow)) return;
 
-    if (collapsedDentists[updatedRow.dentist_id]) {
-      setCollapsedDentists(prev => ({
-        ...prev,
-        [updatedRow.dentist_id]: false
-      }));
-    }
+      if (collapsedDentists[updatedRow.dentist_id]) {
+        setCollapsedDentists(prev => ({
+          ...prev,
+          [updatedRow.dentist_id]: false
+        }));
+      }
 
-    setAppointments(prev => {
-      let found = false;
-      const patched = prev.map(a => {
-        if (a.id === updatedRow.id) {
-          found = true;
-          return { ...a, ...updatedRow };
-        }
-        return a;
+      setAppointments(prev => {
+        let found = false;
+        const patched = prev.map(a => {
+          if (a.id === updatedRow.id) {
+            found = true;
+            return { ...a, ...updatedRow };
+          }
+          return a;
+        });
+        return found ? patched : [...patched, updatedRow];
       });
-      return found ? patched : [...patched, updatedRow];
-    });
 
-    setUnreadUpdates(prev => prev.includes(updatedRow.id) ? prev : [...prev, updatedRow.id]);
+      setUnreadUpdates(prev => prev.includes(updatedRow.id) ? prev : [...prev, updatedRow.id]);
 
-    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    setFlashRow({ id: updatedRow.id, status: updatedRow.status, ts: Date.now() });
-    flashTimerRef.current = setTimeout(() => {
-      setFlashRow(null);
-    }, FLASH_DURATION_MS);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      setFlashRow({ id: updatedRow.id, status: updatedRow.status, ts: Date.now() });
+      flashTimerRef.current = setTimeout(() => {
+        setFlashRow(null);
+      }, FLASH_DURATION_MS);
 
-    playSound();
-    if (!document.hidden) {
-      showUpdateToast(updatedRow);
-    } else {
-      showBrowserNotification(updatedRow);
+      playSound();
+      if (!document.hidden) {
+        showUpdateToast(updatedRow);
+      } else {
+        showBrowserNotification(updatedRow);
+      }
+      fetchPatients();
     }
-    fetchPatients(); // <-- This fixes the patient name display issue for new bookings
-  }
 
-  socket.on('appointment-updated', handleAppointmentUpdated);
+    socket.on('appointment-updated', handleAppointmentUpdated);
 
-  function handleVisibilityChange() {
-    if (!document.hidden && unreadUpdates.length > 0) {
-      unreadUpdates.forEach(id => {
-        const appt = appointments.find(a => a.id === id);
-        if (appt) {
-          setFlashRow({ id, status: appt.status, ts: Date.now() });
-        }
-      });
+    function handleVisibilityChange() {
+      if (!document.hidden && unreadUpdates.length > 0) {
+        unreadUpdates.forEach(id => {
+          const appt = appointments.find(a => a.id === id);
+          if (appt) {
+            setFlashRow({ id, status: appt.status, ts: Date.now() });
+          }
+        });
+      }
     }
-  }
-  document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-  return () => {
-    socket.off('appointment-updated', handleAppointmentUpdated);
-    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
-    Object.values(glowTimers.current).forEach(t => clearTimeout(t));
-    glowTimers.current = {};
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-  };
-// eslint-disable-next-line
-}, [clinicId, viewMode, selectedYear, selectedMonth, selectedWeekIdx, selectedDay, scrollToRow, collapsedDentists, unreadUpdates, appointments]);
+    return () => {
+      socket.off('appointment-updated', handleAppointmentUpdated);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      Object.values(glowTimers.current).forEach(t => clearTimeout(t));
+      glowTimers.current = {};
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+    // eslint-disable-next-line
+  }, [clinicId, viewMode, selectedYear, selectedMonth, selectedWeekIdx, selectedDay, scrollToRow, collapsedDentists, unreadUpdates, appointments]);
 
   function passesCurrentFilter(appt) {
     const d = new Date(appt.appointment_time);
@@ -638,13 +650,19 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
 
   function formatLongDate(date) {
     return new Date(date).toLocaleDateString('en-US', {
-      month: 'long', day: 'numeric', year: 'numeric'
+      timeZone: clinicTimeZone,
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric'
     });
   }
 
   function formatTime(date) {
     return new Date(date).toLocaleTimeString('en-US', {
-      hour: '2-digit', minute: '2-digit', hour12: true
+      timeZone: clinicTimeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
     });
   }
 
@@ -817,18 +835,17 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
     <section className="appointment-modern appointments-sticky-layout" style={{display:'flex', flexDirection:'column', height:'100%', minHeight:'calc(100vh - 16px)'}}>
       <div
         style={{
-        position:'fixed',
-        top:0,
-        left:220,
-        right:0,
-        height:40,
-        background:'#f6f9fc',
-        zIndex: 940,
-        pointerEvents:'none'
-     }}
-/>
+          position:'fixed',
+          top:0,
+          left:220,
+          right:0,
+          height:40,
+          background:'#f6f9fc',
+          zIndex: 940,
+          pointerEvents:'none'
+        }}
+      />
       {/* STICKY HEADER BLOCK */}
-            
       <div className="appointments-sticky-header" style={{
         position:'sticky',
         top:40,

@@ -5,6 +5,18 @@ import './AppointmentsModern.css';
 import './MainSection.css';
 import io from 'socket.io-client';
 import Swal from 'sweetalert2';
+import { useClinic } from './ClinicContext'; // ✅ import context hook
+
+// ─── Timezone utility ─────────────────────────────────────────────────────────
+function getUtcOffset(timeZone) {
+  const now = new Date();
+  const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+  const tzDate = new Date(now.toLocaleString('en-US', { timeZone }));
+  const diff = tzDate - utcDate;
+  const hours = Math.floor(Math.abs(diff) / 3600000).toString().padStart(2, '0');
+  const minutes = ((Math.abs(diff) % 3600000) / 60000).toString().padStart(2, '0');
+  return `${diff >= 0 ? '+' : '-'}${hours}:${minutes}`;
+}
 
 function generateTimeSlots(start = "09:00", end = "18:00", interval = 20) {
   const slots = [];
@@ -291,7 +303,12 @@ function PatientSearchSelect({ patients, selectedPatient, onSelect, onPatientAdd
 
 // ─── Main AppointmentForm ──────────────────────────────────────────────────────
 
+// ✅ clinicTimeZone removed from props — comes from context now
 function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
+  // ✅ Pull clinicTimeZone from context; clinicId still accepted as prop
+  //    since AppointmentsModern passes it directly for Supabase queries
+  const { clinicTimeZone } = useClinic();
+
   const [dentists, setDentists] = useState([]);
   const [patients, setPatients] = useState([]);
   const [selectedDentist, setSelectedDentist] = useState('');
@@ -486,8 +503,11 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
       fetchBookedSlots(); fetchBlockedSlots();
       return;
     }
+
+    // ✅ Build datetime using clinic's timezone offset dynamically
     const dateStr = selectedDate.toLocaleDateString('sv-SE');
-    const datetime = `${dateStr}T${selectedSlot}:00+08:00`;
+    const offset = getUtcOffset(clinicTimeZone);
+    const datetime = `${dateStr}T${selectedSlot}:00${offset}`;
 
     try {
       const { data: patientAppointments } = await supabase
@@ -503,7 +523,11 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
           icon: 'warning', title: 'Double Booking',
           html: `This patient already has another appointment on this date.<br>
             <b>Appointment Details:</b><br>
-            Time: ${new Date(conflictingAppointment.appointment_time).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: '2-digit', minute: '2-digit' })}<br>
+            Time: ${new Date(conflictingAppointment.appointment_time).toLocaleTimeString('en-US', {
+              timeZone: clinicTimeZone,
+              hour: '2-digit',
+              minute: '2-digit'
+            })}<br>
             Dentist: ${dentists.find(d => String(d.id) === String(conflictingAppointment.dentist_id))?.name || conflictingAppointment.dentist_id}<br>
             Reason: ${conflictingAppointment.reason}<br><br>
             Would you like to edit that appointment instead?`,
