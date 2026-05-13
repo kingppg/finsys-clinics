@@ -478,21 +478,29 @@ async function getAvailableSlots(dateStr, context) {
     }
   }
 
-  // For bookings on today: remove past slots
-  const now = new Date();
-  const bookingDate = new Date(dateStr);
+  // For bookings on today: remove past slots (timezone-aware)
+  const timeZone = context.timeZone || 'Asia/Manila';
+
+  // Get current date string in clinic timezone (e.g. "2026-05-13")
+  const todayStrInTZ = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+
   let filteredSlots = availableSlots;
-  if (
-    bookingDate.getFullYear() === now.getFullYear() &&
-    bookingDate.getMonth() === now.getMonth() &&
-    bookingDate.getDate() === now.getDate()
-  ) {
+  if (dateStr === todayStrInTZ) {
+    // Get current time as minutes since midnight IN the clinic's timezone
+    const nowInTZ = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(new Date());
+    const [nowH, nowM] = nowInTZ.split(':').map(Number);
+    const nowMinutes = nowH * 60 + nowM;
+
     filteredSlots = availableSlots.filter(slot => {
       const slot24 = to24HourFormat(slot);
       const [h, m] = slot24.split(':').map(Number);
-      const slotDate = new Date(dateStr);
-      slotDate.setHours(h, m, 0, 0);
-      return slotDate > now;
+      const slotMinutes = h * 60 + m;
+      return slotMinutes > nowMinutes;
     });
   }
 
