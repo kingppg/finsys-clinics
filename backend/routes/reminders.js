@@ -159,6 +159,10 @@ router.post('/:id/send-reminder', async (req, res) => {
     return res.status(400).json({ error: 'No Messenger Page token found for this clinic.' });
   }
 
+  console.log("DEBUG pageToken:", pageToken);
+console.log("DEBUG messenger_id:", messenger_id);
+console.log("DEBUG clinicRow:", clinicRow);
+await sendMessage(messenger_id, reminderText, { pageAccessToken: pageToken });
   // Messenger Send
   try {
     await sendMessage(messenger_id, reminderText, { pageAccessToken: pageToken }); // <-- Pass the token here!
