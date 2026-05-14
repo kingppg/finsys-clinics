@@ -106,7 +106,7 @@ router.post('/:appointmentId', async (req, res) => {
   }
 
   let defaultMessages = {
-    "Checked-In": `Hi ${appt.patient_name}! 😊 You're now checked in at Palo Dentcare. Please have a seat and relax — we'll be with you shortly. Thank you for your patience! 🦷`,
+    "Checked-In": `Hi ${appt.patient_name}! 😊 You're now checked in at PaloDentcare. Please have a seat and relax — we'll be with you shortly. Thank you for your patience! 🦷`,
     Completed: `Hello ${appt.patient_name}, thank you for coming to your appointment!`,
     "No Show": `Hello ${appt.patient_name}, we noticed you missed your appointment. Please contact us to reschedule.`,
     Cancelled: `Hello ${appt.patient_name}, your appointment has been cancelled. Contact us if you'd like to rebook.`,

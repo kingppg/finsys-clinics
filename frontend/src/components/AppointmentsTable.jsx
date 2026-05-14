@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
 import StatusSelect from './StatusSelect';
+import { StatusUpdateModal } from './StatusUpdateModal';
 import './AppointmentsModern.css';
 import './MainSection.css';
 import Swal from 'sweetalert2';
 import socket from '../socket';
-import { useClinic } from './ClinicContext'; // ✅ import context hook
+import { useClinic } from './ClinicContext';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -15,80 +16,6 @@ const TOAST_THROTTLE_MS = 1500;
 const FLASH_DURATION_MS = 60000; // 1 minute
 const SOUND_PATH = process.env.PUBLIC_URL + '/sounds/notify.mp3';
 // ==========================================
-
-const statusMessages = {
-  Completed: "Patient will be notified that their appointment has been marked as completed. You may send a 'thank you' or follow-up message.",
-  "No Show": "Patient will be notified that they missed their appointment. You may send an acknowledgement or reschedule message.",
-  Cancelled: "Patient will be notified that their appointment has been cancelled. You may send a cancellation confirmation message."
-};
-
-const StatusUpdateModal = {
-  async confirmAndUpdate({ appointment, newStatus, onStatusUpdated }) {
-    const patientName = appointment.patient_name || 'Patient';
-    const modalText = statusMessages[newStatus] || "Are you sure you want to update the status?";
-
-    const { value: customMessage, isConfirmed } = await Swal.fire({
-      title: `Mark as "${newStatus}"?`,
-      html: `<b>${patientName}</b><br>${modalText}<br><br>
-        <textarea id="custom-message" class="swal2-textarea" placeholder="Optional: Add a custom message for the patient"></textarea>`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Yes, update & notify patient',
-      cancelButtonText: 'Cancel',
-      reverseButtons: true,
-      focusConfirm: false,
-      preConfirm: () => document.getElementById('custom-message').value,
-      customClass: {
-        confirmButton: 'swal2-confirm-btn',
-        cancelButton: 'swal2-cancel-btn'
-      }
-    });
-
-    if (!isConfirmed) return false;
-
-    try {
-      const { error: updateError } = await supabase
-        .from('appointments')
-        .update({ status: newStatus })
-        .eq('id', appointment.id)
-        .eq('clinic_id', appointment.clinic_id);
-      if (updateError) throw updateError;
-
-      const res = await fetch(`${API_BASE}/status-notifications/${appointment.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: newStatus,
-          message: customMessage || "",
-          clinic_id: appointment.clinic_id
-        })
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Messenger notification failed');
-      }
-
-      onStatusUpdated && onStatusUpdated(newStatus);
-
-      Swal.fire({
-        icon: 'success',
-        title: 'Status updated & patient notified!',
-        timer: 1600,
-        showConfirmButton: false
-      });
-      return true;
-    } catch {
-      Swal.fire({
-        icon: 'error',
-        title: 'Failed!',
-        text: 'There was a problem updating the status or sending the message.',
-        timer: 1800,
-        showConfirmButton: false
-      });
-      return false;
-    }
-  }
-};
 
 function getWeeksOfMonth(year, month) {
   const m = parseInt(month, 10) - 1;
@@ -150,10 +77,7 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-// ✅ clinicTimeZone removed from props — comes from context now
 function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
-  // ✅ Pull clinicTimeZone from context; clinicId still accepted as prop
-  //    since AppointmentsModern passes it directly for Supabase queries
   const { clinicTimeZone } = useClinic();
 
   const [appointments, setAppointments] = useState([]);
@@ -556,7 +480,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
     setStatusLoadingIds(ids => [...ids, id]);
     const appointment = appointments.find(a => a.id === id);
 
-    if (['Completed', 'No Show', 'Cancelled'].includes(newStatus)) {
+    if (['Checked-In', 'Completed', 'No Show', 'Cancelled'].includes(newStatus)) {
       await StatusUpdateModal.confirmAndUpdate({
         appointment: {
           ...appointment,
@@ -685,12 +609,25 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
           onClick={() => handleDelete(appt.id)}
           style={{ cursor: "pointer", marginRight: 16 }}
         />
-        <i
-          className="fa fa-bell icon-action reminder-icon"
-          title="Manage Reminders"
-          onClick={() => onReminder(appt.id, patientName(appt.patient_id))}
-          style={{ cursor: "pointer" }}
-        />
+        {(() => {
+          const hasMessengerId =
+            patients.find(p => String(p.id) === String(appt.patient_id))?.messenger_id
+            || appt.guardian_messenger_id;
+          return hasMessengerId ? (
+            <i
+              className="fa fa-bell icon-action reminder-icon"
+              title="Manage Reminders"
+              onClick={() => onReminder(appt.id, patientName(appt.patient_id))}
+              style={{ cursor: "pointer" }}
+            />
+          ) : (
+            <i
+              className="fa fa-bell icon-action"
+              title="No Messenger ID on file — reminders unavailable"
+              style={{ cursor: "not-allowed", opacity: 0.35, color: '#bbb' }}
+            />
+        );
+      })()}
       </td>
     );
   }

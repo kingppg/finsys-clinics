@@ -1,60 +1,86 @@
 import React from 'react';
 import Select, { components } from 'react-select';
+import { useClinic } from './ClinicContext';
 
 // Status options and color codes
 const statusOptions = [
-  { value: 'Scheduled', label: 'Scheduled', color: '#185abd' },
-  { value: 'Confirmed', label: 'Confirmed', color: '#2bc1ff' },
-  { value: 'Completed', label: 'Completed', color: '#2ecc40' },
-  { value: 'No Show', label: 'No Show', color: '#e74c3c' },
-  { value: 'Cancelled', label: 'Cancelled', color: '#bdc3c7' },
+  { value: 'Scheduled',  label: 'Scheduled',  color: '#185abd' },
+  { value: 'Confirmed',  label: 'Confirmed',  color: '#2bc1ff' },
+  { value: 'Checked-In', label: 'Checked-In', color: '#f59e0b' },
+  { value: 'Completed',  label: 'Completed',  color: '#2ecc40' },
+  { value: 'No Show',    label: 'No Show',    color: '#e74c3c' },
+  { value: 'Cancelled',  label: 'Cancelled',  color: '#bdc3c7' },
 ];
 
-// --- Helper: Status disabling logic based on appointment time ---
-function getOptionDisabled(optionValue, appointmentTime) {
+// --- Helper: Status disabling logic based on appointment time, current status, and clinic timezone ---
+function getOptionDisabled(optionValue, appointmentTime, currentStatus, clinicTimeZone) {
   if (!appointmentTime) return false;
 
   const now = new Date();
   const apptTime = new Date(appointmentTime);
   const msBeforeAppt = apptTime.getTime() - now.getTime();
+  const gracePeriodMs = 60 * 60 * 1000; // 1 hour
 
-  // Grace period: "Cancelled" allowed only until 1 hour before appt
-  const gracePeriodMs = 60 * 60 * 1000;
+  // --- Rules when current status is Checked-In ---
+  // Only Completed or Confirmed (revert) are allowed
+  if (currentStatus === 'Checked-In') {
+    if (optionValue === 'Completed' || optionValue === 'Confirmed') return false;
+    return true; // disable everything else
+  }
 
+  // --- Checked-In: only selectable on the exact appointment date ---
+  if (optionValue === 'Checked-In') {
+    // Get today's date string in clinic timezone
+    const tz = clinicTimeZone || 'Asia/Manila';
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(now);
+
+    // Get appointment date string in clinic timezone
+    const apptStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(apptTime);
+
+    // Only enable if today matches appointment date
+    if (todayStr !== apptStr) return true;
+
+    // Also only allow from Scheduled or Confirmed
+    if (!['Scheduled', 'Confirmed'].includes(currentStatus)) return true;
+
+    return false;
+  }
+
+  // --- Cancelled: allowed only more than 1 hour before appointment ---
   if (optionValue === 'Cancelled') {
-    // More than 1 hour before: enabled
-    // Within 1 hour before: disabled
-    // After appointment: always disabled
-    if (msBeforeAppt <= gracePeriodMs || now > apptTime) {
-      return true;
-    }
+    if (msBeforeAppt <= gracePeriodMs || now > apptTime) return true;
     return false;
   }
 
+  // --- Completed / No Show: only after appointment time ---
   if (optionValue === 'Completed' || optionValue === 'No Show') {
-    // Disabled if appointment is in future, or within 1 hour before
-    // Only enabled after appointment time
-    if (msBeforeAppt > 0) {
-      return true;
-    }
+    if (msBeforeAppt > 0) return true;
     return false;
   }
 
+  // --- Scheduled / Confirmed: only before appointment time ---
   if (optionValue === 'Scheduled' || optionValue === 'Confirmed') {
-    // Disabled if appointment is in past
-    if (now > apptTime) {
-      return true;
-    }
+    if (now > apptTime) return true;
     return false;
   }
 
   return false;
 }
 
-// Custom option renderer to show color badge
+// Custom option renderer
 const Option = (props) => {
-  const { appointmentTime } = props.selectProps;
-  const isOptionDisabled = getOptionDisabled(props.data.value, appointmentTime);
+  const { appointmentTime, currentStatus, clinicTimeZone } = props.selectProps;
+  const isOptionDisabled = getOptionDisabled(props.data.value, appointmentTime, currentStatus, clinicTimeZone);
 
   return (
     <div style={{ opacity: isOptionDisabled ? 0.45 : 1, pointerEvents: isOptionDisabled ? 'none' : undefined }}>
@@ -76,7 +102,7 @@ const Option = (props) => {
   );
 };
 
-// Custom single value renderer to show color badge
+// Custom single value renderer
 const SingleValue = (props) => (
   <components.SingleValue {...props}>
     <span
@@ -99,7 +125,7 @@ const customStyles = {
   control: (provided, state) => ({
     ...provided,
     borderRadius: 12,
-    minWidth: 120,
+    minWidth: 130,
     height: 38,
     fontWeight: 'bold',
     background: '#f7fbff',
@@ -107,14 +133,15 @@ const customStyles = {
     boxShadow: state.isFocused ? '0 0 0 2px #185abd33' : 'none',
   }),
   option: (provided, { data, isFocused, isSelected, selectProps }) => {
-    const isOptionDisabled = getOptionDisabled(data.value, selectProps.appointmentTime);
+    const isOptionDisabled = getOptionDisabled(
+      data.value,
+      selectProps.appointmentTime,
+      selectProps.currentStatus,
+      selectProps.clinicTimeZone
+    );
     return {
       ...provided,
-      backgroundColor: isSelected
-        ? data.color
-        : isFocused
-        ? '#eef6ff'
-        : undefined,
+      backgroundColor: isSelected ? data.color : isFocused ? '#eef6ff' : undefined,
       color: isSelected ? '#fff' : '#185abd',
       fontWeight: isSelected ? 'bold' : 'normal',
       cursor: isOptionDisabled ? 'not-allowed' : 'pointer',
@@ -124,7 +151,7 @@ const customStyles = {
       pointerEvents: isOptionDisabled ? 'none' : undefined,
     };
   },
-  singleValue: (provided, { data }) => ({
+  singleValue: (provided) => ({
     ...provided,
     color: '#185abd',
     fontWeight: 'bold',
@@ -139,11 +166,11 @@ const customStyles = {
 };
 
 function StatusSelect({ value, onChange, isDisabled = false, appointmentTime }) {
+  const { clinicTimeZone } = useClinic();
   const selected = statusOptions.find(opt => opt.value === value);
 
-  // Prevent selecting disabled options
   const handleChange = (opt) => {
-    if (!getOptionDisabled(opt.value, appointmentTime)) {
+    if (!getOptionDisabled(opt.value, appointmentTime, value, clinicTimeZone)) {
       onChange(opt.value);
     }
   };
@@ -161,6 +188,8 @@ function StatusSelect({ value, onChange, isDisabled = false, appointmentTime }) 
       menuPosition="fixed"
       menuPortalTarget={document.body}
       appointmentTime={appointmentTime}
+      currentStatus={value}
+      clinicTimeZone={clinicTimeZone}
       theme={theme => ({
         ...theme,
         borderRadius: 12,
