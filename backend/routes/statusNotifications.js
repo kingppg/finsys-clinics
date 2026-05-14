@@ -112,7 +112,7 @@ router.post('/:appointmentId', async (req, res) => {
 
   // Send Messenger message
   try {
-    const sendResult = await sendMessage(messenger_id, finalMsg, pageToken);
+    const sendResult = await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
     console.log('[status-notifications] sendMessage result:', sendResult);
   } catch (err) {
     console.error("[status-notifications] ❌ Error sending Messenger status notification:", err);
