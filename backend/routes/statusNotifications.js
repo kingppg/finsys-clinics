@@ -67,8 +67,15 @@ router.post('/:appointmentId', async (req, res) => {
 
   if (!messenger_id) {
     // Status is already updated in Supabase by the frontend before calling this endpoint.
-    // Log the missing Messenger ID for audit, but return 200 so the frontend
-    // knows the status save succeeded — only the notification was skipped.
+    // Emit socket so queue display still updates even with no Messenger ID.
+    if (req.io) {
+      req.io.emit('appointment-updated', {
+        ...appt,
+        status,
+        checked_in_at: appt.checked_in_at,
+      });
+    }
+
     const sent_on_date = new Date().toISOString().slice(0, 10);
     try {
       await supabase.from('appointment_reminders').insert({
@@ -139,6 +146,15 @@ router.post('/:appointmentId', async (req, res) => {
     });
   } catch (dbErr) {
     console.error("[status-notifications] Supabase log error after Messenger send:", dbErr);
+  }
+
+  // Emit socket event so queue display updates in real-time
+  if (req.io) {
+    req.io.emit('appointment-updated', {
+      ...appt,
+      status,
+      checked_in_at: appt.checked_in_at,
+    });
   }
 
   res.json({ success: true, sent: true });

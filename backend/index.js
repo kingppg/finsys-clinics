@@ -192,10 +192,6 @@ app.post('/api/keep-alive', (req, res) => {
   res.json({ ok: true });
 });
 
-// Use routers for module routes!
-app.use('/appointments', remindersRouter);
-app.use('/status-notifications', statusNotificationsRouter);
-
 // --- SOCKET.IO SETUP --- //
 const server = http.createServer(app);
 const io = socketio(server, {
@@ -203,17 +199,21 @@ const io = socketio(server, {
     origin: [
       "http://localhost:3000",
       "https://finsys-clinics.vercel.app",
-      "https://finsys-clinics-gq55.vercel.app" // <-- NEW DOMAIN, add this line!
+      "https://finsys-clinics-gq55.vercel.app"
     ],
     methods: ["GET", "POST"]
   }
 });
 
-// Pass io to webhookRouter via req (middleware)
+// Pass io to req BEFORE registering routes that need it
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
+
+// Register routes AFTER req.io is available
+app.use('/appointments', remindersRouter);
+app.use('/status-notifications', statusNotificationsRouter);
 
 // Messenger webhook endpoint
 app.use('/webhook', webhookRouter);
