@@ -1,0 +1,382 @@
+/* ============================================================
+   QueueDisplay.css — Clinic Queue Monitor Display
+   Dark, high-contrast, TV-optimized
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+:root {
+  --bg:           #0a0e1a;
+  --panel:        #111827;
+  --panel-border: #1e293b;
+  --accent:       #00c6ff;
+  --accent-glow:  rgba(0, 198, 255, 0.18);
+  --accent2:      #0072ff;
+  --gold:         #f5c518;
+  --gold-glow:    rgba(245, 197, 24, 0.18);
+  --text-primary: #f0f6ff;
+  --text-muted:   #64748b;
+  --text-dim:     #94a3b8;
+  --green:        #22c55e;
+  --radius:       18px;
+  --radius-sm:    10px;
+}
+
+/* Scoped only to queue display — no global html/body overrides */
+
+/* ── Layout ──────────────────────────────────────────── */
+.qd-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,114,255,0.13) 0%, transparent 70%),
+    var(--bg);
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.qd-root *, .qd-root *::before, .qd-root *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Header ──────────────────────────────────────────── */
+.qd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 48px 18px;
+  border-bottom: 1px solid var(--panel-border);
+  flex-shrink: 0;
+  background: rgba(17, 24, 39, 0.7);
+  backdrop-filter: blur(10px);
+}
+
+.qd-logo-area {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qd-clinic-name {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2.6rem;
+  letter-spacing: 3px;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.qd-subtitle {
+  font-size: 0.78rem;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.qd-clock {
+  text-align: right;
+}
+
+.qd-time {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 3.2rem;
+  letter-spacing: 2px;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.qd-date {
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-align: right;
+  letter-spacing: 1px;
+  margin-top: 2px;
+}
+
+/* ── Main body ───────────────────────────────────────── */
+.qd-body {
+  display: flex;
+  flex: 1;
+  gap: 32px;
+  padding: 32px 48px 24px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Now Serving panel (left) ────────────────────────── */
+.qd-now-serving {
+  flex: 0 0 42%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.qd-section-label {
+  font-size: 0.7rem;
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.qd-serving-card {
+  flex: 1;
+  background: var(--panel);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 32px;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 0 40px var(--accent-glow),
+    inset 0 0 60px rgba(0, 198, 255, 0.04);
+  animation: serving-pulse 3s ease-in-out infinite;
+}
+
+@keyframes serving-pulse {
+  0%, 100% { box-shadow: 0 0 40px var(--accent-glow), inset 0 0 60px rgba(0,198,255,0.04); }
+  50%       { box-shadow: 0 0 70px rgba(0,198,255,0.28), inset 0 0 60px rgba(0,198,255,0.07); }
+}
+
+.qd-serving-card::before {
+  content: '';
+  position: absolute;
+  top: -60px; right: -60px;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0,198,255,0.10) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.qd-queue-badge {
+  background: var(--accent);
+  color: #0a0e1a;
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 3px;
+  padding: 4px 20px;
+  border-radius: 99px;
+  font-weight: 400;
+}
+
+.qd-serving-number {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 9rem;
+  line-height: 1;
+  color: var(--accent);
+  text-shadow: 0 0 40px rgba(0,198,255,0.5);
+  letter-spacing: -2px;
+}
+
+.qd-serving-name {
+  font-size: 2.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: 1px;
+  line-height: 1.1;
+}
+
+.qd-serving-empty {
+  flex: 1;
+  background: var(--panel);
+  border: 1.5px dashed var(--panel-border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.qd-serving-empty-icon {
+  font-size: 3rem;
+  opacity: 0.3;
+}
+
+.qd-serving-empty-text {
+  font-size: 1rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+/* ── Waiting list (right) ────────────────────────────── */
+.qd-waiting {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.qd-waiting-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: none;
+}
+
+.qd-waiting-list::-webkit-scrollbar { display: none; }
+
+.qd-waiting-item {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  padding: 18px 24px;
+  animation: slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.qd-waiting-item:hover {
+  border-color: rgba(0,198,255,0.25);
+  box-shadow: 0 0 16px rgba(0,198,255,0.06);
+}
+
+@keyframes slide-in {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.qd-waiting-num {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  color: var(--text-muted);
+  min-width: 44px;
+  text-align: center;
+  letter-spacing: 1px;
+}
+
+.qd-waiting-name {
+  font-size: 1.35rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+}
+
+.qd-waiting-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  gap: 8px;
+  opacity: 0.5;
+}
+
+/* ── Ticker ──────────────────────────────────────────── */
+.qd-ticker-wrap {
+  flex-shrink: 0;
+  border-top: 1px solid var(--panel-border);
+  background: rgba(17,24,39,0.8);
+  padding: 10px 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.qd-ticker-track {
+  display: inline-flex;
+  gap: 80px;
+  animation: ticker-scroll 28s linear infinite;
+}
+
+.qd-ticker-track:hover { animation-play-state: paused; }
+
+@keyframes ticker-scroll {
+  from { transform: translateX(100vw); }
+  to   { transform: translateX(-100%); }
+}
+
+.qd-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.qd-ticker-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ── Queue count badge ───────────────────────────────── */
+.qd-count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0,198,255,0.1);
+  border: 1px solid rgba(0,198,255,0.2);
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-weight: 600;
+}
+
+/* ── Live dot ────────────────────────────────────────── */
+.qd-live-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+  animation: live-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes live-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+
+/* ── No clinic fallback ──────────────────────────────── */
+.qd-no-clinic {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.qd-no-clinic h2 {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 2rem;
+  letter-spacing: 3px;
+  color: var(--text-dim);
+}
+
+.qd-no-clinic p {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  font-family: monospace;
+}

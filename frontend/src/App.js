@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
 import ResetPasswordPage from './components/ResetPasswordPage';
+import QueueDisplay from './components/QueueDisplay';
 import './App.css';
 import CompleteRegistrationPage from './components/CompleteRegistrationPage';
 
@@ -39,6 +40,12 @@ function AppRoutes({ user, handleLogin, handleLogout }) {
   return (
     <RecoveryRedirector>
       <Routes>
+        {/* ── Public: no auth required ── */}
+        <Route
+          path="/queue-display"
+          element={<QueueDisplay />}
+        />
+
         <Route
           path="/login"
           element={

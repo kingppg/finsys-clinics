@@ -15,12 +15,18 @@ export const StatusUpdateModal = {
 
     // -----------------------------------------------------------------------
     // CHECKED-IN: direct update — no confirmation modal needed
+    // Sets checked_in_at to now for queue ordering.
     // -----------------------------------------------------------------------
     if (newStatus === 'Checked-In') {
       try {
+        const checkedInAt = new Date().toISOString();
+
         const { error: updateError } = await supabase
           .from('appointments')
-          .update({ status: newStatus })
+          .update({
+            status: newStatus,
+            checked_in_at: checkedInAt,
+          })
           .eq('id', appointment.id)
           .eq('clinic_id', appointment.clinic_id);
         if (updateError) throw updateError;
@@ -73,7 +79,8 @@ export const StatusUpdateModal = {
     }
 
     // -----------------------------------------------------------------------
-    // COMPLETED / NO SHOW / CANCELLED: confirmation modal with custom message
+    // COMPLETED / NO SHOW / CANCELLED: confirmation modal with custom message.
+    // Clears checked_in_at so the patient is removed from the queue display.
     // -----------------------------------------------------------------------
     const modalText = statusMessages[newStatus] || "Are you sure you want to update the status?";
 
@@ -99,10 +106,17 @@ export const StatusUpdateModal = {
     if (!isConfirmed) return false;
 
     try {
-      // 1. Update status in Supabase
+      // Build the update payload.
+      // Clear checked_in_at when leaving Checked-In so the queue display removes them.
+      const updatePayload = { status: newStatus };
+      if (appointment.status === 'Checked-In') {
+        updatePayload.checked_in_at = null;
+      }
+
+      // 1. Update status (and optionally checked_in_at) in Supabase
       const { error: updateError } = await supabase
         .from('appointments')
-        .update({ status: newStatus })
+        .update(updatePayload)
         .eq('id', appointment.id)
         .eq('clinic_id', appointment.clinic_id);
       if (updateError) throw updateError;
