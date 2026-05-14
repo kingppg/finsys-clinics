@@ -66,7 +66,9 @@ router.post('/:appointmentId', async (req, res) => {
   console.log('[status-notifications] Messenger ID to notify:', messenger_id);
 
   if (!messenger_id) {
-    // Log the status update even if Messenger ID is missing
+    // Status is already updated in Supabase by the frontend before calling this endpoint.
+    // Log the missing Messenger ID for audit, but return 200 so the frontend
+    // knows the status save succeeded — only the notification was skipped.
     const sent_on_date = new Date().toISOString().slice(0, 10);
     try {
       await supabase.from('appointment_reminders').insert({
@@ -74,7 +76,7 @@ router.post('/:appointmentId', async (req, res) => {
         sent_on: new Date().toISOString(),
         days_ahead: null,
         messenger_id: null,
-        message: `Could not send Messenger notification: No Messenger ID found for patient or guardian.`,
+        message: `Status updated to "${status}" but no Messenger notification was sent — no Messenger ID on file for this patient or guardian.`,
         sent_on_date,
         is_manual: true,
         clinic_id,
@@ -82,8 +84,10 @@ router.post('/:appointmentId', async (req, res) => {
     } catch (dbErr) {
       console.error("[status-notifications] Supabase log error for missing Messenger ID:", dbErr);
     }
-    return res.status(400).json({
-      error: 'No Messenger ID found for patient or guardian. Status update logged but notification was not sent.'
+    return res.status(200).json({
+      success: true,
+      sent: false,
+      warning: 'No Messenger ID on file for this patient or guardian. Status was updated but the patient was not notified.'
     });
   }
 
@@ -102,9 +106,10 @@ router.post('/:appointmentId', async (req, res) => {
   }
 
   let defaultMessages = {
+    "Checked-In": `Hi ${appt.patient_name}! 😊 You're now checked in at Palo Dentcare. Please have a seat and relax — we'll be with you shortly. Thank you for your patience! 🦷`,
     Completed: `Hello ${appt.patient_name}, thank you for coming to your appointment!`,
     "No Show": `Hello ${appt.patient_name}, we noticed you missed your appointment. Please contact us to reschedule.`,
-    Cancelled: `Hello ${appt.patient_name}, your appointment has been cancelled. Contact us if you’d like to rebook.`,
+    Cancelled: `Hello ${appt.patient_name}, your appointment has been cancelled. Contact us if you'd like to rebook.`,
   };
   let finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, your appointment status was updated to "${status}".`;
 
@@ -134,7 +139,6 @@ router.post('/:appointmentId', async (req, res) => {
     });
   } catch (dbErr) {
     console.error("[status-notifications] Supabase log error after Messenger send:", dbErr);
-    // Do NOT send error to client if logging fails
   }
 
   res.json({ success: true, sent: true });
