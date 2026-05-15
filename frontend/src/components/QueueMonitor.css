@@ -309,3 +309,46 @@
   border-radius: 99px;
   border: 1px solid #bfdbfe;
 }
+
+/* ── Stations config bar ─────────────────────────────── */
+.qm-stations-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.qm-stations-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.qm-stations-input {
+  width: 70px;
+  padding: 6px 10px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #185abd;
+  text-align: center;
+  outline: none;
+}
+
+.qm-stations-input:focus {
+  border-color: #185abd;
+  box-shadow: 0 0 0 2px #185abd22;
+}
+
+/* ── Now Serving grid ────────────────────────────────── */
+.qm-serving-row {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}

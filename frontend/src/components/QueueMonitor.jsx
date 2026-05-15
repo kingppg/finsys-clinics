@@ -25,25 +25,33 @@ function firstName(fullName = '') {
 
 function QueueMonitor({ clinicId }) {
   const { clinicName } = useClinic();
-  const [queue, setQueue]       = useState([]);
-  const [patients, setPatients] = useState([]);
+  const [queue, setQueue]           = useState([]);
+  const [patients, setPatients]     = useState([]);
   const [queueToken, setQueueToken] = useState('');
-  const [copied, setCopied]     = useState(false);
-  const [loading, setLoading]   = useState(true);
-  const qrCanvasRef             = useRef(null);
+  const [stations, setStations]     = useState(1);
+  const [stationsInput, setStationsInput] = useState(1);
+  const [savingStations, setSavingStations] = useState(false);
+  const [stationsSaved, setStationsSaved]   = useState(false);
+  const [copied, setCopied]         = useState(false);
+  const [loading, setLoading]       = useState(true);
+  const qrCanvasRef                 = useRef(null);
 
   const queueUrl = queueToken ? `${BASE_URL}/queue-display?token=${queueToken}` : '';
 
-  // ── fetch queue token ──────────────────────────────────────────────────────
+  // ── fetch clinic settings ──────────────────────────────────────────────────
   useEffect(() => {
     if (!clinicId) return;
     supabase
       .from('clinics')
-      .select('queue_token')
+      .select('queue_token, queue_stations')
       .eq('id', clinicId)
       .single()
       .then(({ data }) => {
         if (data?.queue_token) setQueueToken(data.queue_token);
+        if (data?.queue_stations) {
+          setStations(data.queue_stations);
+          setStationsInput(data.queue_stations);
+        }
       });
   }, [clinicId]);
 
@@ -108,14 +116,29 @@ function QueueMonitor({ clinicId }) {
     return () => socket.off('appointment-updated', handleUpdated);
   }, [clinicId, fetchPatients]);
 
+  // ── save stations ──────────────────────────────────────────────────────────
+  const handleSaveStations = async () => {
+    const val = Math.max(1, parseInt(stationsInput, 10) || 1);
+    setSavingStations(true);
+    await supabase
+      .from('clinics')
+      .update({ queue_stations: val })
+      .eq('id', clinicId);
+    setStations(val);
+    setStationsInput(val);
+    setSavingStations(false);
+    setStationsSaved(true);
+    setTimeout(() => setStationsSaved(false), 2000);
+  };
+
   // ── derived ────────────────────────────────────────────────────────────────
   const getPatientFirstName = (patientId) => {
     const p = patients.find(p => String(p.id) === String(patientId));
     return p ? firstName(p.name) : '—';
   };
 
-  const nowServing  = queue.length > 0 ? queue[0] : null;
-  const waitingList = queue.length > 1 ? queue.slice(1) : [];
+  const nowServingList = queue.slice(0, stations);
+  const waitingList    = queue.slice(stations);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(queueUrl).then(() => {
@@ -140,67 +163,85 @@ function QueueMonitor({ clinicId }) {
         </span>
       </div>
 
-      {/* ── COUNT ──────────────────────────────────────────────────────────── */}
-      <div className="qm-count-row">
-        <span className="qm-count-pill">
-          {queue.length} in queue today
+      {/* ── STATIONS CONFIG ────────────────────────────────────────────────── */}
+      <div className="qm-stations-bar">
+        <span className="qm-stations-label">🪑 Active Chairs / Stations:</span>
+        <input
+          type="number"
+          min={1}
+          value={stationsInput}
+          onChange={e => setStationsInput(e.target.value)}
+          className="qm-stations-input"
+        />
+        <button
+          className="qm-btn qm-btn-primary"
+          onClick={handleSaveStations}
+          disabled={savingStations}
+        >
+          {savingStations ? 'Saving…' : 'Save'}
+        </button>
+        {stationsSaved && <span className="qm-copy-feedback">✓ Saved!</span>}
+        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+          (First {stations} checked-in patient{stations !== 1 ? 's' : ''} = Now Serving)
         </span>
       </div>
 
-      {/* ── QUEUE ROW ──────────────────────────────────────────────────────── */}
-      <div className="qm-queue-row">
+      {/* ── COUNT ──────────────────────────────────────────────────────────── */}
+      <div className="qm-count-row">
+        <span className="qm-count-pill">{queue.length} in queue today</span>
+        <span className="qm-count-pill">{nowServingList.length} being served</span>
+        <span className="qm-count-pill">{waitingList.length} waiting</span>
+      </div>
 
-        {/* NOW SERVING */}
-        {loading ? (
-          <div className="qm-serving-empty">
-            <div>Loading…</div>
-          </div>
-        ) : nowServing ? (
-          <div className="qm-serving-card">
-            <div className="qm-serving-label">Now Serving</div>
-            <div className="qm-serving-number">1</div>
-            <div className="qm-serving-name">{getPatientFirstName(nowServing.patient_id)}</div>
-          </div>
-        ) : (
-          <div className="qm-serving-empty">
-            <div style={{ fontSize: '2rem', marginBottom: 8 }}>🪑</div>
-            <div style={{ fontSize: '0.85rem' }}>No one checked in yet</div>
-          </div>
-        )}
+      {/* ── NOW SERVING ────────────────────────────────────────────────────── */}
+      <div className="qm-section-label-top">Now Serving</div>
+      <div className="qm-serving-row" style={{ gridTemplateColumns: `repeat(${Math.min(stations, 4)}, 1fr)` }}>
+        {Array.from({ length: stations }).map((_, idx) => {
+          const appt = nowServingList[idx];
+          return appt ? (
+            <div className="qm-serving-card" key={appt.id}>
+              <div className="qm-serving-label">Station {idx + 1}</div>
+              <div className="qm-serving-number">{idx + 1}</div>
+              <div className="qm-serving-name">{getPatientFirstName(appt.patient_id)}</div>
+            </div>
+          ) : (
+            <div className="qm-serving-empty" key={idx}>
+              <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>🪑</div>
+              <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Station {idx + 1}</div>
+              <div style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>Empty</div>
+            </div>
+          );
+        })}
+      </div>
 
-        {/* WAITING LIST */}
-        <div className="qm-waiting-card">
-          <div className="qm-waiting-title">Waiting</div>
-          <div className="qm-waiting-list">
-            {waitingList.length === 0 ? (
-              <div className="qm-waiting-empty">No one waiting</div>
-            ) : (
-              waitingList.map((appt, idx) => (
-                <div className="qm-waiting-item" key={appt.id}>
-                  <div className="qm-waiting-num">{idx + 2}</div>
-                  <div className="qm-waiting-name">{getPatientFirstName(appt.patient_id)}</div>
-                </div>
-              ))
-            )}
-          </div>
+      {/* ── WAITING LIST ───────────────────────────────────────────────────── */}
+      <div className="qm-waiting-card" style={{ marginBottom: 20 }}>
+        <div className="qm-waiting-title">Waiting</div>
+        <div className="qm-waiting-list">
+          {waitingList.length === 0 ? (
+            <div className="qm-waiting-empty">No one waiting</div>
+          ) : (
+            waitingList.map((appt, idx) => (
+              <div className="qm-waiting-item" key={appt.id}>
+                <div className="qm-waiting-num">{stations + idx + 1}</div>
+                <div className="qm-waiting-name">{getPatientFirstName(appt.patient_id)}</div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
       {/* ── MONITOR SETUP ──────────────────────────────────────────────────── */}
       <div className="qm-setup-card">
-        <div className="qm-setup-title">
-          📺 Display on Monitor
-        </div>
+        <div className="qm-setup-title">📺 Display on Monitor</div>
         <div className="qm-setup-desc">
           Open this URL on a TV or monitor in your waiting area. Bookmark it so you only need to set it up once.
         </div>
-
         <div className="qm-setup-body">
           <div className="qm-setup-left">
             <div className="qm-url-box">
               <span className="qm-url-text">{queueUrl || 'Loading...'}</span>
             </div>
-
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="qm-btn qm-btn-primary" onClick={handleOpenMonitor} disabled={!queueUrl}>
                 🖥️ Open on Monitor
@@ -210,13 +251,10 @@ function QueueMonitor({ clinicId }) {
               </button>
               {copied && <span className="qm-copy-feedback">URL copied to clipboard!</span>}
             </div>
-
             <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 4 }}>
               💡 Tip: Open in a new window, move it to the TV, then press F11 for fullscreen.
             </div>
           </div>
-
-          {/* QR CODE */}
           <div className="qm-qr-wrap">
             <canvas ref={qrCanvasRef} className="qm-qr-box" />
             <div className="qm-qr-label">Scan to open</div>

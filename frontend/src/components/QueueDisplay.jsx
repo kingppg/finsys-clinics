@@ -3,8 +3,6 @@ import { supabase } from '../supabaseClient';
 import socket from '../socket';
 import './QueueDisplay.css';
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-
 function getTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
   return params.get('token');
@@ -43,12 +41,11 @@ const TICKER_ITEMS = [
   'Walk-ins are subject to availability',
 ];
 
-// ─── component ───────────────────────────────────────────────────────────────
-
 function QueueDisplay() {
   const token = getTokenFromUrl();
-  const [clinicId, setClinicId]   = useState(null);
+  const [clinicId, setClinicId]     = useState(null);
   const [clinicName, setClinicName] = useState('');
+  const [stations, setStations]     = useState(1);
   const [queue, setQueue]           = useState([]);
   const [patients, setPatients]     = useState([]);
   const [loading, setLoading]       = useState(true);
@@ -60,15 +57,32 @@ function QueueDisplay() {
     if (!token) { setInvalid(true); setLoading(false); return; }
     supabase
       .from('clinics')
-      .select('id, name')
+      .select('id, name, queue_stations')
       .eq('queue_token', token)
       .single()
       .then(({ data, error }) => {
         if (error || !data) { setInvalid(true); setLoading(false); return; }
         setClinicId(data.id);
         setClinicName(data.name);
+        setStations(data.queue_stations || 1);
       });
   }, [token]);
+
+  // ── poll stations every 30s (so TV reflects changes without refresh) ───────
+  useEffect(() => {
+    if (!clinicId) return;
+    const interval = setInterval(() => {
+      supabase
+        .from('clinics')
+        .select('queue_stations')
+        .eq('id', clinicId)
+        .single()
+        .then(({ data }) => {
+          if (data?.queue_stations) setStations(data.queue_stations);
+        });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [clinicId]);
 
   // ── fetch patients ─────────────────────────────────────────────────────────
   const fetchPatients = useCallback(async () => {
@@ -128,13 +142,12 @@ function QueueDisplay() {
     return p ? firstName(p.name) : '—';
   };
 
-  const nowServing  = queue.length > 0 ? queue[0] : null;
-  const waitingList = queue.length > 1 ? queue.slice(1) : [];
+  const nowServingList = queue.slice(0, stations);
+  const waitingList    = queue.slice(stations);
 
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  // ── invalid token ──────────────────────────────────────────────────────────
   if (invalid) {
     return (
       <div className="qd-no-clinic">
@@ -165,24 +178,39 @@ function QueueDisplay() {
       </header>
 
       <div className="qd-body">
+        {/* NOW SERVING */}
         <div className="qd-now-serving">
           <div className="qd-section-label">Now Serving</div>
+
           {loading ? (
-            <div className="qd-serving-empty"><div className="qd-serving-empty-text">Loading…</div></div>
-          ) : nowServing ? (
-            <div className="qd-serving-card">
-              <div className="qd-queue-badge">Queue No.</div>
-              <div className="qd-serving-number">1</div>
-              <div className="qd-serving-name">{getPatientFirstName(nowServing.patient_id)}</div>
+            <div className="qd-serving-empty">
+              <div className="qd-serving-empty-text">Loading…</div>
             </div>
           ) : (
-            <div className="qd-serving-empty">
-              <div className="qd-serving-empty-icon">🪑</div>
-              <div className="qd-serving-empty-text">No one yet</div>
+            <div
+              className="qd-serving-cards-row"
+              style={{ gridTemplateColumns: `repeat(${Math.min(stations, 4)}, 1fr)` }}
+            >
+              {Array.from({ length: stations }).map((_, idx) => {
+                const appt = nowServingList[idx];
+                return appt ? (
+                  <div className="qd-serving-card" key={appt.id}>
+                    <div className="qd-queue-badge">No. {idx + 1}</div>
+                    <div className="qd-serving-number">{idx + 1}</div>
+                    <div className="qd-serving-name">{getPatientFirstName(appt.patient_id)}</div>
+                  </div>
+                ) : (
+                  <div className="qd-serving-empty" key={idx}>
+                    <div className="qd-serving-empty-icon">🪑</div>
+                    <div className="qd-serving-empty-text">Empty</div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
 
+        {/* WAITING LIST */}
         <div className="qd-waiting">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="qd-section-label">Waiting</div>
@@ -199,9 +227,9 @@ function QueueDisplay() {
                 <div style={{ fontSize: '0.85rem', letterSpacing: 2, textTransform: 'uppercase' }}>No one waiting</div>
               </div>
             ) : (
-              [...waitingList].map((appt, idx) => (
+              waitingList.map((appt, idx) => (
                 <div className="qd-waiting-item" key={appt.id}>
-                  <div className="qd-waiting-num">{idx + 2}</div>
+                  <div className="qd-waiting-num">{stations + idx + 1}</div>
                   <div className="qd-waiting-name">{getPatientFirstName(appt.patient_id)}</div>
                 </div>
               ))

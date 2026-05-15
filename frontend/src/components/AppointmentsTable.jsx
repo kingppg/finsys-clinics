@@ -502,9 +502,19 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
     try {
       await supabase
         .from('appointments')
-        .update({ status: newStatus })
+        .update({ status: newStatus, checked_in_at: null })
         .eq('id', id)
         .eq('clinic_id', appointment?.clinic_id ?? clinicId);
+      await fetch(`${API_BASE}/status-notifications/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+          message: "",
+          clinic_id: appointment?.clinic_id ?? clinicId
+        })
+    });
+
       setAppointments(apps => apps.map(a => a.id === id ? { ...a, status: newStatus } : a));
       Swal.fire({
         icon: 'success',

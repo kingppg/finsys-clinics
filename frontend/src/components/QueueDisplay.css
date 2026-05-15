@@ -24,7 +24,6 @@
 
 /* Scoped only to queue display — no global html/body overrides */
 
-/* ── Layout ──────────────────────────────────────────── */
 .qd-root {
   display: flex;
   flex-direction: column;
@@ -111,10 +110,11 @@
 
 /* ── Now Serving panel (left) ────────────────────────── */
 .qd-now-serving {
-  flex: 0 0 42%;
+  flex: 0 0 55%;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 0;
 }
 
 .qd-section-label {
@@ -126,8 +126,19 @@
   margin-bottom: 4px;
 }
 
-.qd-serving-card {
+/* ── Multiple serving cards grid ─────────────────────── */
+.qd-serving-cards-row {
   flex: 1;
+  display: grid;
+  gap: 16px;
+}
+
+/* Single card — big and bold */
+.qd-serving-cards-row .qd-serving-card:only-child {
+  font-size: inherit;
+}
+
+.qd-serving-card {
   background: var(--panel);
   border: 1.5px solid var(--accent);
   border-radius: var(--radius);
@@ -135,14 +146,15 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 40px 32px;
+  gap: 8px;
+  padding: 24px 16px;
   position: relative;
   overflow: hidden;
   box-shadow:
     0 0 40px var(--accent-glow),
     inset 0 0 60px rgba(0, 198, 255, 0.04);
   animation: serving-pulse 3s ease-in-out infinite;
+  min-height: 0;
 }
 
 @keyframes serving-pulse {
@@ -164,16 +176,15 @@
   background: var(--accent);
   color: #0a0e1a;
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 1.1rem;
+  font-size: 0.9rem;
   letter-spacing: 3px;
-  padding: 4px 20px;
+  padding: 3px 16px;
   border-radius: 99px;
-  font-weight: 400;
 }
 
 .qd-serving-number {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 9rem;
+  font-size: clamp(3rem, 8vw, 9rem);
   line-height: 1;
   color: var(--accent);
   text-shadow: 0 0 40px rgba(0,198,255,0.5);
@@ -181,7 +192,7 @@
 }
 
 .qd-serving-name {
-  font-size: 2.8rem;
+  font-size: clamp(1.2rem, 2.5vw, 2.8rem);
   font-weight: 600;
   color: var(--text-primary);
   text-align: center;
@@ -198,17 +209,18 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   color: var(--text-muted);
+  min-height: 120px;
 }
 
 .qd-serving-empty-icon {
-  font-size: 3rem;
+  font-size: 2rem;
   opacity: 0.3;
 }
 
 .qd-serving-empty-text {
-  font-size: 1rem;
+  font-size: 0.85rem;
   letter-spacing: 2px;
   text-transform: uppercase;
   opacity: 0.5;
@@ -245,12 +257,6 @@
   border-radius: var(--radius-sm);
   padding: 18px 24px;
   animation: slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  transition: border-color 0.3s, box-shadow 0.3s;
-}
-
-.qd-waiting-item:hover {
-  border-color: rgba(0,198,255,0.25);
-  box-shadow: 0 0 16px rgba(0,198,255,0.06);
 }
 
 @keyframes slide-in {
@@ -298,10 +304,8 @@
 .qd-ticker-track {
   display: inline-flex;
   gap: 80px;
-  animation: ticker-scroll 28s linear infinite;
+  animation: ticker-scroll 48s linear infinite;
 }
-
-.qd-ticker-track:hover { animation-play-state: paused; }
 
 @keyframes ticker-scroll {
   from { transform: translateX(100vw); }
@@ -366,6 +370,8 @@
   gap: 16px;
   color: var(--text-muted);
   text-align: center;
+  background: var(--bg);
+  font-family: 'DM Sans', sans-serif;
 }
 
 .qd-no-clinic h2 {
