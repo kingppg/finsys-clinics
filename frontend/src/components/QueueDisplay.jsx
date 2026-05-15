@@ -84,8 +84,6 @@ function QueueDisplay() {
   useEffect(() => { fetchPatients(); }, [fetchPatients]);
 
   // ── fetch today's checked-in appointments ─────────────────────────────────
-  // Fetch all Checked-In for this clinic and filter in JS using UTC date parts.
-  // This avoids timezone mismatch between browser local time and UTC timestamps.
   const fetchQueue = useCallback(async () => {
     if (!clinicId) return;
     const { data, error } = await supabase
@@ -110,7 +108,6 @@ function QueueDisplay() {
       if (String(updatedRow.clinic_id) !== String(clinicId)) return;
 
       if (isTodayCheckedIn(updatedRow)) {
-        // upsert into queue
         setQueue(prev => {
           const exists = prev.some(a => a.id === updatedRow.id);
           const next = exists
@@ -122,14 +119,10 @@ function QueueDisplay() {
         });
         fetchPatients();
       } else {
-        // remove from queue (status changed away from Checked-In)
         setQueue(prev => prev.filter(a => a.id !== updatedRow.id));
       }
     }
 
-    socket.onAny((event, ...args) => {
-        console.log('[QueueDisplay] socket event:', event, args);
-    });
     socket.on('appointment-updated', handleUpdated);
     return () => socket.off('appointment-updated', handleUpdated);
   }, [clinicId, fetchPatients]);
@@ -140,7 +133,6 @@ function QueueDisplay() {
     return p ? firstName(p.name) : '—';
   };
 
-  // Sorted ascending: earliest = queue #1, latest = Now Serving
   const nowServing  = queue.length > 0 ? queue[0] : null;
   const waitingList = queue.length > 1 ? queue.slice(1) : [];
 
