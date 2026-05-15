@@ -108,6 +108,7 @@ function QueueDisplay() {
   // ── socket live updates ────────────────────────────────────────────────────
   useEffect(() => {
     function handleUpdated(updatedRow) {
+      console.log('[QueueDisplay] handleUpdated:', updatedRow.id, updatedRow.status, updatedRow.clinic_id, clinicId);
       if (String(updatedRow.clinic_id) !== String(clinicId)) return;
 
       if (isTodayCheckedIn(updatedRow)) {
