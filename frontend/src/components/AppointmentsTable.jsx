@@ -84,7 +84,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
   const [dentists, setDentists] = useState([]);
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('monthly');
+  const [viewMode, setViewMode] = useState('daily');
   const [selectedYear, setSelectedYear] = useState('');
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedWeekIdx, setSelectedWeekIdx] = useState(0);
