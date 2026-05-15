@@ -5,6 +5,9 @@ import './QueueDisplay.css';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+console.log('[QueueDisplay] socket URL:', socket.io?.uri);
+socket.on('connect', () => console.log('[QueueDisplay] connected', socket.id));
+
 function getClinicIdFromUrl() {
   const params = new URLSearchParams(window.location.search);
   return params.get('clinic_id');
