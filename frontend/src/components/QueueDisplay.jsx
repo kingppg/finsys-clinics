@@ -5,14 +5,11 @@ import './QueueDisplay.css';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-
-function getClinicIdFromUrl() {
+function getTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('clinic_id');
+  return params.get('token');
 }
 
-// Compare using UTC date parts — timestamps stored as UTC in Supabase
-// are correctly matched regardless of the browser's local timezone.
 function isTodayCheckedIn(appt) {
   if (appt.status !== 'Checked-In') return false;
   if (!appt.checked_in_at) return false;
@@ -38,8 +35,6 @@ function useClockTick() {
   return now;
 }
 
-// ─── ticker messages ─────────────────────────────────────────────────────────
-
 const TICKER_ITEMS = [
   'Please wait for your number to be called',
   'Thank you for your patience',
@@ -51,27 +46,31 @@ const TICKER_ITEMS = [
 // ─── component ───────────────────────────────────────────────────────────────
 
 function QueueDisplay() {
-  const clinicId = getClinicIdFromUrl();
+  const token = getTokenFromUrl();
+  const [clinicId, setClinicId]   = useState(null);
   const [clinicName, setClinicName] = useState('');
   const [queue, setQueue]           = useState([]);
   const [patients, setPatients]     = useState([]);
   const [loading, setLoading]       = useState(true);
+  const [invalid, setInvalid]       = useState(false);
   const now                         = useClockTick();
 
-  // ── fetch clinic name ──────────────────────────────────────────────────────
+  // ── resolve token → clinic ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!clinicId) return;
+    if (!token) { setInvalid(true); setLoading(false); return; }
     supabase
       .from('clinics')
-      .select('name')
-      .eq('id', clinicId)
+      .select('id, name')
+      .eq('queue_token', token)
       .single()
-      .then(({ data }) => {
-        if (data?.name) setClinicName(data.name);
+      .then(({ data, error }) => {
+        if (error || !data) { setInvalid(true); setLoading(false); return; }
+        setClinicId(data.id);
+        setClinicName(data.name);
       });
-  }, [clinicId]);
+  }, [token]);
 
-  // ── fetch patients (for name lookup) ──────────────────────────────────────
+  // ── fetch patients ─────────────────────────────────────────────────────────
   const fetchPatients = useCallback(async () => {
     if (!clinicId) return;
     const { data } = await supabase
@@ -84,7 +83,7 @@ function QueueDisplay() {
 
   useEffect(() => { fetchPatients(); }, [fetchPatients]);
 
-  // ── fetch today's checked-in appointments ─────────────────────────────────
+  // ── fetch queue ────────────────────────────────────────────────────────────
   const fetchQueue = useCallback(async () => {
     if (!clinicId) return;
     const { data, error } = await supabase
@@ -95,35 +94,30 @@ function QueueDisplay() {
       .eq('status', 'Checked-In')
       .order('checked_in_at', { ascending: true });
 
-    if (!error && data) {
-      setQueue(data.filter(isTodayCheckedIn));
-    }
+    if (!error && data) setQueue(data.filter(isTodayCheckedIn));
     setLoading(false);
   }, [clinicId]);
 
   useEffect(() => { fetchQueue(); }, [fetchQueue]);
 
-  // ── socket live updates ────────────────────────────────────────────────────
+  // ── socket ─────────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!clinicId) return;
     function handleUpdated(updatedRow) {
       if (String(updatedRow.clinic_id) !== String(clinicId)) return;
-
       if (isTodayCheckedIn(updatedRow)) {
         setQueue(prev => {
           const exists = prev.some(a => a.id === updatedRow.id);
           const next = exists
             ? prev.map(a => a.id === updatedRow.id ? { ...a, ...updatedRow } : a)
             : [...prev, updatedRow];
-          return [...next].sort(
-            (a, b) => new Date(a.checked_in_at) - new Date(b.checked_in_at)
-          );
+          return [...next].sort((a, b) => new Date(a.checked_in_at) - new Date(b.checked_in_at));
         });
         fetchPatients();
       } else {
         setQueue(prev => prev.filter(a => a.id !== updatedRow.id));
       }
     }
-
     socket.on('appointment-updated', handleUpdated);
     return () => socket.off('appointment-updated', handleUpdated);
   }, [clinicId, fetchPatients]);
@@ -137,68 +131,49 @@ function QueueDisplay() {
   const nowServing  = queue.length > 0 ? queue[0] : null;
   const waitingList = queue.length > 1 ? queue.slice(1) : [];
 
-  // ── clock ──────────────────────────────────────────────────────────────────
-  const timeStr = now.toLocaleTimeString('en-US', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-  });
-  const dateStr = now.toLocaleDateString('en-US', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-  });
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  // ── no clinic_id guard ─────────────────────────────────────────────────────
-  if (!clinicId) {
+  // ── invalid token ──────────────────────────────────────────────────────────
+  if (invalid) {
     return (
       <div className="qd-no-clinic">
         <h2>Queue Display</h2>
-        <p>Missing <code>?clinic_id=</code> in the URL.</p>
-        <p style={{ fontSize: '0.8rem' }}>
-          Example: <code>/queue-display?clinic_id=1</code>
-        </p>
+        <p>Invalid or missing token.</p>
+        <p style={{ fontSize: '0.8rem' }}>Please use the URL provided by your clinic dashboard.</p>
       </div>
     );
   }
 
   return (
     <div className="qd-root">
-
-      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
       <header className="qd-header">
         <div className="qd-logo-area">
           <div className="qd-clinic-name">{clinicName || 'Clinic'}</div>
           <div className="qd-subtitle">Patient Queue</div>
         </div>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span className="qd-count-pill">
             <span className="qd-live-dot" />
             {queue.length} in queue
           </span>
         </div>
-
         <div className="qd-clock">
           <div className="qd-time">{timeStr}</div>
           <div className="qd-date">{dateStr}</div>
         </div>
       </header>
 
-      {/* ── BODY ───────────────────────────────────────────────────────────── */}
       <div className="qd-body">
-
-        {/* NOW SERVING */}
         <div className="qd-now-serving">
           <div className="qd-section-label">Now Serving</div>
-
           {loading ? (
-            <div className="qd-serving-empty">
-              <div className="qd-serving-empty-text">Loading…</div>
-            </div>
+            <div className="qd-serving-empty"><div className="qd-serving-empty-text">Loading…</div></div>
           ) : nowServing ? (
             <div className="qd-serving-card">
               <div className="qd-queue-badge">Queue No.</div>
               <div className="qd-serving-number">1</div>
-              <div className="qd-serving-name">
-                {getPatientFirstName(nowServing.patient_id)}
-              </div>
+              <div className="qd-serving-name">{getPatientFirstName(nowServing.patient_id)}</div>
             </div>
           ) : (
             <div className="qd-serving-empty">
@@ -208,32 +183,26 @@ function QueueDisplay() {
           )}
         </div>
 
-        {/* WAITING LIST */}
         <div className="qd-waiting">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div className="qd-section-label">Waiting</div>
             {waitingList.length > 0 && (
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', letterSpacing: 1 }}>
-                {waitingList.length} patient{waitingList.length !== 1 ? 's' : ''} ahead
+                {waitingList.length} patient{waitingList.length !== 1 ? 's' : ''} waiting
               </span>
             )}
           </div>
-
           <div className="qd-waiting-list">
             {waitingList.length === 0 ? (
               <div className="qd-waiting-empty">
                 <div style={{ fontSize: '2rem', opacity: 0.3 }}>✓</div>
-                <div style={{ fontSize: '0.85rem', letterSpacing: 2, textTransform: 'uppercase' }}>
-                  No one waiting
-                </div>
+                <div style={{ fontSize: '0.85rem', letterSpacing: 2, textTransform: 'uppercase' }}>No one waiting</div>
               </div>
             ) : (
               [...waitingList].map((appt, idx) => (
                 <div className="qd-waiting-item" key={appt.id}>
                   <div className="qd-waiting-num">{idx + 2}</div>
-                  <div className="qd-waiting-name">
-                    {getPatientFirstName(appt.patient_id)}
-                  </div>
+                  <div className="qd-waiting-name">{getPatientFirstName(appt.patient_id)}</div>
                 </div>
               ))
             )}
@@ -241,7 +210,6 @@ function QueueDisplay() {
         </div>
       </div>
 
-      {/* ── TICKER ─────────────────────────────────────────────────────────── */}
       <div className="qd-ticker-wrap">
         <div className="qd-ticker-track">
           {[...TICKER_ITEMS, ...TICKER_ITEMS].map((item, i) => (
@@ -252,7 +220,6 @@ function QueueDisplay() {
           ))}
         </div>
       </div>
-
     </div>
   );
 }

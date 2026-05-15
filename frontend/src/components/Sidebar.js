@@ -1,22 +1,22 @@
 import React from 'react';
 import {
   FiHome, FiUsers, FiGrid, FiUserPlus, FiCalendar, FiCreditCard, FiLogOut,
-  FiSettings, FiClipboard, FiShield, FiMessageCircle
+  FiSettings, FiClipboard, FiShield, FiMessageCircle, FiMonitor
 } from 'react-icons/fi';
 import { FaTable } from "react-icons/fa";
 import { VscCalendar } from "react-icons/vsc";
 import './Sidebar.css';
 
 const navItems = [
-  { key: 'dashboard', label: 'Calendar View', icon: <VscCalendar /> },        // NEW dashboard tab!
-  { key: 'appointments', label: 'Appointments', icon: <FiGrid /> },
-  { key: 'patients', label: 'Patients', icon: <FiUsers /> },
-  { key: 'dentists', label: 'Dentists', icon: <FiUserPlus /> },
-  { key: 'bills', label: 'Billing System', icon: <FiCreditCard /> },
-  { key: 'procedures', label: 'Procedures', icon: <FiClipboard /> },
-  { key: 'clinicconfig', label: 'Clinic Config', icon: <FiSettings /> },
-//  { key: 'usersroles', label: 'Users & Roles', icon: <FiShield /> }, MOVED TO ConfigClinic tab
-  { key: 'chat', label: 'Chat', icon: <FiMessageCircle /> },
+  { key: 'dashboard',   label: 'Calendar View',  icon: <VscCalendar /> },
+  { key: 'appointments',label: 'Appointments',    icon: <FiGrid /> },
+  { key: 'queue',       label: 'Queue Monitor',   icon: <FiMonitor /> },
+  { key: 'patients',    label: 'Patients',         icon: <FiUsers /> },
+  { key: 'dentists',    label: 'Dentists',         icon: <FiUserPlus /> },
+  { key: 'bills',       label: 'Billing System',   icon: <FiCreditCard /> },
+  { key: 'procedures',  label: 'Procedures',       icon: <FiClipboard /> },
+  { key: 'clinicconfig',label: 'Clinic Config',    icon: <FiSettings /> },
+  { key: 'chat',        label: 'Chat',             icon: <FiMessageCircle /> },
 ];
 
 function Sidebar({ active, onSelect, user, onLogout, allowedTabs, clinicName }) {

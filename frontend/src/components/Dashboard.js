@@ -9,13 +9,15 @@ import ClinicProcedureManager from './ClinicProcedureManager';
 import AdminUsersRoles from './AdminUsersRoles';
 import ChatBox from './chats/ChatBox';
 import ClinicDashboard from './CalendarView';
-import { ClinicProvider } from './ClinicContext'; // ✅ import provider
+import QueueMonitor from './QueueMonitor';
+import { ClinicProvider } from './ClinicContext';
 
 function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [modalContent, setModalContent] = useState(null);
 
-  const allowedTabs = ['dashboard', 'patients', 'appointments', 'bills', 'chat'];
+  const allowedTabs = ['dashboard', 'patients', 'appointments', 'bills', 'chat', 'queue'];
+
   if (user.role === 'superadmin' || user.role === 'admin' || user.role === 'receptionist') {
     allowedTabs.push('dentists');
     allowedTabs.push('procedures');
@@ -28,8 +30,6 @@ function Dashboard({ user, onLogout }) {
   const clinicName = user.clinic_name || "Clinic";
 
   return (
-    // ✅ Wrap entire dashboard with ClinicProvider
-    // clinicId is fetched once here; all children can access clinic data via useClinic()
     <ClinicProvider clinicId={user.clinic_id}>
       <div style={{ display: 'flex', height: '100vh' }}>
         <Sidebar
@@ -62,6 +62,7 @@ function Dashboard({ user, onLogout }) {
           )}
           {activeTab === 'appointments' && <AppointmentsModern clinicId={user.clinic_id} />}
           {activeTab === 'bills' && <BillsPayment clinicId={user.clinic_id} />}
+          {activeTab === 'queue' && <QueueMonitor clinicId={user.clinic_id} />}
           {activeTab === 'clinicconfig' &&
             (user.role === 'superadmin' || user.role === 'admin') && (
             <ClinicConfig
