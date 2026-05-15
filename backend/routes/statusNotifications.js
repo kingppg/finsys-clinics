@@ -55,7 +55,6 @@ router.post('/:appointmentId', async (req, res) => {
 
   // Fetch appointment info
   const appt = await getAppointmentWithPatient(appointmentId, clinic_id);
-  console.log('[status-notifications] Fetched appointment:', appt);
 
   if (!appt) {
     console.error('[status-notifications] Appointment not found');
@@ -63,16 +62,14 @@ router.post('/:appointmentId', async (req, res) => {
   }
 
   let messenger_id = recipient || appt.messenger_id || appt.guardian_messenger_id;
-  console.log('[status-notifications] Messenger ID to notify:', messenger_id);
 
   if (!messenger_id) {
-    // Status is already updated in Supabase by the frontend before calling this endpoint.
-    // Emit socket so queue display still updates even with no Messenger ID.
+    // No Messenger ID — emit socket so queue display still updates, then log and return.
     if (req.io) {
       req.io.emit('appointment-updated', {
         ...appt,
         status,
-        checked_in_at: appt.checked_in_at,
+        checked_in_at: status === 'Checked-In' ? new Date().toISOString() : null,
       });
     }
 
@@ -91,6 +88,7 @@ router.post('/:appointmentId', async (req, res) => {
     } catch (dbErr) {
       console.error("[status-notifications] Supabase log error for missing Messenger ID:", dbErr);
     }
+
     return res.status(200).json({
       success: true,
       sent: false,
@@ -104,7 +102,6 @@ router.post('/:appointmentId', async (req, res) => {
     .select('fb_page_access_token')
     .eq('id', clinic_id)
     .single();
-  console.log('[status-notifications] Clinic row:', clinicRow);
   const pageToken = clinicRow?.fb_page_access_token;
 
   if (clinicError || !pageToken) {
@@ -112,20 +109,17 @@ router.post('/:appointmentId', async (req, res) => {
     return res.status(400).json({ error: 'No Messenger Page token found for this clinic.' });
   }
 
-  let defaultMessages = {
+  const defaultMessages = {
     "Checked-In": `Hi ${appt.patient_name}! 😊 You're now checked in at PaloDentcare. Please have a seat and relax — we'll be with you shortly. Thank you for your patience! 🦷`,
     Completed: `Hello ${appt.patient_name}, thank you for coming to your appointment!`,
     "No Show": `Hello ${appt.patient_name}, we noticed you missed your appointment. Please contact us to reschedule.`,
     Cancelled: `Hello ${appt.patient_name}, your appointment has been cancelled. Contact us if you'd like to rebook.`,
   };
-  let finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, your appointment status was updated to "${status}".`;
-
-  console.log('[status-notifications] Final message:', finalMsg);
+  const finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, your appointment status was updated to "${status}".`;
 
   // Send Messenger message
   try {
-    const sendResult = await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
-    console.log('[status-notifications] sendMessage result:', sendResult);
+    await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
   } catch (err) {
     console.error("[status-notifications] ❌ Error sending Messenger status notification:", err);
     return res.status(500).json({ error: 'Failed to send Messenger notification.' });
@@ -153,7 +147,7 @@ router.post('/:appointmentId', async (req, res) => {
     req.io.emit('appointment-updated', {
       ...appt,
       status,
-      checked_in_at: appt.checked_in_at,
+      checked_in_at: status === 'Checked-In' ? new Date().toISOString() : null,
     });
   }
 
