@@ -49,13 +49,14 @@ function getMonthStatusSummary(grouped) {
   return { total, statusCounts };
 }
 
-function CalendarCell({ dayNum, total, statusCounts, highlight }) {
+function CalendarCell({ dayNum, total, statusCounts, highlight, onClick }) {
   const nonzeroStatusKeys = ALL_STATUSES.filter(
     s => statusCounts[s] && statusCounts[s] > 0
   );
 
   return (
     <div
+      onClick={onClick}
       style={{
         minWidth: 140,
         minHeight: 90,
@@ -63,21 +64,34 @@ function CalendarCell({ dayNum, total, statusCounts, highlight }) {
         borderRadius: 10,
         margin: 2,
         padding: 12,
-        background: highlight 
-          ? "#ecf3fe" 
-          : total > 0 
-            ? "#f7fff9" 
+        background: highlight
+          ? "#ecf3fe"
+          : total > 0
+            ? "#f7fff9"
             : "#fff",
         boxSizing: "border-box",
-        boxShadow: highlight 
-          ? "0 3px 24px #2866ee40" 
-          : total > 0 
-            ? "0 1.5px 8px #2196f317" 
+        boxShadow: highlight
+          ? "0 3px 24px #2866ee40"
+          : total > 0
+            ? "0 1.5px 8px #2196f317"
             : "0 1px 3px #9992",
         display: "flex",
         flexDirection: "column",
         alignItems: "flex-start",
-        transition: "background .18s, box-shadow .18s"
+        transition: "background .18s, box-shadow .18s",
+        cursor: "pointer",
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = highlight ? "#dbeafe" : "#f0f7ff";
+        e.currentTarget.style.boxShadow = "0 4px 16px #185abd33";
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = highlight ? "#ecf3fe" : total > 0 ? "#f7fff9" : "#fff";
+        e.currentTarget.style.boxShadow = highlight
+          ? "0 3px 24px #2866ee40"
+          : total > 0
+            ? "0 1.5px 8px #2196f317"
+            : "0 1px 3px #9992";
       }}
     >
       <div style={{
@@ -87,18 +101,18 @@ function CalendarCell({ dayNum, total, statusCounts, highlight }) {
         justifyContent: "space-between",
         marginBottom: 6,
       }}>
-        <span style={{ 
-          fontWeight: 900, 
-          fontSize: 24, 
-          color: highlight ? "#185abd" : "#333", 
+        <span style={{
+          fontWeight: 900,
+          fontSize: 24,
+          color: highlight ? "#185abd" : "#333",
           lineHeight: 1.05,
           letterSpacing: 1
         }}>{dayNum}</span>
         {total > 0 && (
-          <span style={{ 
-            fontWeight: 800, 
-            fontSize: 18, 
-            background: "#185abd", 
+          <span style={{
+            fontWeight: 800,
+            fontSize: 18,
+            background: "#185abd",
             color: "#fff",
             borderRadius: "50%",
             padding: total > 9 ? "4px 9px" : "4px 12px",
@@ -110,13 +124,13 @@ function CalendarCell({ dayNum, total, statusCounts, highlight }) {
       </div>
       <div style={{ width: "100%" }}>
         {nonzeroStatusKeys.length === 0 ? (
-          <div style={{ color: "#aaa", fontSize: 13, marginTop: 22 }}>No Appointment   </div>
+          <div style={{ color: "#aaa", fontSize: 13, marginTop: 22 }}>No Appointment</div>
         ) : (
           nonzeroStatusKeys.map((status) => {
             const s = STATUS_CONFIG[status];
             return (
-              <div 
-                key={status} 
+              <div
+                key={status}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -133,13 +147,13 @@ function CalendarCell({ dayNum, total, statusCounts, highlight }) {
                 }}
                 title={`${s.label}: ${statusCounts[status]} appointment${statusCounts[status] > 1 ? "s" : ""}`}
               >
-                <span style={{display:"flex",alignItems:"center",marginRight:3,fontSize:15}}>
+                <span style={{ display: "flex", alignItems: "center", marginRight: 3, fontSize: 15 }}>
                   {s.icon}
                 </span>
                 <span>{statusCounts[status]}</span>
-                <span style={{fontSize:13,fontWeight:400}}>{s.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 400 }}>{s.label}</span>
               </div>
-            )
+            );
           })
         )}
       </div>
@@ -147,8 +161,7 @@ function CalendarCell({ dayNum, total, statusCounts, highlight }) {
   );
 }
 
-function CalendarWidget({ appointments, month, year, onPrevMonth, onNextMonth }) {
-  // month: 0-based (0=Jan, 11=Dec)
+function CalendarWidget({ appointments, month, year, onPrevMonth, onNextMonth, onDateClick }) {
   const days = getDaysInMonth(year, month);
   const grouped = groupAppointmentsByDay(appointments, year, month);
   const firstDay = getFirstDayOfWeek(year, month);
@@ -186,72 +199,45 @@ function CalendarWidget({ appointments, month, year, onPrevMonth, onNextMonth })
       borderRadius: 22,
       boxShadow: "0 4px 28px #3462db18"
     }}>
-      {/* HEADER: Arrows, month label, summary */}
+      {/* HEADER */}
       <div style={{
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center",
         marginBottom: 13
       }}>
-        {/* LEFT SIDE: Arrows and month label as ONE group */}
-        <span style={{
-          display: "flex",
-          alignItems: "center",
-          minWidth: 300 // fix width for left, always stable
-        }}>
+        <span style={{ display: "flex", alignItems: "center", minWidth: 300 }}>
           <button
             onClick={onPrevMonth}
             style={{
-              marginRight: 10,
-              padding: "2px 13px",
-              fontSize: 19,
-              border: "none",
-              borderRadius: 8,
-              background: "#e2e8f0",
-              color: "#185abd",
-              cursor: "pointer"
+              marginRight: 10, padding: "2px 13px", fontSize: 19,
+              border: "none", borderRadius: 8, background: "#e2e8f0",
+              color: "#185abd", cursor: "pointer"
             }}
             aria-label="Previous Month"
           >{"<"}</button>
           <span style={{
-            fontWeight: 650,
-            fontSize: 23,
-            color: "#2866ee",
-            marginRight: 10,
-            letterSpacing: 1,
-            minWidth: 145,
-            textAlign: "left"
+            fontWeight: 650, fontSize: 23, color: "#2866ee",
+            marginRight: 10, letterSpacing: 1, minWidth: 145, textAlign: "left"
           }}>{monthLabel}</span>
           <button
             onClick={onNextMonth}
             style={{
-              marginLeft: 0,
-              padding: "2px 13px",
-              fontSize: 19,
-              border: "none",
-              borderRadius: 8,
-              background: "#e2e8f0",
-              color: "#185abd",
-              cursor: "pointer"
+              marginLeft: 0, padding: "2px 13px", fontSize: 19,
+              border: "none", borderRadius: 8, background: "#e2e8f0",
+              color: "#185abd", cursor: "pointer"
             }}
             aria-label="Next Month"
           >{">"}</button>
         </span>
         <span style={{
-          minWidth: 240,
-          textAlign: "right",
-          fontWeight: 650,
-          color: "#185abd",
-          fontSize: 17,
+          minWidth: 240, textAlign: "right", fontWeight: 650,
+          color: "#185abd", fontSize: 17,
         }}>
           Total for the month:&nbsp;
           <span style={{
-            background: "#185abd",
-            color: "#fff",
-            borderRadius: 6,
-            padding: "1.5px 13px",
-            fontSize: 17,
-            fontWeight: 900
+            background: "#185abd", color: "#fff", borderRadius: 6,
+            padding: "1.5px 13px", fontSize: 17, fontWeight: 900
           }}>
             {total}
           </span>
@@ -259,23 +245,18 @@ function CalendarWidget({ appointments, month, year, onPrevMonth, onNextMonth })
         </span>
       </div>
 
-      {/* Calendar grid and cells */}
+      {/* Day headers */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(7, 1fr)",
-        gap: 4,
-        marginBottom: 6,
-        color: "#3462db",
-        fontWeight: 600,
-        fontSize: 16
+        display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
+        gap: 4, marginBottom: 6, color: "#3462db", fontWeight: 600, fontSize: 16
       }}>
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => <div key={d} style={{ textAlign: "center" }}>{d}</div>)}
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d =>
+          <div key={d} style={{ textAlign: "center" }}>{d}</div>
+        )}
       </div>
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(7, 1fr)",
-        gap: 4
-      }}>
+
+      {/* Calendar grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
         {blankDays.map((_, i) => <div key={"blank-" + i} />)}
         {days.map(dayNum => {
           const info = grouped[dayNum] || { total: 0, statusCount: {} };
@@ -286,9 +267,15 @@ function CalendarWidget({ appointments, month, year, onPrevMonth, onNextMonth })
               total={info.total}
               statusCounts={info.statusCount}
               highlight={isToday(dayNum)}
+              onClick={() => onDateClick && onDateClick({ year, month, day: dayNum })}
             />
           );
         })}
+      </div>
+
+      {/* Click hint */}
+      <div style={{ textAlign: 'center', marginTop: 10, fontSize: 12, color: '#94a3b8' }}>
+        💡 Click any date to view appointments for that day
       </div>
     </div>
   );

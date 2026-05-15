@@ -76,7 +76,7 @@ const Modal = ({ open, onClose, children }) => {
   );
 };
 
-function AppointmentsModern() {
+function AppointmentsModern({ jumpDate }) {
   // ✅ clinicId and clinicTimeZone now come from context — no props needed,
   //    no local fetch needed. ClinicProvider in Dashboard.js handles it once.
   const { clinicId, clinicTimeZone } = useClinic();
@@ -122,6 +122,7 @@ function AppointmentsModern() {
           onReminder={handleReminderClick}
           clinicId={clinicId}
           clinicTimeZone={clinicTimeZone}
+          jumpDate={jumpDate}
         />
       )}
       {(view === 'add' || view === 'edit') && (

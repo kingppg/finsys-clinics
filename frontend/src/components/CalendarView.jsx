@@ -20,7 +20,7 @@ function dateReducer(state, action) {
   }
 }
 
-function ClinicDashboard({ clinicId, user }) {
+function ClinicDashboard({ clinicId, user, onDateClick }) {
   const [appointments, setAppointments] = useState([]);
   const [date, dispatch] = useReducer(dateReducer, initialDate);
 
@@ -43,15 +43,16 @@ function ClinicDashboard({ clinicId, user }) {
 
   return (
     <div style={{ padding: 12 }}>
-
       <CalendarForCalendarView
         appointments={appointments}
         month={date.month}
         year={date.year}
         onPrevMonth={() => dispatch({ type: 'PREV_MONTH' })}
         onNextMonth={() => dispatch({ type: 'NEXT_MONTH' })}
+        onDateClick={onDateClick}
       />
     </div>
   );
 }
+
 export default ClinicDashboard;

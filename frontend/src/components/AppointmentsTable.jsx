@@ -77,7 +77,7 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
+function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
   const { clinicTimeZone } = useClinic();
 
   const [appointments, setAppointments] = useState([]);
@@ -118,6 +118,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
   }, [appointments.length, viewMode, selectedDentist]);
 
   useEffect(() => {
+    if (jumpDate) return;
     const now = new Date();
     const currentYear = String(now.getFullYear());
     const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
@@ -144,7 +145,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
       setSelectedWeekIdx(0);
       setSelectedDay('');
     }
-  }, [viewMode]);
+  }, [viewMode, jumpDate]);
 
   useEffect(() => {
     const preload = async () => {
@@ -160,14 +161,14 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
         setAppointments(appRes.data || []);
         const years = getYearList(appRes.data || []);
         const currentYear = String(new Date().getFullYear());
-        if (!selectedYear) {
+        if (!selectedYear && !jumpDate) {
           if (years.includes(Number(currentYear))) {
             setSelectedYear(currentYear);
           } else {
             setSelectedYear(String(Math.max(...years)));
           }
         }
-        if (!selectedMonth) setSelectedMonth(String(new Date().getMonth() + 1).padStart(2, '0'));
+
       } catch {
         setDentists([]);
         setPatients([]);
@@ -345,6 +346,16 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId }) {
     };
     // eslint-disable-next-line
   }, [clinicId, viewMode, selectedYear, selectedMonth, selectedWeekIdx, selectedDay, scrollToRow, collapsedDentists, unreadUpdates, appointments]);
+
+  useEffect(() => {
+    if (!jumpDate) return;
+    setSelectedYear(String(jumpDate.year));
+    setSelectedMonth(String(jumpDate.month + 1).padStart(2, '0'));
+    setSelectedDay(String(jumpDate.day));
+  }, [jumpDate]);
+
+  useEffect(() => {
+  }, [selectedMonth]);
 
   function passesCurrentFilter(appt) {
     const d = new Date(appt.appointment_time);

@@ -15,6 +15,7 @@ import { ClinicProvider } from './ClinicContext';
 function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [modalContent, setModalContent] = useState(null);
+  const [calendarJumpDate, setCalendarJumpDate] = useState(null);
 
   const allowedTabs = ['dashboard', 'patients', 'appointments', 'bills', 'chat', 'queue'];
 
@@ -29,12 +30,24 @@ function Dashboard({ user, onLogout }) {
 
   const clinicName = user.clinic_name || "Clinic";
 
+  // Called when user clicks a date on the calendar
+  function handleCalendarDateClick({ year, month, day }) {
+    setCalendarJumpDate({ year, month, day });
+    setActiveTab('appointments');
+  }
+
+  // Called when user clicks any sidebar tab
+  function handleTabSelect(tab) {
+    if (tab === 'appointments') setCalendarJumpDate(null);
+    setActiveTab(tab);
+  }
+
   return (
     <ClinicProvider clinicId={user.clinic_id}>
       <div style={{ display: 'flex', height: '100vh' }}>
         <Sidebar
           active={activeTab}
-          onSelect={setActiveTab}
+          onSelect={handleTabSelect}
           allowedTabs={allowedTabs}
           user={user}
           onLogout={onLogout}
@@ -51,7 +64,11 @@ function Dashboard({ user, onLogout }) {
           }}
         >
           {activeTab === 'dashboard' && (
-            <ClinicDashboard clinicId={user.clinic_id} user={user} />
+            <ClinicDashboard
+              clinicId={user.clinic_id}
+              user={user}
+              onDateClick={handleCalendarDateClick}
+            />
           )}
           {activeTab === 'patients' && (
             <Patients setModalContent={setModalContent} clinicId={user.clinic_id} />
@@ -60,7 +77,12 @@ function Dashboard({ user, onLogout }) {
             (user.role === 'superadmin' || user.role === 'admin' || user.role === 'receptionist') && (
             <Dentists clinicId={user.clinic_id} />
           )}
-          {activeTab === 'appointments' && <AppointmentsModern clinicId={user.clinic_id} />}
+          {activeTab === 'appointments' && (
+            <AppointmentsModern
+              clinicId={user.clinic_id}
+              jumpDate={calendarJumpDate}
+            />
+          )}
           {activeTab === 'bills' && <BillsPayment clinicId={user.clinic_id} />}
           {activeTab === 'queue' && <QueueMonitor clinicId={user.clinic_id} />}
           {activeTab === 'clinicconfig' &&
