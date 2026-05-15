@@ -105,6 +105,8 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
   const [collapsedDentists, setCollapsedDentists] = useState({});
   const [summaryPulse, setSummaryPulse] = useState(false);
 
+  const isInitialized = useRef(false);
+
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(()=>{});
@@ -145,6 +147,9 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
       setSelectedWeekIdx(0);
       setSelectedDay('');
     }
+
+    // Mark as initialized after setting all values
+    isInitialized.current = true;
   }, [viewMode, jumpDate]);
 
   useEffect(() => {
@@ -158,7 +163,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
         ]);
         setDentists(denRes.data || []);
         setPatients(patRes.data || []);
-        setAppointments(appRes.data || []);
+        
         const years = getYearList(appRes.data || []);
         const currentYear = String(new Date().getFullYear());
         if (!selectedYear && !jumpDate) {
@@ -174,7 +179,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
         setPatients([]);
         setAppointments([]);
       }
-      setLoading(false);
+      
     };
     if (clinicId) preload();
     // eslint-disable-next-line
@@ -352,6 +357,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
     setSelectedYear(String(jumpDate.year));
     setSelectedMonth(String(jumpDate.month + 1).padStart(2, '0'));
     setSelectedDay(String(jumpDate.day));
+    isInitialized.current = true;
   }, [jumpDate]);
 
   useEffect(() => {
@@ -378,6 +384,12 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
   }
 
   const fetchAppointments = async () => {
+    // Guard: don't fetch if required filter values aren't ready
+    if (!isInitialized.current) return;
+    if (viewMode === 'daily' && (!selectedYear || !selectedMonth || !selectedDay)) return;
+    if (viewMode === 'monthly' && (!selectedYear || !selectedMonth)) return;
+    if (viewMode === 'weekly' && (!selectedYear || !selectedMonth)) return;
+
     setLoading(true);
     try {
       let { data: arr, error } = await supabase
@@ -948,7 +960,18 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
         paddingBottom:32
       }}>
         {loading ? (
-          <div>Loading...</div>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            height: 200,
+            fontSize: '1.1rem',
+            color: '#185abd',
+            gap: 12
+          }}>
+            <i className="fa fa-spinner fa-spin" />
+            Loading appointments...
+          </div>
         ) : selectedDentist ? (
           <div className={`dentist-group-card ${collapsedDentists[selectedDentist] ? 'collapsed' : ''}`}>
             <div className="dentist-group-title" style={{ justifyContent: 'space-between' }}>
