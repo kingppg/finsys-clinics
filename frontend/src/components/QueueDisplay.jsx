@@ -39,7 +39,7 @@ const TICKER_ITEMS = [
   'Please keep your area clean and orderly',
   'Kindly turn your phone to silent mode',
   'Walk-ins are subject to availability',
-  'Lamentations 3:22-23 22The steadfast love of the Lord never ceases;  his mercies never come to an end; The steadfast love of the Lord never ceases; 23they are new every morning; great is your faithfulness.',
+  'Lamentations 3:22The steadfast love of the Lord never ceases;  his mercies never come to an end; The steadfast love of the Lord never ceases; 3:23they are new every morning; great is your faithfulness.',
 ];
 
 function QueueDisplay() {
