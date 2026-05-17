@@ -39,7 +39,6 @@ const TICKER_ITEMS = [
   'Please keep your area clean and orderly',
   'Kindly turn your phone to silent mode',
   'Walk-ins are subject to availability',
-  'God is good, all the time',
   'Lamentations 3:22-23 22The steadfast love of the Lord never ceases;  his mercies never come to an end; The steadfast love of the Lord never ceases; 23they are new every morning; great is your faithfulness.',
 ];
 

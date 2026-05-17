@@ -304,7 +304,7 @@
 .qd-ticker-track {
   display: inline-flex;
   gap: 80px;
-  animation: ticker-scroll 48s linear infinite;
+  animation: ticker-scroll 58s linear infinite;
 }
 
 @keyframes ticker-scroll {
