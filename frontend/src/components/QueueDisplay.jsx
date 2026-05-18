@@ -35,6 +35,7 @@ function useClockTick() {
 
 const TICKER_ITEMS = [
   'Please wait for your number to be called',
+  'God is good all the time',
   'Thank you for your patience',
   'Please keep your area clean and orderly',
   'Kindly turn your phone to silent mode',
