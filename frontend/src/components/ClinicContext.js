@@ -1,45 +1,55 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 
-// ---------------------------------------------------------------------------
-// CLINIC CONTEXT
-// ---------------------------------------------------------------------------
-// Provides clinic-level data to any component in the tree.
-// Usage:
-//   const { clinicId, clinicTimeZone, clinicName } = useClinic();
-//
-// Add new clinic fields here as needed — no prop drilling required.
-// ---------------------------------------------------------------------------
-
 const ClinicContext = createContext(null);
 
 export function ClinicProvider({ clinicId, children }) {
-  const [clinicTimeZone, setClinicTimeZone] = useState('Asia/Manila'); // safe fallback
+  const [clinicTimeZone, setClinicTimeZone] = useState('Asia/Manila'); 
   const [clinicName, setClinicName] = useState('');
+  // ─── NEW CURRENCY STATES ──────────────────────────────────────────────────
+  const [currencySymbol, setCurrencySymbol] = useState('₱'); // default fallback
+  const [currencyLocale, setCurrencyLocale] = useState('en-PH'); // default fallback
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!clinicId) return;
+    setLoading(true);
+    
     supabase
       .from('clinics')
-      .select('name, time_zone')
+      // Make sure 'currency_symbol' and 'currency_locale' exist in your table columns!
+      .select('name, time_zone, currency_symbol, currency_locale') 
       .eq('id', clinicId)
       .single()
       .then(({ data }) => {
         if (data?.time_zone) setClinicTimeZone(data.time_zone);
         if (data?.name) setClinicName(data.name);
+        if (data?.currency_symbol) setCurrencySymbol(data.currency_symbol);
+        if (data?.currency_locale) setCurrencyLocale(data.currency_locale);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("Error loading clinic context:", err);
         setLoading(false);
       });
   }, [clinicId]);
 
   return (
-    <ClinicContext.Provider value={{ clinicId, clinicTimeZone, clinicName, loading }}>
+    <ClinicContext.Provider 
+      value={{ 
+        clinicId, 
+        clinicTimeZone, 
+        clinicName, 
+        currencySymbol, 
+        currencyLocale, 
+        loading 
+      }}
+    >
       {children}
     </ClinicContext.Provider>
   );
 }
 
-// Custom hook for easy consumption anywhere in the tree
 export function useClinic() {
   const context = useContext(ClinicContext);
   if (!context) {

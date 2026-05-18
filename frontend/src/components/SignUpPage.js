@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { TIME_ZONES } from './TimeZones';
+import { CURRENCIES } from './Currencies';
 
 const styles = {
   container: {
@@ -37,6 +38,12 @@ const styles = {
     margin: '10px 0',
     display: 'flex',
     flexDirection: 'column',
+  },
+  label: {
+    marginBottom: 4,
+    color: "#3462db",
+    fontWeight: 500,
+    fontSize: 14
   },
   input: {
     width: '100%',
@@ -108,9 +115,7 @@ const styles = {
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
     display: 'block',
-  },
-  '@keyframes spin': { to: { transform: 'rotate(360deg);' } },
-  '@keyframes fadeIn': { from: { opacity: 0, transform: 'translateY(24px)' }, to: { opacity: 1, transform: 'none' } }
+  }
 };
 
 function SignUpPage({ onBackToLogin }) {
@@ -119,16 +124,20 @@ function SignUpPage({ onBackToLogin }) {
   const [name, setName] = useState('');
   const [clinicName, setClinicName] = useState('');
   const [timeZone, setTimeZone] = useState('Asia/Manila');
+  const [selectedCurrencyIndex, setSelectedCurrencyIndex] = useState(0); // Default sa index 0 (Peso)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [focusedInput, setFocusedInput] = useState(null);
 
-    async function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setSuccess('');
     setLoading(true);
+
+    // Kunin ang detalye ng napiling currency bago mag-submit
+    const chosenCurrency = CURRENCIES[selectedCurrencyIndex];
 
     // 1. Try to sign up via supabase.auth.signUp
     const { data, error: supaError } = await supabase.auth.signUp({
@@ -151,36 +160,31 @@ function SignUpPage({ onBackToLogin }) {
       return;
     }
 
-    // 3. Check for duplicate: Supabase returns empty identities[] when email already exists in auth.users
-const supabaseUser = data.user || (data.session ? data.session.user : null);
-if (!supabaseUser || !supabaseUser.id) {
-  setLoading(false);
-  setError('A user with this email already exists. Please use a different email or login.');
-  return;
-}
+    // 3. Check for duplicate
+    const supabaseUser = data.user || (data.session ? data.session.user : null);
+    if (!supabaseUser || !supabaseUser.id) {
+      setLoading(false);
+      setError('A user with this email already exists. Please use a different email or login.');
+      return;
+    }
 
-// ✅ NEW CHECK: empty identities means the email already exists in auth.users
-if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
-  setLoading(false);
-  setError('This email is already registered. Please use a different email or login.');
-  return;
-}
+    if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
+      setLoading(false);
+      setError('This email is already registered. Please use a different email or login.');
+      return;
+    }
 
-    // 4. Only proceed to RPC if email is truly new
-
-    // 4. Only proceed to RPC if and only if supabaseUser.id exists.
+    // 4. Proceed to RPC to create the clinic
     const { error: rpcError } = await supabase.rpc('register_clinic_with_admin', {
       p_clinic_name: clinicName,
       p_time_zone: timeZone,
       p_user_id: supabaseUser.id,
       p_email: supabaseUser.email,
       p_name: name,
-      // p_role: 'admin'
     });
 
-    setLoading(false);
-
     if (rpcError) {
+      setLoading(false);
       if (
         rpcError.code === '23505' ||
         (rpcError.message && rpcError.message.toLowerCase().includes('duplicate key value'))
@@ -189,19 +193,43 @@ if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
       } else {
         setError('Registration failed: ' + (rpcError.message || ''));
       }
-    } else {
-      setSuccess('Registration successful! Please check your email for confirmation.');
-      setEmail('');
-      setPassword('');
-      setName('');
-      setClinicName('');
-      setTimeZone('Asia/Manila');
+      return;
     }
+
+    // 5. Post-RPC Update: Hanapin ang pinakahuling clinic na ginawa sa system
+    const { data: clinicData, error: fetchError } = await supabase
+      .from('clinics')
+      .select('id')
+      .order('created_at', { ascending: false }) // Kunin ang pinakabago
+      .limit(1)
+      .single();
+
+    if (!fetchError && clinicData) {
+      // I-update ang kakagawang clinic gamit ang tamang currency at locale
+      await supabase
+        .from('clinics')
+        .update({
+          currency_symbol: chosenCurrency.symbol,
+          currency_locale: chosenCurrency.locale
+        })
+        .eq('id', clinicData.id);
+    }
+
+    setLoading(false);
+    setSuccess('Registration successful! Please check your email for confirmation.');
+    setEmail('');
+    setPassword('');
+    setName('');
+    setClinicName('');
+    setTimeZone('Asia/Manila');
+    setSelectedCurrencyIndex(0);
   }
+
   return (
     <div style={styles.container}>
       <form style={styles.card} onSubmit={handleSubmit} aria-label="Sign up form">
         <div style={styles.title}>Sign Up</div>
+        
         <div style={styles.inputWrapper}>
           <input
             type="text"
@@ -218,6 +246,7 @@ if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
             onBlur={() => setFocusedInput(null)}
           />
         </div>
+
         <div style={styles.inputWrapper}>
           <input
             type="email"
@@ -234,6 +263,7 @@ if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
             onBlur={() => setFocusedInput(null)}
           />
         </div>
+
         <div style={styles.inputWrapper}>
           <input
             type="password"
@@ -250,6 +280,7 @@ if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
             onBlur={() => setFocusedInput(null)}
           />
         </div>
+
         <div style={styles.inputWrapper}>
           <input
             type="text"
@@ -266,9 +297,10 @@ if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
             onBlur={() => setFocusedInput(null)}
           />
         </div>
+
         {/* Timezone Dropdown */}
         <div style={styles.inputWrapper}>
-          <label htmlFor="timeZoneSel" style={{ marginBottom: 4, color: "#3462db", fontWeight: 500 }}>
+          <label htmlFor="timeZoneSel" style={styles.label}>
             Clinic Time Zone
           </label>
           <select
@@ -283,9 +315,31 @@ if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
             ))}
           </select>
         </div>
+
+        {/* Bagong Currency Dropdown */}
+        <div style={styles.inputWrapper}>
+          <label htmlFor="currencySel" style={styles.label}>
+            Clinic Currency
+          </label>
+          <select
+            id="currencySel"
+            required
+            value={selectedCurrencyIndex}
+            onChange={e => setSelectedCurrencyIndex(Number(e.target.value))}
+            style={styles.input}
+          >
+            {CURRENCIES.map((cur, index) => (
+              <option key={index} value={index}>
+                {cur.label} ({cur.symbol})
+              </option>
+            ))}
+          </select>
+        </div>
+
         {loading && <div style={styles.spinner} />}
         <div style={styles.error}>{error}</div>
         <div style={styles.success}>{success}</div>
+
         <button type="submit" disabled={loading} style={{
           ...styles.button,
           ...(loading ? { opacity: 0.7, cursor: 'not-allowed' } : {})
@@ -306,11 +360,12 @@ if (!supabaseUser.identities || supabaseUser.identities.length === 0) {
             </span>
           ) : 'Sign Up'}
         </button>
+
         <button type="button" onClick={onBackToLogin} style={styles.buttonSecondary}>
           Back to Login
         </button>
       </form>
-      {/* Spinner & fade-in animation keyframes */}
+
       <style>
         {`
           @keyframes spin { to { transform: rotate(360deg); } }

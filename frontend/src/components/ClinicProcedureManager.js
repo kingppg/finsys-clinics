@@ -1,15 +1,3 @@
-/**
- * ClinicProcedureManager.js
- *
- * FIXED:
- * 1. Collapse state persistence across tabs: Accordion state now persists in localStorage.
- * Default view on the very first load is now COLLAPSED for a cleaner look.
- * 2. Drag-and-Drop Reliability: Isolated category dragging using a custom drag handle.
- * REMOVED parseInt restriction to prevent string-based/BigInt ID conversion bugs.
- * 3. Seamless UI Updates: Optimistic UI transitions across reorders to prevent visual stutters.
- * 4. UX Enhancement: Integrated SweetAlert2 for modern confirmation and alerting mechanics.
- */
-
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
@@ -28,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import Swal from "sweetalert2";
 import { supabase } from "../supabaseClient";
+import { useClinic } from "./ClinicContext"; // ─── CONSUMING CONTEXT
 import "./ClinicProcedureManager.css";
 
 // ─── Tiny SVG icon helper ─────────────────────────────────────────────────────
@@ -66,6 +55,7 @@ const swalConfig = {
 const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, onDelete, onEditChange }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(proc.id) });
+  const { currencySymbol, currencyLocale } = useClinic(); // Dynamic Formats
 
   return (
     <tr
@@ -100,7 +90,9 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
             onChange={e => onEditChange("price", e.target.value)} 
           />
         ) : (
-          <span className="CPM-price">{Number(proc.price || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span>
+          <span className="CPM-price">
+            {Number(proc.price || 0).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}
+          </span>
         )}
       </td>
       <td className="CPM-actions">
@@ -122,6 +114,7 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
 
 // ─── Bulk Price Modal ─────────────────────────────────────────────────────────
 const BulkModal = ({ categoryName, onApply, onClose }) => {
+  const { currencySymbol } = useClinic(); // Dynamic Symbol
   const [mode, setMode]           = useState("percent");
   const [direction, setDirection] = useState("increase");
   const [value, setValue]         = useState("");
@@ -145,7 +138,7 @@ const BulkModal = ({ categoryName, onApply, onClose }) => {
             <div className="CPM-seg">
               {["percent", "flat"].map(m => (
                 <button key={m} className={`CPM-seg-btn${mode === m ? " active" : ""}`} onClick={() => setMode(m)}>
-                  {m === "percent" ? "% Percentage" : "₱ Flat amount"}
+                  {m === "percent" ? "% Percentage" : `${currencySymbol} Flat amount`}
                 </button>
               ))}
             </div>
@@ -161,7 +154,7 @@ const BulkModal = ({ categoryName, onApply, onClose }) => {
             </div>
           </div>
           <div className="CPM-modal-row">
-            <label>{mode === "percent" ? "Percentage (%)" : "Amount (₱)"}</label>
+            <label>{mode === "percent" ? "Percentage (%)" : `Amount (${currencySymbol})`}</label>
             <input
               className="CPM-inline-input"
               type="number" min="0" autoFocus
@@ -200,7 +193,7 @@ const exportCSV = (categories) => {
   a.click();
 };
 
-const exportPDF = (categories) => {
+const exportPDF = (categories, currencySymbol, currencyLocale) => {
   const win = window.open("", "_blank");
   if (!win) return;
   win.document.write(`<!DOCTYPE html><html><head><title>Procedure Price List</title>
@@ -215,11 +208,11 @@ const exportPDF = (categories) => {
     @media print{body{margin:16px}}
   </style></head><body>
   <h1>Clinic Procedure Price List</h1>
-  <p class="sub">Generated ${new Date().toLocaleDateString("en-PH",{year:"numeric",month:"long",day:"numeric"})}</p>
+  <p class="sub">Generated ${new Date().toLocaleDateString(currencyLocale, {year:"numeric",month:"long",day:"numeric"})}</p>
   ${categories.map(cat => `
     <h2>${cat.name}</h2>
-    <table><thead><tr><th>Procedure</th><th style="text-align:right">Price (₱)</th></tr></thead>
-    <tbody>${(cat.procedures??[]).map(p=>`<tr><td>${p.name}</td><td class="p">${Number(p.price||0).toLocaleString("en-PH",{minimumFractionDigits:2})}</td></tr>`).join("")}</tbody>
+    <table><thead><tr><th>Procedure</th><th style="text-align:right">Price (${currencySymbol})</th></tr></thead>
+    <tbody>${(cat.procedures??[]).map(p=>`<tr><td>${p.name}</td><td class="p">${Number(p.price||0).toLocaleString(currencyLocale, {minimumFractionDigits:2})}</td></tr>`).join("")}</tbody>
     </table>`).join("")}
   </body></html>`);
   win.document.close();
@@ -227,7 +220,8 @@ const exportPDF = (categories) => {
 };
 
 // ─── Category Card ────────────────────────────────────────────────────────────
-const CategoryCard = ({ category, clinicId, isOpen, onToggle, onProceduresReorder, onRefresh, searchQuery }) => {
+const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefresh, searchQuery }) => {
+  const { clinicId, currencySymbol, currencyLocale } = useClinic();
   const [editingName, setEditName]= useState(false);
   const [catName, setCatName]     = useState(category.name);
   const [editingProc, setEP]      = useState({});   
@@ -398,7 +392,6 @@ const CategoryCard = ({ category, clinicId, isOpen, onToggle, onProceduresReorde
     setActiveId(null);
     if (!over || active.id === over.id) return;
 
-    // Fixed type-coercion breakdown
     const activeStrId = String(active.id);
     const overStrId = String(over.id);
 
@@ -495,7 +488,7 @@ const CategoryCard = ({ category, clinicId, isOpen, onToggle, onProceduresReorde
                     <tr>
                       <th className="CPM-th-drag" />
                       <th>Procedure</th>
-                      <th>Price (₱)</th>
+                      <th>Price ({currencySymbol})</th>
                       <th style={{ textAlign: "right" }}>Actions</th>
                     </tr>
                   </thead>
@@ -524,7 +517,7 @@ const CategoryCard = ({ category, clinicId, isOpen, onToggle, onProceduresReorde
                     <tr>
                       <td></td>
                       <td><span className="CPM-proc-name">{activeProc.name}</span></td>
-                      <td><span className="CPM-price">{Number(activeProc.price || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}</span></td>
+                      <td><span className="CPM-price">{Number(activeProc.price || 0).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}</span></td>
                       <td></td>
                     </tr>
                   </tbody></table>
@@ -564,7 +557,10 @@ const CategoryCard = ({ category, clinicId, isOpen, onToggle, onProceduresReorde
 };
 
 // ─── Main Container ───────────────────────────────────────────────────────────
-const ClinicProcedureManager = ({ clinicId }) => {
+const ClinicProcedureManager = () => {
+  // Pull dynamic values directly from Context Context — no prop drilling needed!
+  const { clinicId, currencySymbol, currencyLocale, loading: contextLoading } = useClinic(); 
+
   const [categories, setCategories] = useState([]);
   const [loading, setLoading]       = useState(false);
   const [newCatName, setNewCatName] = useState("");
@@ -574,21 +570,24 @@ const ClinicProcedureManager = ({ clinicId }) => {
   
   const storageKey = `CPM_expanded_${clinicId}`;
 
-  const [expandedCats, setExpandedCats] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`CPM_expanded_${clinicId}`);
-      return saved ? JSON.parse(saved) : {};
-    } catch (e) {
-      console.error("Error initializing configuration cache mapping:", e);
-      return {};
-    }
-  });
+  const [expandedCats, setExpandedCats] = useState({});
   
   const exportRef = useRef(null);
   
   const globalSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 10 } })
   );
+
+  // Sync localStorage once clinicId is loaded from context
+  useEffect(() => {
+    if (!clinicId) return;
+    try {
+      const saved = localStorage.getItem(`CPM_expanded_${clinicId}`);
+      if (saved) setExpandedCats(JSON.parse(saved));
+    } catch (e) {
+      console.error("Error initializing configuration cache mapping:", e);
+    }
+  }, [clinicId]);
 
   useEffect(() => {
     if (clinicId) {
@@ -629,7 +628,7 @@ const ClinicProcedureManager = ({ clinicId }) => {
   useEffect(() => {
     const cleanup = fetchCategories(false);
     return cleanup;
-  }, [clinicId]);
+  }, [clinicId, fetchCategories]);
 
   useEffect(() => {
     const h = e => { if (exportRef.current && !exportRef.current.contains(e.target)) setShowExport(false); };
@@ -710,6 +709,10 @@ const ClinicProcedureManager = ({ clinicId }) => {
       )
     : categories;
 
+  if (contextLoading) {
+    return <div className="CPM-loading"><span className="CPM-spinner" /> Syncing clinic configuration data...</div>;
+  }
+
   return (
     <div className="CPM-container">
       {/* ── Sticky Header ── */}
@@ -740,7 +743,7 @@ const ClinicProcedureManager = ({ clinicId }) => {
               {showExport && (
                 <div className="CPM-export-menu">
                   <button onClick={() => { exportCSV(categories); setShowExport(false); }}>Export as CSV</button>
-                  <button onClick={() => { exportPDF(categories); setShowExport(false); }}>Export as PDF</button>
+                  <button onClick={() => { exportPDF(categories, currencySymbol, currencyLocale); setShowExport(false); }}>Export as PDF</button>
                 </div>
               )}
             </div>
@@ -784,7 +787,6 @@ const ClinicProcedureManager = ({ clinicId }) => {
                 <CategoryCard 
                   key={cat.id} 
                   category={cat} 
-                  clinicId={clinicId}
                   isOpen={!!expandedCats[cat.id]}
                   onToggle={() => toggleCategoryCollapse(cat.id)}
                   onProceduresReorder={handleInnerProceduresReorder}
