@@ -55,7 +55,7 @@ const swalConfig = {
 const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, onDelete, onEditChange }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(proc.id) });
-  const { currencySymbol, currencyLocale } = useClinic(); // Dynamic Formats
+  const { currencySymbol, currencyLocale } = useClinic(); 
 
   return (
     <tr
@@ -114,7 +114,7 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
 
 // ─── Bulk Price Modal ─────────────────────────────────────────────────────────
 const BulkModal = ({ categoryName, onApply, onClose }) => {
-  const { currencySymbol } = useClinic(); // Dynamic Symbol
+  const { currencySymbol } = useClinic(); 
   const [mode, setMode]           = useState("percent");
   const [direction, setDirection] = useState("increase");
   const [value, setValue]         = useState("");
@@ -193,10 +193,14 @@ const exportCSV = (categories) => {
   a.click();
 };
 
-const exportPDF = (categories, currencySymbol, currencyLocale) => {
+const exportPDF = (clinicName, categories, currencySymbol, currencyLocale) => {
   const win = window.open("", "_blank");
   if (!win) return;
-  win.document.write(`<!DOCTYPE html><html><head><title>Procedure Price List</title>
+
+  // Dynamically attaches the clinic name or falls back gracefully
+  const displayTitle = clinicName ? `${clinicName.trim()} Procedure Price List` : "Clinic Procedure Price List";
+
+  win.document.write(`<!DOCTYPE html><html><head><title>${displayTitle}</title>
   <style>
     body{font-family:Georgia,serif;color:#0f2340;max-width:700px;margin:40px auto;padding:0 20px}
     h1{font-size:1.6rem;margin-bottom:4px}p.sub{color:#64748b;font-size:.85rem;margin-bottom:32px}
@@ -207,7 +211,7 @@ const exportPDF = (categories, currencySymbol, currencyLocale) => {
     td.p{text-align:right;font-variant-numeric:tabular-nums}
     @media print{body{margin:16px}}
   </style></head><body>
-  <h1>Clinic Procedure Price List</h1>
+  <h1>${displayTitle}</h1>
   <p class="sub">Generated ${new Date().toLocaleDateString(currencyLocale, {year:"numeric",month:"long",day:"numeric"})}</p>
   ${categories.map(cat => `
     <h2>${cat.name}</h2>
@@ -562,8 +566,8 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
 
 // ─── Main Container ───────────────────────────────────────────────────────────
 const ClinicProcedureManager = () => {
-  // Pull dynamic values directly from Context Context — no prop drilling needed!
-  const { clinicId, currencySymbol, currencyLocale, loading: contextLoading } = useClinic(); 
+  // Destructured `clinicName` right here from your custom Clinic context hook!
+  const { clinicId, clinicName, currencySymbol, currencyLocale, loading: contextLoading } = useClinic(); 
 
   const [categories, setCategories] = useState([]);
   const [loading, setLoading]       = useState(false);
@@ -582,7 +586,6 @@ const ClinicProcedureManager = () => {
     useSensor(PointerSensor, { activationConstraint: { distance: 10 } })
   );
 
-  // Sync localStorage once clinicId is loaded from context
   useEffect(() => {
     if (!clinicId) return;
     try {
@@ -751,7 +754,8 @@ const ClinicProcedureManager = () => {
               {showExport && (
                 <div className="CPM-export-menu">
                   <button onClick={() => { exportCSV(categories); setShowExport(false); }}>Export as CSV</button>
-                  <button onClick={() => { exportPDF(categories, currencySymbol, currencyLocale); setShowExport(false); }}>Export as PDF</button>
+                  {/* Passes clinicName over to the export helper function cleanly */}
+                  <button onClick={() => { exportPDF(clinicName, categories, currencySymbol, currencyLocale); setShowExport(false); }}>Export as PDF</button>
                 </div>
               )}
             </div>
