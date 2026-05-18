@@ -1,228 +1,559 @@
-/* Main container */
-.ClinicProcedureManager-container {
-  background: #fff;
-  border-radius: 18px;
-  box-shadow: 0 2px 16px 0 #185abd18;
-  padding: 32px 24px;
-  margin: 10px auto;
-  max-width: 950px;
+/* ── Fonts ──────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@600;700&display=swap');
+
+/* ── Tokens ─────────────────────────────────────────────────────────────────── */
+:root {
+  --cpm-navy:        #0f2340;
+  --cpm-navy-mid:    #1a3a6b;
+  --cpm-navy-light:  #2d5fa6;
+  --cpm-accent:      #3b82f6;
+  --cpm-accent-glow: #3b82f620;
+  --cpm-teal:        #0d9488;
+  --cpm-red:         #dc2626;
+  --cpm-red-light:   #fef2f2;
+  --cpm-green:       #059669;
+  --cpm-green-light: #ecfdf5;
+  --cpm-white:       #ffffff;
+  --cpm-surface:     #f8fafd;
+  --cpm-surface-2:   #f1f5fb;
+  --cpm-border:      #dde6f5;
+  --cpm-border-dark: #c5d4ec;
+  --cpm-text:        #0f2340;
+  --cpm-text-muted:  #64748b;
+  --cpm-shadow-sm:   0 1px 4px #0f234012;
+  --cpm-shadow-md:   0 4px 20px #0f234016;
+  --cpm-shadow-lg:   0 8px 40px #0f234020;
+  --cpm-radius:      14px;
+  --cpm-radius-sm:   8px;
+  --cpm-font:        'DM Sans', system-ui, sans-serif;
+  --cpm-font-display:'Playfair Display', Georgia, serif;
 }
 
-/* Title */
-.ClinicProcedureManager-container h2 {
-  font-size: 2rem;
+/* ── Container ───────────────────────────────────────────────────────────────── */
+.CPM-container {
+  font-family: var(--cpm-font);
+  color: var(--cpm-text);
+  background: var(--cpm-surface);
+  border-radius: 20px;
+  box-shadow: var(--cpm-shadow-lg);
+  max-width: 920px;
+  margin: 24px auto;
+  border: 1px solid var(--cpm-border);
+  
+  /* CRITICAL FOR STICKY: No overflow limits allowed here so the browser can track the header */
+  overflow: visible; 
+}
+
+/* ── True Sticky Header ──────────────────────────────────────────────────────── */
+.CPM-sticky-header {
+  position: -webkit-sticky; /* Safari support */
+  position: sticky;
+  top: 0;                  /* Locks exactly at the top edge of the browser window */
+  z-index: 110;            /* Sits safely above category badges and drag handles */
+  background: var(--cpm-navy);
+  padding: 20px 24px;
+  box-shadow: 0 4px 20px #0f234030;
+  
+  /* Matches the outer container corners smoothly */
+  border-top-left-radius: 19px;
+  border-top-right-radius: 19px;
+}
+
+.CPM-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.CPM-header-title h2 {
+  font-family: var(--cpm-font-display);
+  font-size: 1.55rem;
   font-weight: 700;
-  margin-bottom: 18px;
-  color: #185abd;
-  letter-spacing: 0.5px;
+  color: var(--cpm-white);
+  margin: 0 0 3px;
 }
 
-/* Clinic select */
-.ClinicProcedureManager-select {
-  background: #f6f9fc;
-  border-radius: 12px;
-  padding: 10px 16px;
-  border: 1px solid #185abd55;
-  font-size: 1.05rem;
-  margin-bottom: 20px;
-  outline: none;
-}
+.CPM-header-meta { display: flex; align-items: center; gap: 7px; }
+.CPM-stat        { font-size: 0.8rem; color: #93b4e0; }
+.CPM-stat em     { font-style: normal; color: #6b93c9; }
+.CPM-stat-divider{ color: #3b5a8a; }
 
-.ClinicProcedureManager-select:focus {
-  border-color: #185abd;
-}
-
-/* Add category input and button */
-.ClinicProcedureManager-category-add {
+.CPM-header-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
-.ClinicProcedureManager-input {
-  background: #f6f9fc;
-  border: 1px solid #185abd33;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 1rem;
-  color: #185abd;
-  outline: none;
-  transition: border-color 0.18s;
-}
-
-.ClinicProcedureManager-input:focus {
-  border-color: #185abd;
-  box-shadow: 0 0 0 2px #185abd22;
-}
-
-/* Add Category Button */
-.ClinicProcedureManager-category-add button {
-  background: #2ecc40;
-  color: #fff;
-  border: none;
-  padding: 8px 18px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 1px 6px #185abd10;
-}
-
-.ClinicProcedureManager-category-add button:disabled {
-  background: #b7eac4;
-  color: #fff;
-  cursor: not-allowed;
-}
-
-.ClinicProcedureManager-category-add button:hover:not(:disabled) {
-  background: #27ae60;
-}
-
-/* Category header */
-.ClinicProcedureManager-category {
-  margin-bottom: 32px;
-}
-
-.ClinicProcedureManager-category h3 {
-  font-size: 1.18rem;
-  font-weight: 600;
-  color: #185abd;
-  margin-bottom: 12px;
-  margin-top: 15px;
-  letter-spacing: 0.5px;
-}
-
-/* Table styling */
-.ClinicProcedureManager-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  background: #f6f9fc;
-  border-radius: 14px;
-  box-shadow: 0 1px 8px #185abd12;
-  overflow: hidden;
-}
-
-.ClinicProcedureManager-table th, 
-.ClinicProcedureManager-table td {
-  padding: 14px 12px;
-  text-align: left;
-  font-size: 1rem;
-}
-
-.ClinicProcedureManager-table th {
-  background: #eaf2ff;
-  font-weight: 700;
-  color: #185abd;
-  border-bottom: 2px solid #185abd22;
-}
-
-.ClinicProcedureManager-table tr:not(:last-child) td {
-  border-bottom: 1px solid #185abd14;
-}
-
-/* Inputs */
-.ClinicProcedureManager-table input {
-  width: 90%;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid #185abd33;
-  font-size: 1rem;
-  background: #fff;
-  color: #185abd;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.ClinicProcedureManager-table input:focus {
-  border-color: #185abd;
-  box-shadow: 0 0 0 2px #185abd22;
-}
-
-/* Buttons */
-.ClinicProcedureManager-table button {
-  background: #185abd;
-  color: #fff;
-  border: none;
-  padding: 7px 16px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 0.97rem;
-  margin-right: 6px;
-  margin-bottom: 2px;
-  cursor: pointer;
-  transition: background 0.18s, box-shadow 0.18s;
-  box-shadow: 0 1px 6px #185abd10;
-}
-
-.ClinicProcedureManager-table button:disabled {
-  background: #b7c6de;
-  color: #fff;
-  cursor: not-allowed;
-}
-
-.ClinicProcedureManager-table button:hover:not(:disabled) {
-  background: #2bc1ff;
-}
-
-/* Add button special */
-.ClinicProcedureManager-table tr:last-child button {
-  background: #2ecc40;
-}
-
-.ClinicProcedureManager-table tr:last-child button:disabled {
-  background: #b7eac4;
-}
-
-/* Responsive */
-@media (max-width: 650px) {
-  .ClinicProcedureManager-container {
-    padding: 10px 2px;
-    font-size: 0.98rem;
-    max-width: 99vw;
-  }
-  .ClinicProcedureManager-table th,
-  .ClinicProcedureManager-table td {
-    padding: 7px 4px;
-    font-size: 0.92rem;
-  }
-  .ClinicProcedureManager-category-add {
-    flex-direction: column;
-    gap: 6px;
-    align-items: stretch;
-  }
-}
-.ClinicProcedureManager-sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  background: #f6f9fc;
-  padding: 18px 0 8px 0;
-  border-bottom: 1px solid #e2e8f0;
-  box-shadow: 0 2px 6px -2px #0001;
-}
-
-.ClinicProcedureManager-sticky-header h2 {
-  margin: 0 0 8px 0;
-  font-size: 1.7em;
-  font-weight: 700;
-  color: #24406e;
-  letter-spacing: 1px;
-}
-.ClinicProcedureManager-category-add {
+/* ── Search ──────────────────────────────────────────────────────────────────── */
+.CPM-search-wrap {
+  position: relative;
   display: flex;
   align-items: center;
+}
+.CPM-search-icon {
+  position: absolute;
+  left: 10px;
+  color: #6b93c9;
+  display: flex;
+  pointer-events: none;
+}
+.CPM-search-input {
+  background: #1e3d6e;
+  border: 1px solid #3b5a8a;
+  border-radius: var(--cpm-radius-sm);
+  color: var(--cpm-white);
+  padding: 8px 32px 8px 32px;
+  font-family: var(--cpm-font);
+  font-size: 0.88rem;
+  outline: none;
+  width: 190px;
+  transition: border-color 0.18s, box-shadow 0.18s, width 0.2s;
+}
+.CPM-search-input::placeholder { color: #6b93c9; }
+.CPM-search-input:focus {
+  border-color: var(--cpm-accent);
+  box-shadow: 0 0 0 3px var(--cpm-accent-glow);
+  width: 220px;
+}
+.CPM-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: #6b93c9;
+  cursor: pointer;
+  display: flex;
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 0.15s;
+}
+.CPM-search-clear:hover { color: var(--cpm-white); }
+
+/* ── Export ──────────────────────────────────────────────────────────────────── */
+.CPM-export-wrap { position: relative; }
+
+.CPM-export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #1e3d6e;
+  border: 1px solid #3b5a8a;
+  color: #93b4e0;
+  padding: 8px 14px;
+  border-radius: var(--cpm-radius-sm);
+  font-family: var(--cpm-font);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.CPM-export-btn:hover:not(:disabled) { background: #264e8a; color: var(--cpm-white); }
+.CPM-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.CPM-export-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--cpm-white);
+  border: 1px solid var(--cpm-border);
+  border-radius: var(--cpm-radius-sm);
+  box-shadow: var(--cpm-shadow-md);
+  overflow: hidden;
+  z-index: 120;
+  min-width: 160px;
+  animation: cpm-fade-in 0.12s ease;
+}
+.CPM-export-menu button {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 10px 16px;
+  font-family: var(--cpm-font);
+  font-size: 0.9rem;
+  color: var(--cpm-text);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.CPM-export-menu button:hover { background: var(--cpm-surface-2); }
+
+@keyframes cpm-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Add category ────────────────────────────────────────────────────────────── */
+.CPM-add-cat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--cpm-accent);
+  color: var(--cpm-white);
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--cpm-radius-sm);
+  font-family: var(--cpm-font);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.18s, transform 0.12s, box-shadow 0.18s;
+  box-shadow: 0 2px 10px #3b82f640;
+  white-space: nowrap;
+}
+.CPM-add-cat-btn:hover { background: #2563eb; transform: translateY(-1px); }
+
+.CPM-cat-add-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.CPM-cat-add-input {
+  background: #1e3d6e;
+  border: 1px solid var(--cpm-accent);
+  border-radius: var(--cpm-radius-sm);
+  color: var(--cpm-white);
+  padding: 8px 13px;
+  font-family: var(--cpm-font);
+  font-size: 0.9rem;
+  outline: none;
+  min-width: 180px;
+  box-shadow: 0 0 0 3px var(--cpm-accent-glow);
+}
+.CPM-cat-add-input::placeholder { color: #6b93c9; }
+
+/* ── Body ────────────────────────────────────────────────────────────────────── */
+.CPM-body {
+  padding: 18px 20px 26px;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
-/* Remove number input spinner/arrows for all browsers */
-.ClinicProcedureManager-table input[type="number"]::-webkit-inner-spin-button,
-.ClinicProcedureManager-table input[type="number"]::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+
+/* ── Loading / empty ─────────────────────────────────────────────────────────── */
+.CPM-loading {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--cpm-text-muted); padding: 40px; justify-content: center; font-size: 0.95rem;
 }
-.ClinicProcedureManager-table input[type="number"] {
-  -moz-appearance: textfield; /* Firefox */
-  appearance: textfield;
+.CPM-spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--cpm-border-dark);
+  border-top-color: var(--cpm-accent);
+  border-radius: 50%;
+  animation: cpm-spin 0.7s linear infinite;
+  display: inline-block;
+}
+@keyframes cpm-spin { to { transform: rotate(360deg); } }
+
+.CPM-empty-state { text-align: center; padding: 52px 24px; color: var(--cpm-text-muted); }
+.CPM-empty-state p { font-size: 1rem; margin-bottom: 18px; }
+
+/* ── Category card ───────────────────────────────────────────────────────────── */
+.CPM-category {
+  background: var(--cpm-white);
+  border: 1px solid var(--cpm-border);
+  border-radius: var(--cpm-radius);
+  box-shadow: var(--cpm-shadow-sm);
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+.CPM-category:hover { box-shadow: var(--cpm-shadow-md); }
+
+/* ── Category header ─────────────────────────────────────────────────────────── */
+.CPM-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 13px 16px;
+  background: var(--cpm-surface-2);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.22s;
+  user-select: none;
+}
+.CPM-category--open .CPM-cat-header { border-bottom-color: var(--cpm-border); }
+
+/* ── Drag handles ────────────────────────────────────────────────────────────── */
+.CPM-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cpm-border-dark);
+  cursor: grab;
+  padding: 3px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  touch-action: none;
+  border: none;
+  background: none;
+  flex-shrink: 0;
+}
+.CPM-drag-handle:hover { color: var(--cpm-navy-light); background: var(--cpm-border); }
+.CPM-drag-handle:active { cursor: grabbing; }
+.CPM-cat-drag { margin-right: 2px; }
+
+.CPM-drag-cell { width: 28px; padding: 0 6px !important; }
+.CPM-th-drag    { width: 28px; }
+
+/* ── Collapse toggle ─────────────────────────────────────────────────────────── */
+.CPM-cat-toggle {
+  background: none; border: none; cursor: pointer;
+  color: var(--cpm-navy-light); display: flex; align-items: center;
+  padding: 4px; border-radius: 6px;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.CPM-cat-toggle:hover { background: var(--cpm-border); color: var(--cpm-navy); }
+
+.CPM-chevron { transition: transform 0.24s cubic-bezier(.4,0,.2,1); }
+.CPM-chevron--open { transform: rotate(180deg); }
+
+/* ── Category name display ───────────────────────────────────────────────────── */
+.CPM-cat-name-display { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+
+.CPM-cat-name {
+  font-family: var(--cpm-font-display);
+  font-size: 1.03rem; font-weight: 600;
+  color: var(--cpm-navy);
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.CPM-cat-badge {
+  background: var(--cpm-navy);
+  color: var(--cpm-white);
+  font-size: 0.7rem; font-weight: 700;
+  padding: 2px 8px; border-radius: 20px;
+  letter-spacing: 0.4px; flex-shrink: 0;
+}
+
+/* ── Category name edit ──────────────────────────────────────────────────────── */
+.CPM-cat-name-edit { display: flex; align-items: center; gap: 7px; flex: 1; }
+.CPM-cat-name-input {
+  font-family: var(--cpm-font-display); font-size: 1rem; font-weight: 600;
+  color: var(--cpm-navy); background: var(--cpm-white);
+  border: 1.5px solid var(--cpm-accent); border-radius: var(--cpm-radius-sm);
+  padding: 5px 11px; outline: none; flex: 1;
+  box-shadow: 0 0 0 3px var(--cpm-accent-glow);
+}
+
+/* ── COLLAPSE FIX: grid + inner wrapper ──────────────────────────────────────── */
+.CPM-cat-body {
+  display: grid;
+  grid-template-rows: 0fr;             /* collapsed */
+  transition: grid-template-rows 0.26s cubic-bezier(.4,0,.2,1);
+}
+.CPM-category--open .CPM-cat-body {
+  grid-template-rows: 1fr;             /* expanded */
+}
+/* The inner wrapper MUST have overflow:hidden and min-height:0 */
+.CPM-cat-body-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Table ───────────────────────────────────────────────────────────────────── */
+.CPM-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+
+.CPM-table th {
+  background: #f0f5ff;
+  color: var(--cpm-navy-mid);
+  font-weight: 600; font-size: 0.75rem;
+  text-transform: uppercase; letter-spacing: 0.7px;
+  padding: 9px 14px; border-bottom: 1px solid var(--cpm-border);
+  text-align: left;
+}
+
+.CPM-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--cpm-border);
+  vertical-align: middle;
+}
+.CPM-table tr:last-child td { border-bottom: none; }
+.CPM-table tbody tr { transition: background 0.1s; }
+.CPM-table tbody tr:hover { background: var(--cpm-surface); }
+.CPM-table tbody tr.CPM-row--editing { background: #eff6ff; }
+
+/* Drag overlay ghost row */
+.CPM-table--overlay {
+  background: var(--cpm-white);
+  border-radius: var(--cpm-radius-sm);
+  box-shadow: var(--cpm-shadow-md);
+  opacity: 0.96;
+}
+
+.CPM-proc-name { color: var(--cpm-text); font-weight: 500; }
+
+.CPM-price {
+  color: var(--cpm-teal); font-weight: 600;
+  font-variant-numeric: tabular-nums; font-size: 0.94rem;
+}
+.CPM-price::before { content: '₱'; font-size: 0.76em; margin-right: 1px; opacity: 0.65; }
+
+.CPM-actions { text-align: right; white-space: nowrap; }
+
+/* ── Inline inputs ───────────────────────────────────────────────────────────── */
+.CPM-inline-input {
+  font-family: var(--cpm-font); font-size: 0.92rem;
+  background: var(--cpm-white);
+  border: 1.5px solid var(--cpm-border-dark);
+  border-radius: var(--cpm-radius-sm);
+  padding: 6px 9px; color: var(--cpm-text);
+  outline: none; width: 100%;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+.CPM-inline-input:focus { border-color: var(--cpm-accent); box-shadow: 0 0 0 3px var(--cpm-accent-glow); }
+.CPM-inline-input--price { max-width: 115px; font-variant-numeric: tabular-nums; }
+.CPM-inline-input[type="number"]::-webkit-inner-spin-button,
+.CPM-inline-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+.CPM-inline-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.CPM-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--cpm-font); font-size: 0.81rem; font-weight: 600;
+  padding: 6px 11px; border-radius: var(--cpm-radius-sm); border: none;
+  cursor: pointer; transition: background 0.14s, transform 0.1s, box-shadow 0.14s;
+  letter-spacing: 0.1px; white-space: nowrap;
+}
+.CPM-btn:active { transform: scale(0.97); }
+.CPM-btn:disabled { opacity: 0.42; cursor: not-allowed; transform: none; }
+
+.CPM-btn--edit    { background: var(--cpm-surface-2); color: var(--cpm-navy-mid); border: 1px solid var(--cpm-border-dark); }
+.CPM-btn--edit:hover:not(:disabled) { background: var(--cpm-border); color: var(--cpm-navy); }
+
+.CPM-btn--danger  { background: var(--cpm-red-light); color: var(--cpm-red); border: 1px solid #fecaca; }
+.CPM-btn--danger:hover:not(:disabled) { background: #fee2e2; }
+
+.CPM-btn--confirm { background: var(--cpm-green); color: var(--cpm-white); box-shadow: 0 2px 8px #05966930; }
+.CPM-btn--confirm:hover:not(:disabled) { background: #047857; }
+
+.CPM-btn--ghost   { background: transparent; color: var(--cpm-text-muted); border: 1px solid var(--cpm-border-dark); }
+.CPM-btn--ghost:hover:not(:disabled) { background: var(--cpm-surface-2); color: var(--cpm-text); }
+
+/* ── Icon buttons ────────────────────────────────────────────────────────────── */
+.CPM-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 7px; border: none;
+  cursor: pointer; transition: background 0.14s, color 0.14s, transform 0.1s; flex-shrink: 0;
+}
+.CPM-icon-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.CPM-icon-btn:active { transform: scale(0.9); }
+
+.CPM-icon-btn--edit   { background: transparent; color: var(--cpm-text-muted); }
+.CPM-icon-btn--edit:hover { background: var(--cpm-border); color: var(--cpm-navy); }
+
+.CPM-icon-btn--bulk   { background: transparent; color: #a78bfa; }
+.CPM-icon-btn--bulk:hover:not(:disabled) { background: #f5f3ff; color: #7c3aed; }
+
+.CPM-icon-btn--danger { background: transparent; color: #fca5a5; }
+.CPM-icon-btn--danger:hover { background: var(--cpm-red-light); color: var(--cpm-red); }
+
+.CPM-icon-btn--confirm { background: var(--cpm-green); color: var(--cpm-white); }
+.CPM-icon-btn--confirm:hover { background: #047857; }
+
+.CPM-icon-btn--cancel  { background: transparent; color: var(--cpm-text-muted); border: 1px solid var(--cpm-border-dark); }
+.CPM-icon-btn--cancel:hover { background: var(--cpm-surface-2); }
+
+/* ── Add procedure row ───────────────────────────────────────────────────────── */
+.CPM-add-proc-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 12px 14px;
+  background: #f0f7ff;
+  border-top: 1px dashed var(--cpm-border-dark);
+  flex-wrap: wrap;
+}
+.CPM-add-proc-row .CPM-inline-input { flex: 1; min-width: 130px; }
+
+.CPM-add-proc-btn {
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: none;
+  color: var(--cpm-accent);
+  font-family: var(--cpm-font); font-size: 0.86rem; font-weight: 600;
+  cursor: pointer; padding: 11px 14px; width: 100%;
+  transition: background 0.14s, color 0.14s;
+  border-top: 1px dashed var(--cpm-border);
+}
+.CPM-add-proc-btn:hover { background: #eff6ff; color: #1d4ed8; }
+
+.CPM-empty {
+  color: var(--cpm-text-muted); font-size: 0.86rem;
+  padding: 14px 16px 0; font-style: italic;
+}
+
+/* ── Bulk price modal ────────────────────────────────────────────────────────── */
+.CPM-modal-backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: #0f234060;
+  backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+  animation: cpm-fade-in 0.15s ease;
+}
+.CPM-modal {
+  background: var(--cpm-white);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px #0f234040;
+  width: 100%; max-width: 400px;
+  overflow: hidden;
+  animation: cpm-slide-up 0.18s cubic-bezier(.4,0,.2,1);
+}
+@keyframes cpm-slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.CPM-modal-header {
+  background: var(--cpm-navy);
+  padding: 20px 22px 16px;
+}
+.CPM-modal-header h3 {
+  font-family: var(--cpm-font-display);
+  font-size: 1.15rem; font-weight: 700;
+  color: var(--cpm-white); margin: 0 0 3px;
+}
+.CPM-modal-sub { color: #93b4e0; font-size: 0.83rem; margin: 0; }
+
+.CPM-modal-body  { padding: 20px 22px; display: flex; flex-direction: column; gap: 16px; }
+.CPM-modal-footer{ padding: 14px 22px 20px; display: flex; justify-content: flex-end; gap: 10px; }
+
+.CPM-modal-row { display: flex; flex-direction: column; gap: 7px; }
+.CPM-modal-row label { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--cpm-text-muted); }
+
+.CPM-seg { display: flex; gap: 6px; }
+.CPM-seg-btn {
+  flex: 1; padding: 8px 12px; border-radius: var(--cpm-radius-sm);
+  border: 1.5px solid var(--cpm-border-dark);
+  background: var(--cpm-surface-2); color: var(--cpm-text-muted);
+  font-family: var(--cpm-font); font-size: 0.85rem; font-weight: 500;
+  cursor: pointer; transition: all 0.14s; text-align: center;
+}
+.CPM-seg-btn.active {
+  background: var(--cpm-navy); color: var(--cpm-white);
+  border-color: var(--cpm-navy); font-weight: 600;
+}
+.CPM-seg-btn:hover:not(.active) { background: var(--cpm-border); color: var(--cpm-text); }
+
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .CPM-sticky-header { padding: 14px 14px; }
+  .CPM-body          { padding: 12px 10px 20px; }
+  .CPM-header-top    { gap: 10px; }
+  .CPM-header-actions{ gap: 8px; }
+  .CPM-search-input  { width: 140px; }
+  .CPM-search-input:focus { width: 160px; }
+  .CPM-table th, .CPM-table td { padding: 8px 9px; font-size: 0.86rem; }
+  .CPM-btn { padding: 5px 8px; font-size: 0.78rem; }
+  .CPM-add-proc-row { flex-direction: column; align-items: stretch; }
+  .CPM-inline-input--price { max-width: 100%; }
+  .CPM-modal { margin: 0 12px; }
+}
+
+.CPM-swal-confirm-btn {
+  font-family: inherit;
+  font-weight: 500;
+  border-radius: 6px !important;
+  padding: 8px 18px !important;
+}
+
+.CPM-swal-cancel-btn {
+  font-family: inherit;
+  border-radius: 6px !important;
+  padding: 8px 18px !important;
 }
