@@ -140,7 +140,7 @@ function App() {
           marginTop: '2rem',
         }}
       >
-        © 2025 Conquerors For Christ Mission, Inc. All rights reserved.
+        © 2025 Finsys. All rights reserved.
       </footer>
     </div>
   );
