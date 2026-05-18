@@ -386,7 +386,7 @@
   color: var(--cpm-teal); font-weight: 600;
   font-variant-numeric: tabular-nums; font-size: 0.94rem;
 }
-.CPM-price::before { content: '₱'; font-size: 0.76em; margin-right: 1px; opacity: 0.65; }
+.CPM-price::before { font-size: 0.76em; margin-right: 1px; opacity: 0.65; }
 
 .CPM-actions { text-align: right; white-space: nowrap; }
 

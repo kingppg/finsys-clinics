@@ -91,7 +91,7 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
           />
         ) : (
           <span className="CPM-price">
-            {Number(proc.price || 0).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}
+            {currencySymbol}{Number(proc.price || 0).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}
           </span>
         )}
       </td>
@@ -517,7 +517,11 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
                     <tr>
                       <td></td>
                       <td><span className="CPM-proc-name">{activeProc.name}</span></td>
-                      <td><span className="CPM-price">{Number(activeProc.price || 0).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}</span></td>
+                      <td>
+                        <span className="CPM-price">
+                          {currencySymbol}{Number(activeProc.price || 0).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}
+                        </span>
+                      </td>
                       <td></td>
                     </tr>
                   </tbody></table>
@@ -598,6 +602,7 @@ const ClinicProcedureManager = () => {
   const fetchCategories = useCallback((preserveCollapses = true) => {
     if (!clinicId) return () => {};
     let isMounted = true;
+    let cancelFetch = false;
     setLoading(true);
 
     supabase
@@ -606,7 +611,7 @@ const ClinicProcedureManager = () => {
       .eq("clinic_id", clinicId)
       .order("sort_order", { ascending: true })
       .then(({ data }) => {
-        if (!isMounted) return;
+        if (!isMounted || cancelFetch) return;
         
         const freshData = data || [];
         setCategories(freshData);
@@ -619,10 +624,13 @@ const ClinicProcedureManager = () => {
         }
       })
       .finally(() => {
-        if (isMounted) setLoading(false);
+        if (isMounted && !cancelFetch) setLoading(false);
       });
 
-    return () => { isMounted = false; };
+    return () => { 
+      isMounted = false; 
+      cancelFetch = true;
+    };
   }, [clinicId]);
 
   useEffect(() => {
