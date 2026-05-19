@@ -3,8 +3,8 @@
 
 const express = require('express');
 const router = express.Router();
-const axios = require('axios');
 const { createClient } = require('@supabase/supabase-js');
+const { sendMessage } = require('../webhook'); // Your Messenger send logic
 
 // Safety: Check env before creating client
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
@@ -74,6 +74,39 @@ router.post('/:appointmentId', async (req, res) => {
   const clinicName = clinicRow?.name || 'your clinic';
   const clinicPhone = clinicRow?.contact_phone || null;
 
+  if (!messenger_id) {
+    // No Messenger ID — emit socket so queue display still updates, then log and return.
+    if (req.io) {
+      req.io.emit('appointment-updated', {
+        ...appt,
+        status,
+        checked_in_at: status === 'Checked-In' ? new Date().toISOString() : null,
+      });
+    }
+
+    const sent_on_date = new Date().toISOString().slice(0, 10);
+    try {
+      await supabase.from('appointment_reminders').insert({
+        appointment_id: appointmentId,
+        sent_on: new Date().toISOString(),
+        days_ahead: null,
+        messenger_id: null,
+        message: `Status updated to "${status}" but no Messenger notification was sent — no Messenger ID on file for this patient or guardian.`,
+        sent_on_date,
+        is_manual: true,
+        clinic_id,
+      });
+    } catch (dbErr) {
+      console.error("[status-notifications] Supabase log error for missing Messenger ID:", dbErr);
+    }
+
+    return res.status(200).json({
+      success: true,
+      sent: false,
+      warning: 'No Messenger ID on file for this patient or guardian. Status was updated but the patient was not notified.'
+    });
+  }
+
   if (clinicError || !pageToken) {
     console.error('[status-notifications] No Messenger Page token found for this clinic.');
     return res.status(400).json({ error: 'No Messenger Page token found for this clinic.' });
@@ -109,27 +142,12 @@ router.post('/:appointmentId', async (req, res) => {
 
   const finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment status has been updated to "${status}" as of ${dateStr} at ${timeStr}.`;
 
-  // Send Messenger message (don't block status update if it fails)
-  let messengerSent = false;
-  if (messenger_id) {
-    try {
-      await axios.post(
-        `https://graph.facebook.com/v18.0/me/messages?access_token=${pageToken}`,
-        {
-          recipient: { id: messenger_id },
-          message: { text: finalMsg },
-          messaging_type: "MESSAGE_TAG",
-          tag: "APPOINTMENT_UPDATE"
-        }
-      );
-      messengerSent = true;
-      console.log('[status-notifications] ✅ Messenger notification sent successfully');
-    } catch (err) {
-      console.error("[status-notifications] ❌ Error sending Messenger notification:", err.response?.data || err.message);
-      // Don't return error — status update should still complete
-    }
-  } else {
-    console.log('[status-notifications] No messenger_id — skipping Messenger notification');
+  // Send Messenger message
+  try {
+    await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
+  } catch (err) {
+    console.error("[status-notifications] ❌ Error sending Messenger status notification:", err);
+    return res.status(500).json({ error: 'Failed to send Messenger notification.' });
   }
 
   // Log in DB for audit (do not fail response if logging fails)
@@ -139,7 +157,7 @@ router.post('/:appointmentId', async (req, res) => {
       appointment_id: appointmentId,
       sent_on: new Date().toISOString(),
       days_ahead: null,
-      messenger_id: messenger_id || null,
+      messenger_id,
       message: finalMsg,
       sent_on_date,
       is_manual: true,
@@ -158,11 +176,7 @@ router.post('/:appointmentId', async (req, res) => {
     });
   }
 
-  res.json({ 
-    success: true, 
-    sent: messengerSent,
-    message: messengerSent ? 'Status updated and notification sent' : 'Status updated (notification send skipped or failed)'
-  });
+  res.json({ success: true, sent: true });
 });
 
 module.exports = router;
