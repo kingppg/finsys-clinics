@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import Swal from "sweetalert2";
 import { supabase } from "../supabaseClient";
-import { useClinic } from "./ClinicContext"; // ─── CONSUMING CONTEXT
+import { useClinic } from "./ClinicContext";
 import "./ClinicProcedureManager.css";
 
 // ─── Tiny SVG icon helper ─────────────────────────────────────────────────────
@@ -43,19 +43,22 @@ const I = {
 };
 
 const swalConfig = {
-  confirmButtonColor: "#0f2340", 
-  cancelButtonColor: "#64748b",  
+  confirmButtonColor: "#0f2340",
+  cancelButtonColor: "#64748b",
   customClass: {
     confirmButton: "CPM-swal-confirm-btn",
     cancelButton: "CPM-swal-cancel-btn",
   }
 };
 
+// FIX #1 — storageKey helper moved outside component so it's never recreated on render
+const getStorageKey = (clinicId) => `CPM_expanded_${clinicId}`;
+
 // ─── Sortable Procedure Row ───────────────────────────────────────────────────
 const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, onDelete, onEditChange }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: String(proc.id) });
-  const { currencySymbol, currencyLocale } = useClinic(); 
+  const { currencySymbol, currencyLocale } = useClinic();
 
   return (
     <tr
@@ -70,11 +73,11 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
       </td>
       <td>
         {isEditing ? (
-          <input 
-            className="CPM-inline-input" 
-            value={editData.name ?? ""} 
+          <input
+            className="CPM-inline-input"
+            value={editData.name ?? ""}
             onFocus={(e) => e.target.select()}
-            onChange={e => onEditChange("name", e.target.value)} 
+            onChange={e => onEditChange("name", e.target.value)}
           />
         ) : (
           <span className="CPM-proc-name">{proc.name}</span>
@@ -82,12 +85,12 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
       </td>
       <td>
         {isEditing ? (
-          <input 
-            className="CPM-inline-input CPM-inline-input--price" 
-            type="number" 
-            value={editData.price ?? ""} 
+          <input
+            className="CPM-inline-input CPM-inline-input--price"
+            type="number"
+            value={editData.price ?? ""}
             onFocus={(e) => e.target.select()}
-            onChange={e => onEditChange("price", e.target.value)} 
+            onChange={e => onEditChange("price", e.target.value)}
           />
         ) : (
           <span className="CPM-price">
@@ -114,7 +117,7 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
 
 // ─── Bulk Price Modal ─────────────────────────────────────────────────────────
 const BulkModal = ({ categoryName, onApply, onClose }) => {
-  const { currencySymbol } = useClinic(); 
+  const { currencySymbol } = useClinic();
   const [mode, setMode]           = useState("percent");
   const [direction, setDirection] = useState("increase");
   const [value, setValue]         = useState("");
@@ -197,7 +200,6 @@ const exportPDF = (clinicName, categories, currencySymbol, currencyLocale) => {
   const win = window.open("", "_blank");
   if (!win) return;
 
-  // Dynamically attaches the clinic name or falls back gracefully
   const displayTitle = clinicName ? `${clinicName.trim()} Procedure Price List` : "Clinic Procedure Price List";
 
   win.document.write(`<!DOCTYPE html><html><head><title>${displayTitle}</title>
@@ -216,7 +218,7 @@ const exportPDF = (clinicName, categories, currencySymbol, currencyLocale) => {
   ${categories.map(cat => `
     <h2>${cat.name}</h2>
     <table><thead><tr><th>Procedure</th><th style="text-align:right">Price (${currencySymbol})</th></tr></thead>
-    <tbody>${(cat.procedures??[]).map(p=>`<tr><td>${p.name}</td><td class="p">${Number(p.price||0).toLocaleString(currencyLocale, {minimumFractionDigits:2})}</td></tr>`).join("")}</tbody>
+    <tbody>${(cat.procedures??[]).map(p=>`<tr><td>${p.name}</td><td class="p">${Number(p.price||0).toLocaleString(currencyLocale,{minimumFractionDigits:2})}</td></tr>`).join("")}</tbody>
     </table>`).join("")}
   </body></html>`);
   win.document.close();
@@ -228,8 +230,8 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
   const { clinicId, currencySymbol, currencyLocale } = useClinic();
   const [editingName, setEditName]= useState(false);
   const [catName, setCatName]     = useState(category.name);
-  const [editingProc, setEP]      = useState({});   
-  const [editData, setED]         = useState({});   
+  const [editingProc, setEP]      = useState({});
+  const [editData, setED]         = useState({});
   const [newProc, setNewProc]     = useState({ name: "", price: "" });
   const [addingProc, setAdding]   = useState(false);
   const [showBulk, setShowBulk]   = useState(false);
@@ -254,16 +256,24 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
 
   const displayOpen = hasSearch ? true : isOpen;
 
+  // FIX #4 — saveCatName with error handling
   const saveCatName = async () => {
     if (!catName.trim()) return;
-    await supabase.from("procedure_categories").update({ name: catName.trim() }).eq("id", category.id);
+    const { error } = await supabase
+      .from("procedure_categories")
+      .update({ name: catName.trim() })
+      .eq("id", category.id);
+    if (error) {
+      Swal.fire({ ...swalConfig, title: "Error", text: "Could not rename category.", icon: "error" });
+      return;
+    }
     setEditName(false);
     onRefresh();
   };
 
   const deleteCat = async () => {
     const n = procedures.length;
-    
+
     const result = await Swal.fire({
       ...swalConfig,
       title: "Are you sure?",
@@ -280,7 +290,7 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
         await supabase.from("procedures").delete().eq("category_id", category.id);
         await supabase.from("procedure_categories").delete().eq("id", category.id);
         onRefresh();
-        
+
         Swal.fire({
           ...swalConfig,
           title: "Deleted!",
@@ -304,12 +314,21 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
     setEP(p => { const n={...p}; delete n[id]; return n; });
     setED(p => { const n={...p}; delete n[id]; return n; });
   };
+
+  // FIX #4 — saveProc with error handling
   const saveProc = async (proc) => {
-    await supabase.from("procedures").update(editData[proc.id]).eq("id", proc.id);
+    const { error } = await supabase
+      .from("procedures")
+      .update(editData[proc.id])
+      .eq("id", proc.id);
+    if (error) {
+      Swal.fire({ ...swalConfig, title: "Error", text: "Could not save procedure.", icon: "error" });
+      return;
+    }
     cancelEdit(proc.id);
     onRefresh();
   };
-  
+
   const deleteProc = async (id) => {
     const result = await Swal.fire({
       ...swalConfig,
@@ -341,15 +360,20 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
       }
     }
   };
-  
+
+  // FIX #5 — addProc with error handling
   const addProc = async () => {
     if (!newProc.name.trim() || !newProc.price) return;
     const maxOrder = procedures.reduce((m, p) => Math.max(m, p.sort_order ?? 0), 0);
-    await supabase.from("procedures").insert([{
+    const { error } = await supabase.from("procedures").insert([{
       clinic_id: clinicId, category_id: category.id,
       name: newProc.name.trim(), price: newProc.price,
       sort_order: maxOrder + 1,
     }]);
+    if (error) {
+      Swal.fire({ ...swalConfig, title: "Error", text: "Could not add procedure.", icon: "error" });
+      return;
+    }
     setNewProc({ name: "", price: "" });
     setAdding(false);
     onRefresh();
@@ -357,7 +381,7 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
 
   const applyBulk = async ({ mode, direction, value }) => {
     const sign = direction === "increase" ? 1 : -1;
-    
+
     const upsertPayload = procedures.map(proc => {
       const cur = parseFloat(proc.price || 0);
       const adj = mode === "percent" ? cur + sign * (cur * value / 100) : cur + sign * value;
@@ -420,7 +444,7 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
       .upsert(upsertPayload, { onConflict: "id" });
 
     if (error) {
-      console.error("Error updates procedure positions:", error);
+      console.error("Error updating procedure positions:", error);
       onRefresh();
     }
   };
@@ -449,9 +473,9 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
 
         {editingName ? (
           <div className="CPM-cat-name-edit">
-            <input 
-              ref={nameRef} 
-              className="CPM-cat-name-input" 
+            <input
+              ref={nameRef}
+              className="CPM-cat-name-input"
               value={catName}
               onFocus={(e) => e.target.select()}
               onChange={e => setCatName(e.target.value)}
@@ -566,8 +590,7 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
 
 // ─── Main Container ───────────────────────────────────────────────────────────
 const ClinicProcedureManager = () => {
-  // Destructured `clinicName` right here from your custom Clinic context hook!
-  const { clinicId, clinicName, currencySymbol, currencyLocale, loading: contextLoading } = useClinic(); 
+  const { clinicId, clinicName, currencySymbol, currencyLocale, loading: contextLoading } = useClinic();
 
   const [categories, setCategories] = useState([]);
   const [loading, setLoading]       = useState(false);
@@ -575,32 +598,31 @@ const ClinicProcedureManager = () => {
   const [addingCat, setAddingCat]   = useState(false);
   const [search, setSearch]         = useState("");
   const [showExport, setShowExport] = useState(false);
-  
-  const storageKey = `CPM_expanded_${clinicId}`;
-
   const [expandedCats, setExpandedCats] = useState({});
-  
+
   const exportRef = useRef(null);
-  
+
   const globalSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 10 } })
   );
 
+  // FIX #1 — uses getStorageKey(clinicId) instead of inline template string
   useEffect(() => {
     if (!clinicId) return;
     try {
-      const saved = localStorage.getItem(`CPM_expanded_${clinicId}`);
+      const saved = localStorage.getItem(getStorageKey(clinicId));
       if (saved) setExpandedCats(JSON.parse(saved));
     } catch (e) {
       console.error("Error initializing configuration cache mapping:", e);
     }
   }, [clinicId]);
 
+  // FIX #1 — dependency array no longer includes storageKey (it's now a pure function)
   useEffect(() => {
     if (clinicId) {
-      localStorage.setItem(storageKey, JSON.stringify(expandedCats));
+      localStorage.setItem(getStorageKey(clinicId), JSON.stringify(expandedCats));
     }
-  }, [expandedCats, storageKey, clinicId]);
+  }, [expandedCats, clinicId]);
 
   const fetchCategories = useCallback((preserveCollapses = true) => {
     if (!clinicId) return () => {};
@@ -615,12 +637,12 @@ const ClinicProcedureManager = () => {
       .order("sort_order", { ascending: true })
       .then(({ data }) => {
         if (!isMounted || cancelFetch) return;
-        
+
         const freshData = data || [];
         setCategories(freshData);
-        
+
         if (!preserveCollapses) {
-          const saved = localStorage.getItem(`CPM_expanded_${clinicId}`);
+          const saved = localStorage.getItem(getStorageKey(clinicId));
           if (!saved) {
             setExpandedCats({});
           }
@@ -630,8 +652,8 @@ const ClinicProcedureManager = () => {
         if (isMounted && !cancelFetch) setLoading(false);
       });
 
-    return () => { 
-      isMounted = false; 
+    return () => {
+      isMounted = false;
       cancelFetch = true;
     };
   }, [clinicId]);
@@ -666,7 +688,7 @@ const ClinicProcedureManager = () => {
   const addCategory = async () => {
     if (!newCatName.trim() || !clinicId) return;
     const maxOrder = categories.reduce((m, c) => Math.max(m, c.sort_order ?? 0), 0);
-    
+
     const { data, error } = await supabase
       .from("procedure_categories")
       .insert([{ clinic_id: clinicId, name: newCatName.trim(), sort_order: maxOrder + 1 }])
@@ -675,8 +697,8 @@ const ClinicProcedureManager = () => {
     if (!error && data?.[0]) {
       setExpandedCats(prev => ({ ...prev, [data[0].id]: true }));
     }
-    
-    setNewCatName(""); 
+
+    setNewCatName("");
     setAddingCat(false);
     fetchCategories(true);
   };
@@ -754,7 +776,6 @@ const ClinicProcedureManager = () => {
               {showExport && (
                 <div className="CPM-export-menu">
                   <button onClick={() => { exportCSV(categories); setShowExport(false); }}>Export as CSV</button>
-                  {/* Passes clinicName over to the export helper function cleanly */}
                   <button onClick={() => { exportPDF(clinicName, categories, currencySymbol, currencyLocale); setShowExport(false); }}>Export as PDF</button>
                 </div>
               )}
@@ -796,14 +817,14 @@ const ClinicProcedureManager = () => {
           <DndContext sensors={globalSensors} collisionDetection={closestCenter} onDragEnd={catDragEnd}>
             <SortableContext items={displayed.map(c => String(c.id))} strategy={verticalListSortingStrategy}>
               {displayed.map(cat => (
-                <CategoryCard 
-                  key={cat.id} 
-                  category={cat} 
+                <CategoryCard
+                  key={cat.id}
+                  category={cat}
                   isOpen={!!expandedCats[cat.id]}
                   onToggle={() => toggleCategoryCollapse(cat.id)}
                   onProceduresReorder={handleInnerProceduresReorder}
-                  onRefresh={() => fetchCategories(true)} 
-                  searchQuery={search} 
+                  onRefresh={() => fetchCategories(true)}
+                  searchQuery={search}
                 />
               ))}
             </SortableContext>

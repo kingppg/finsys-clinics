@@ -36,25 +36,25 @@
   background: var(--cpm-surface);
   border-radius: 20px;
   box-shadow: var(--cpm-shadow-lg);
-  max-width: 1120px;
+  max-width: 1020px;
   margin: 24px auto;
+  overflow: hidden;
   border: 1px solid var(--cpm-border);
   
   /* CRITICAL FOR STICKY: No overflow limits allowed here so the browser can track the header */
   overflow: visible; 
 }
 
-/* ── True Sticky Header ──────────────────────────────────────────────────────── */
+/* ── Sticky header — Option 2: white/light ───────────────────────────────────── */
 .CPM-sticky-header {
   position: -webkit-sticky; /* Safari support */
   position: sticky;
-  top: 0;                  /* Locks exactly at the top edge of the browser window */
-  z-index: 110;            /* Sits safely above category badges and drag handles */
-  background: var(--cpm-navy);
+  top: 0;
+  z-index: 110;
+  background: #c2d3f0;
   padding: 20px 24px;
-  box-shadow: 0 4px 20px #0f234030;
-  
-  /* Matches the outer container corners smoothly */
+  box-shadow: 0 2px 12px #0f234014;
+  border-bottom: 1px solid var(--cpm-border);
   border-top-left-radius: 19px;
   border-top-right-radius: 19px;
 }
@@ -71,14 +71,14 @@
   font-family: var(--cpm-font-display);
   font-size: 1.55rem;
   font-weight: 700;
-  color: var(--cpm-white);
+  color: var(--cpm-navy);
   margin: 0 0 3px;
 }
 
 .CPM-header-meta { display: flex; align-items: center; gap: 7px; }
-.CPM-stat        { font-size: 0.8rem; color: #93b4e0; }
-.CPM-stat em     { font-style: normal; color: #6b93c9; }
-.CPM-stat-divider{ color: #3b5a8a; }
+.CPM-stat        { font-size: 0.8rem; color: var(--cpm-navy-light); }
+.CPM-stat em     { font-style: normal; color: var(--cpm-text-muted); }
+.CPM-stat-divider{ color: var(--cpm-border-dark); }
 
 .CPM-header-actions {
   display: flex;
@@ -96,15 +96,15 @@
 .CPM-search-icon {
   position: absolute;
   left: 10px;
-  color: #6b93c9;
+  color: var(--cpm-text-muted);
   display: flex;
   pointer-events: none;
 }
 .CPM-search-input {
-  background: #1e3d6e;
-  border: 1px solid #3b5a8a;
+  background: var(--cpm-surface-2);
+  border: 1px solid var(--cpm-border-dark);
   border-radius: var(--cpm-radius-sm);
-  color: var(--cpm-white);
+  color: var(--cpm-text);
   padding: 8px 32px 8px 32px;
   font-family: var(--cpm-font);
   font-size: 0.88rem;
@@ -112,7 +112,7 @@
   width: 190px;
   transition: border-color 0.18s, box-shadow 0.18s, width 0.2s;
 }
-.CPM-search-input::placeholder { color: #6b93c9; }
+.CPM-search-input::placeholder { color: var(--cpm-text-muted); }
 .CPM-search-input:focus {
   border-color: var(--cpm-accent);
   box-shadow: 0 0 0 3px var(--cpm-accent-glow);
@@ -123,14 +123,14 @@
   right: 8px;
   background: none;
   border: none;
-  color: #6b93c9;
+  color: var(--cpm-text-muted);
   cursor: pointer;
   display: flex;
   padding: 2px;
   border-radius: 4px;
   transition: color 0.15s;
 }
-.CPM-search-clear:hover { color: var(--cpm-white); }
+.CPM-search-clear:hover { color: var(--cpm-navy); }
 
 /* ── Export ──────────────────────────────────────────────────────────────────── */
 .CPM-export-wrap { position: relative; }
@@ -139,9 +139,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #1e3d6e;
-  border: 1px solid #3b5a8a;
-  color: #93b4e0;
+  background: var(--cpm-surface-2);
+  border: 1px solid var(--cpm-border-dark);
+  color: var(--cpm-text-muted);
   padding: 8px 14px;
   border-radius: var(--cpm-radius-sm);
   font-family: var(--cpm-font);
@@ -150,7 +150,7 @@
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.CPM-export-btn:hover:not(:disabled) { background: #264e8a; color: var(--cpm-white); }
+.CPM-export-btn:hover:not(:disabled) { background: var(--cpm-border); color: var(--cpm-navy); }
 .CPM-export-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .CPM-export-menu {
@@ -162,7 +162,7 @@
   border-radius: var(--cpm-radius-sm);
   box-shadow: var(--cpm-shadow-md);
   overflow: hidden;
-  z-index: 120;
+  z-index: 100;
   min-width: 160px;
   animation: cpm-fade-in 0.12s ease;
 }
@@ -208,10 +208,10 @@
 
 .CPM-cat-add-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .CPM-cat-add-input {
-  background: #1e3d6e;
+  background: var(--cpm-surface-2);
   border: 1px solid var(--cpm-accent);
   border-radius: var(--cpm-radius-sm);
-  color: var(--cpm-white);
+  color: var(--cpm-text);
   padding: 8px 13px;
   font-family: var(--cpm-font);
   font-size: 0.9rem;
@@ -219,7 +219,7 @@
   min-width: 180px;
   box-shadow: 0 0 0 3px var(--cpm-accent-glow);
 }
-.CPM-cat-add-input::placeholder { color: #6b93c9; }
+.CPM-cat-add-input::placeholder { color: var(--cpm-text-muted); }
 
 /* ── Body ────────────────────────────────────────────────────────────────────── */
 .CPM-body {
@@ -291,7 +291,7 @@
 .CPM-cat-drag { margin-right: 2px; }
 
 .CPM-drag-cell { width: 28px; padding: 0 6px !important; }
-.CPM-th-drag    { width: 28px; }
+.CPM-th-drag   { width: 28px; }
 
 /* ── Collapse toggle ─────────────────────────────────────────────────────────── */
 .CPM-cat-toggle {
@@ -338,20 +338,27 @@
 /* ── COLLAPSE FIX: grid + inner wrapper ──────────────────────────────────────── */
 .CPM-cat-body {
   display: grid;
-  grid-template-rows: 0fr;             /* collapsed */
+  grid-template-rows: 0fr;
   transition: grid-template-rows 0.26s cubic-bezier(.4,0,.2,1);
 }
 .CPM-category--open .CPM-cat-body {
-  grid-template-rows: 1fr;             /* expanded */
+  grid-template-rows: 1fr;
 }
-/* The inner wrapper MUST have overflow:hidden and min-height:0 */
 .CPM-cat-body-inner {
   overflow: hidden;
   min-height: 0;
 }
 
 /* ── Table ───────────────────────────────────────────────────────────────────── */
-.CPM-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.CPM-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; table-layout: fixed; }
+.CPM-table th:nth-child(2),
+.CPM-table td:nth-child(2) { width: auto; }
+
+.CPM-table th:nth-child(3),
+.CPM-table td:nth-child(3) { width: 140px; }
+
+.CPM-table th:nth-child(4),
+.CPM-table td:nth-child(4) { width: 180px; }
 
 .CPM-table th {
   background: #f0f5ff;
@@ -372,7 +379,6 @@
 .CPM-table tbody tr:hover { background: var(--cpm-surface); }
 .CPM-table tbody tr.CPM-row--editing { background: #eff6ff; }
 
-/* Drag overlay ghost row */
 .CPM-table--overlay {
   background: var(--cpm-white);
   border-radius: var(--cpm-radius-sm);
@@ -545,6 +551,7 @@
   .CPM-modal { margin: 0 12px; }
 }
 
+/* ── SweetAlert2 custom buttons ──────────────────────────────────────────────── */
 .CPM-swal-confirm-btn {
   font-family: inherit;
   font-weight: 500;
