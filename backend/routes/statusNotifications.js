@@ -3,6 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');  // ✅ ADD THIS
 const { createClient } = require('@supabase/supabase-js');
 const { sendMessage } = require('../webhook'); // Your Messenger send logic
 
@@ -142,11 +143,19 @@ router.post('/:appointmentId', async (req, res) => {
 
   const finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment status has been updated to "${status}" as of ${dateStr} at ${timeStr}.`;
 
-  // Send Messenger message
+  // Send Messenger message with proper tag
   try {
-    await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
+    await axios.post(
+      `https://graph.facebook.com/v18.0/me/messages?access_token=${pageToken}`,
+      {
+        recipient: { id: messenger_id },
+        message: { text: finalMsg },
+        messaging_type: "MESSAGE_TAG",
+        tag: "APPOINTMENT_UPDATE"  // ✅ Proper tag for appointment status updates
+      }
+    );
   } catch (err) {
-    console.error("[status-notifications] ❌ Error sending Messenger status notification:", err);
+    console.error("[status-notifications] ❌ Error sending Messenger status notification:", err.response?.data || err.message);
     return res.status(500).json({ error: 'Failed to send Messenger notification.' });
   }
 
