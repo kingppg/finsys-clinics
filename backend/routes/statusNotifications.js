@@ -63,6 +63,17 @@ router.post('/:appointmentId', async (req, res) => {
 
   let messenger_id = recipient || appt.messenger_id || appt.guardian_messenger_id;
 
+  // Get clinic info (name, phone, and Messenger Page token) in one query
+  const { data: clinicRow, error: clinicError } = await supabase
+    .from('clinics')
+    .select('fb_page_access_token, name, contact_phone')
+    .eq('id', clinic_id)
+    .single();
+
+  const pageToken = clinicRow?.fb_page_access_token;
+  const clinicName = clinicRow?.name || 'your clinic';
+  const clinicPhone = clinicRow?.contact_phone || null;
+
   if (!messenger_id) {
     // No Messenger ID — emit socket so queue display still updates, then log and return.
     if (req.io) {
@@ -96,26 +107,40 @@ router.post('/:appointmentId', async (req, res) => {
     });
   }
 
-  // Get Messenger Page token for clinic
-  const { data: clinicRow, error: clinicError } = await supabase
-    .from('clinics')
-    .select('fb_page_access_token')
-    .eq('id', clinic_id)
-    .single();
-  const pageToken = clinicRow?.fb_page_access_token;
-
   if (clinicError || !pageToken) {
     console.error('[status-notifications] No Messenger Page token found for this clinic.');
     return res.status(400).json({ error: 'No Messenger Page token found for this clinic.' });
   }
 
+  // Format appointment date & time (Asia/Manila timezone)
+  const apptDate = new Date(appt.appointment_time);
+  const dateStr = apptDate.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Manila'
+  });
+  const timeStr = apptDate.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'Asia/Manila'
+  });
+
+  const contactLine = clinicPhone
+    ? `You may reach us at ${clinicPhone}.`
+    : `Please contact us to get assistance.`;
+
   const defaultMessages = {
-    "Checked-In": `Hi ${appt.patient_name}! 😊 You're now checked in at PaloDentcare. Please have a seat and relax — we'll be with you shortly. Thank you for your patience! 🦷`,
-    Completed: `Hello ${appt.patient_name}, thank you for coming to your appointment!`,
-    "No Show": `Hello ${appt.patient_name}, we noticed you missed your appointment. Please contact us to reschedule.`,
-    Cancelled: `Hello ${appt.patient_name}, your appointment has been cancelled. Contact us if you'd like to rebook.`,
+    "Checked-In": `Hi ${appt.patient_name}! 😊 You're now checked in at ${clinicName}. Please have a seat and relax — we'll be with you shortly. Thank you for your patience! 🦷`,
+    "Confirmed":  `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment on ${dateStr} at ${timeStr} has been confirmed. We look forward to seeing you! 🦷`,
+    "Scheduled":  `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment has been scheduled for ${dateStr} at ${timeStr}. See you then! 🦷`,
+    "Completed":  `Hello ${appt.patient_name}, this is ${clinicName}. Thank you for coming to your appointment on ${dateStr}. We hope to see you again soon! 🦷`,
+    "No Show":    `Hello ${appt.patient_name}, this is ${clinicName}. We noticed you missed your appointment on ${dateStr} at ${timeStr}. ${contactLine}`,
+    "Cancelled":  `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment on ${dateStr} at ${timeStr} has been cancelled. ${contactLine}`,
   };
-  const finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, your appointment status was updated to "${status}".`;
+
+  const finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment status has been updated to "${status}" as of ${dateStr} at ${timeStr}.`;
 
   // Send Messenger message
   try {
