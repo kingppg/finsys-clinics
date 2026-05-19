@@ -360,11 +360,7 @@ async function sendMessage(sender_psid, response, context) {
   try {
     await axios.post(
       `https://graph.facebook.com/v17.0/me/messages?access_token=${context.pageAccessToken}`,
-      { recipient: { id: sender_psid }, 
-        message: { text: response }, 
-        messaging_type: "MESSAGE_TAG", 
-        tag: "APPOINTMENT_UPDATE" // ✅ CORRECT TAG for appointment messages
-      } 
+      { recipient: { id: sender_psid }, message: { text: response }, messaging_type: "MESSAGE_TAG", tag: "CONFIRMED_EVENT_UPDATE" }
     );
   } catch (err) {
     console.error("❌ Error sending message:", err.response?.data || err.message);
