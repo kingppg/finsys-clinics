@@ -182,19 +182,39 @@ app.get('/api/clinics/:id/sms/balance', async (req, res) => {
   try {
     const { data: clinic, error } = await supabase
       .from('clinics')
-      .select('sms_provider, sms_api_key')
+      .select('sms_provider, sms_api_key, sms_api_secret')
       .eq('id', clinicId)
       .single();
 
     if (error || !clinic) {
       return res.status(404).json({ error: 'Clinic not found.' });
     }
-    if (clinic.sms_provider !== 'semaphore' || !clinic.sms_api_key) {
-      return res.status(400).json({ error: 'No Semaphore API key configured.' });
+
+    if (clinic.sms_provider === 'semaphore') {
+      if (!clinic.sms_api_key) return res.status(400).json({ error: 'No Semaphore API key configured.' });
+      const response = await axios.get(`https://semaphore.co/api/v4/account?apikey=${clinic.sms_api_key}`);
+      res.json({
+        credit_balance: response.data.credit_balance,
+        currency: 'credits',
+        provider: 'semaphore'
+      });
+
+    } else if (clinic.sms_provider === 'twilio') {
+      if (!clinic.sms_api_key || !clinic.sms_api_secret) return res.status(400).json({ error: 'No Twilio credentials configured.' });
+      const response = await axios.get(
+        `https://api.twilio.com/2010-04-01/Accounts/${clinic.sms_api_key}.json`,
+        { auth: { username: clinic.sms_api_key, password: clinic.sms_api_secret } }
+      );
+      res.json({
+        credit_balance: parseFloat(response.data.balance).toFixed(2),
+        currency: response.data.currency || 'USD',
+        provider: 'twilio'
+      });
+
+    } else {
+      return res.status(400).json({ error: 'No SMS provider configured.' });
     }
 
-    const response = await axios.get(`https://semaphore.co/api/v4/account?apikey=${clinic.sms_api_key}`);
-    res.json({ credit_balance: response.data.credit_balance });
   } catch (err) {
     console.error('SMS balance error:', err.response?.data || err.message);
     res.status(500).json({ error: 'Failed to fetch SMS balance.' });
