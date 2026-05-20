@@ -4,7 +4,6 @@ import { supabase } from '../supabaseClient';
 import AdminUsersRoles from './AdminUsersRoles';
 import './ClinicConfig.css';
 
-// Always use backend API base for production
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const initialClinicState = {
@@ -15,7 +14,11 @@ const initialClinicState = {
   contact_email: '',
   contact_phone: '',
   fb_page_id: '',
-  messenger_page_id: ''
+  messenger_page_id: '',
+  sms_provider: 'none',
+  sms_api_key: '',
+  sms_api_secret: '',
+  sms_sender: ''
 };
 
 function ClinicConfig({ user, clinicId, onBack }) {
@@ -27,11 +30,10 @@ function ClinicConfig({ user, clinicId, onBack }) {
   const [fbConnecting, setFbConnecting] = useState(false);
   const [fbPages, setFbPages] = useState(null);
   const [showFbPageModal, setShowFbPageModal] = useState(false);
+  const [smsLoading, setSmsLoading] = useState(false);
 
-  // Subtab switching: 'fb' (FB Page Config), 'users' (Users & Roles)
   const [subTab, setSubTab] = useState('fb');
 
-  // Fetch clinics list (direct from Supabase)
   const fetchClinics = async (stayOnClinicId = null) => {
     setLoading(true);
     try {
@@ -66,7 +68,6 @@ function ClinicConfig({ user, clinicId, onBack }) {
     // eslint-disable-next-line
   }, [user.role, clinicId]);
 
-  // When selectedClinicId changes, fetch clinic data or reset for new clinic
   useEffect(() => {
     if (!selectedClinicId || selectedClinicId === 'new') {
       setIsNew(true);
@@ -86,7 +87,11 @@ function ClinicConfig({ user, clinicId, onBack }) {
         contact_email: clinic.contact_email ?? '',
         contact_phone: clinic.contact_phone ?? '',
         fb_page_id: clinic.fb_page_id ?? '',
-        messenger_page_id: clinic.messenger_page_id ?? ''
+        messenger_page_id: clinic.messenger_page_id ?? '',
+        sms_provider: clinic.sms_provider ?? 'none',
+        sms_api_key: clinic.sms_api_key ?? '',
+        sms_api_secret: clinic.sms_api_secret ?? '',
+        sms_sender: clinic.sms_sender ?? ''
       });
     }
   }, [selectedClinicId, clinics]);
@@ -114,7 +119,6 @@ function ClinicConfig({ user, clinicId, onBack }) {
   async function handleSubmit(e) {
     e.preventDefault();
 
-    // SweetAlert2 confirmation before update
     const result = await Swal.fire({
       title: isNew ? 'Add Clinic?' : 'Update Clinic Info?',
       text: isNew
@@ -128,12 +132,9 @@ function ClinicConfig({ user, clinicId, onBack }) {
       focusCancel: true
     });
 
-    if (!result.isConfirmed) {
-      return;
-    }
+    if (!result.isConfirmed) return;
 
     setLoading(true);
-
     try {
       let updatedClinicId = selectedClinicId;
       if (isNew) {
@@ -155,24 +156,86 @@ function ClinicConfig({ user, clinicId, onBack }) {
       setIsNew(false);
       await Swal.fire({
         title: 'Success!',
-        text: isNew
-          ? 'New clinic has been added.'
-          : 'Clinic information has been updated.',
+        text: isNew ? 'New clinic has been added.' : 'Clinic information has been updated.',
         icon: 'success',
         confirmButtonText: 'OK'
       });
     } catch {
-      Swal.fire({
-        title: 'Error',
-        text: 'Failed to save clinic.',
-        icon: 'error'
-      });
+      Swal.fire({ title: 'Error', text: 'Failed to save clinic.', icon: 'error' });
     } finally {
       setLoading(false);
     }
   }
 
-  // FB Connect: starts OAuth flow via backend, with modal selection
+  async function handleSaveSms(e) {
+    e.preventDefault();
+
+    const result = await Swal.fire({
+      title: 'Save SMS Settings?',
+      text: 'Update SMS reminder configuration for this clinic?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Save',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      focusCancel: true
+    });
+
+    if (!result.isConfirmed) return;
+
+    setSmsLoading(true);
+    try {
+      const { error } = await supabase
+        .from('clinics')
+        .update({
+          sms_provider: formData.sms_provider,
+          sms_api_key: formData.sms_api_key,
+          sms_api_secret: formData.sms_api_secret,
+          sms_sender: formData.sms_sender
+        })
+        .eq('id', selectedClinicId);
+      if (error) throw error;
+      await fetchClinics(selectedClinicId);
+      Swal.fire({ title: 'SMS Settings Saved!', icon: 'success', timer: 1500, showConfirmButton: false });
+    } catch {
+      Swal.fire({ title: 'Error', text: 'Failed to save SMS settings.', icon: 'error' });
+    } finally {
+      setSmsLoading(false);
+    }
+  }
+
+  async function handleTestSms() {
+    const { value: testNumber } = await Swal.fire({
+      title: 'Test SMS',
+      input: 'text',
+      inputLabel: 'Enter a phone number to send a test SMS',
+      inputPlaceholder: '09XXXXXXXXX or +639XXXXXXXXX',
+      showCancelButton: true,
+      confirmButtonText: 'Send Test',
+      inputValidator: (value) => {
+        if (!value) return 'Please enter a phone number.';
+      }
+    });
+
+    if (!testNumber) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: testNumber })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        Swal.fire({ title: 'Test SMS Sent!', text: `Sent to ${testNumber}`, icon: 'success' });
+      } else {
+        Swal.fire({ title: 'Failed', text: data.error || 'Could not send test SMS.', icon: 'error' });
+      }
+    } catch {
+      Swal.fire({ title: 'Error', text: 'Could not reach the server.', icon: 'error' });
+    }
+  }
+
   async function handleConnectFBPage() {
     if (!selectedClinicId || isNew) {
       Swal.fire({
@@ -185,20 +248,17 @@ function ClinicConfig({ user, clinicId, onBack }) {
     setFbConnecting(true);
     setFbPages(null);
 
-    // Use API_BASE for OAuth popup
     const oauthWindow = window.open(
       `${API_BASE}/api/clinics/${selectedClinicId}/facebook/connect`,
       '_blank',
       'width=600,height=700'
     );
 
-    // Step 2: Poll backend for available FB pages after OAuth
     let attempts = 0;
     const maxAttempts = 30;
     const pollInterval = setInterval(async () => {
       attempts++;
       try {
-        // Use API_BASE for polling FB pages
         const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/facebook/pages`);
         if (res.status === 200) {
           const data = await res.json();
@@ -211,17 +271,12 @@ function ClinicConfig({ user, clinicId, onBack }) {
             return;
           }
         }
-        // Get updated clinic info to see if FB is now connected
         const { data: updatedClinic } = await supabase
           .from('clinics')
           .select('*')
           .eq('id', selectedClinicId)
           .single();
-        if (
-          updatedClinic &&
-          updatedClinic.fb_page_access_token &&
-          updatedClinic.fb_page_id
-        ) {
+        if (updatedClinic?.fb_page_access_token && updatedClinic?.fb_page_id) {
           setFormData((prev) => ({
             ...prev,
             fb_page_access_token: updatedClinic.fb_page_access_token,
@@ -247,25 +302,22 @@ function ClinicConfig({ user, clinicId, onBack }) {
           });
         }
       } catch {
-        // Ignore polling errors, try again
+        // ignore polling errors
       }
     }, 2000);
   }
 
-  // When user selects a page from the modal
   async function handleFbPageSelect(page) {
     setShowFbPageModal(false);
     setFbConnecting(true);
     try {
-      // Update form fields locally so UI shows the correct info
       setFormData((prev) => ({
         ...prev,
         fb_page_access_token: page.access_token,
         fb_page_id: page.id,
-        messenger_page_id: page.id // <-- This makes Messenger Page ID work!
+        messenger_page_id: page.id
       }));
 
-      // Use API_BASE for select-page POST
       const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/facebook/select-page`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -273,31 +325,18 @@ function ClinicConfig({ user, clinicId, onBack }) {
       });
       if (res.status === 200) {
         await fetchClinics(selectedClinicId);
-        Swal.fire({
-          title: 'Facebook Page Connected!',
-          text: `Connected to "${page.name}"`,
-          icon: 'success'
-        });
+        Swal.fire({ title: 'Facebook Page Connected!', text: `Connected to "${page.name}"`, icon: 'success' });
       } else {
-        Swal.fire({
-          title: 'Error',
-          text: 'Failed to connect selected Facebook page.',
-          icon: 'error'
-        });
+        Swal.fire({ title: 'Error', text: 'Failed to connect selected Facebook page.', icon: 'error' });
       }
     } catch {
-      Swal.fire({
-        title: 'Error',
-        text: 'Failed to connect selected Facebook page.',
-        icon: 'error'
-      });
+      Swal.fire({ title: 'Error', text: 'Failed to connect selected Facebook page.', icon: 'error' });
     } finally {
       setFbConnecting(false);
       setFbPages(null);
     }
   }
 
-  // Modal for Facebook Page selection
   function renderFbPageModal() {
     if (!showFbPageModal || !fbPages) return null;
     return (
@@ -313,11 +352,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
                   disabled={fbConnecting}
                 >
                   {page.picture && (
-                    <img
-                      src={page.picture.data.url}
-                      alt={page.name}
-                      className="fb-page-avatar"
-                    />
+                    <img src={page.picture.data.url} alt={page.name} className="fb-page-avatar" />
                   )}
                   <span>{page.name}</span>
                 </button>
@@ -332,10 +367,22 @@ function ClinicConfig({ user, clinicId, onBack }) {
     );
   }
 
+  // Tab button style helper
+  const tabStyle = (tab, position) => ({
+    background: subTab === tab ? '#eaf2ff' : '#fff',
+    color: subTab === tab ? '#185abd' : '#333',
+    border: subTab === tab ? '2px solid #185abd' : '1px solid #bbb',
+    borderRadius: position === 'left' ? '10px 0 0 10px' : position === 'right' ? '0 10px 10px 0' : '0',
+    fontWeight: 700,
+    padding: '7px 32px',
+    cursor: 'pointer'
+  });
+
   return (
     <div className="clinic-config-fullscreen">
       <div className="clinic-config-card">
         <h2>Clinic Configuration</h2>
+
         {user.role === 'superadmin' && (
           <div className="clinic-config-toolbar">
             <label className="clinic-select-label">Select Clinic:&nbsp;</label>
@@ -345,98 +392,47 @@ function ClinicConfig({ user, clinicId, onBack }) {
               onChange={(e) => setSelectedClinicId(e.target.value)}
             >
               {clinics.map((clinic) => (
-                <option key={clinic.id} value={clinic.id}>
-                  {clinic.name}
-                </option>
+                <option key={clinic.id} value={clinic.id}>{clinic.name}</option>
               ))}
               <option value="new">➕ Add Clinic</option>
             </select>
-            <button
-              className="add-clinic-btn"
-              type="button"
-              onClick={handleAddClinic}
-            >
+            <button className="add-clinic-btn" type="button" onClick={handleAddClinic}>
               Add Clinic
             </button>
           </div>
         )}
 
-        {/* ---- SUBTAB BUTTONS ---- */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 24, marginTop: 6 }}>
-          <button
-            type="button"
-            className={subTab === 'fb' ? 'clinicconfig-tab-btn active' : 'clinicconfig-tab-btn'}
-            style={{
-              background: subTab === 'fb' ? '#eaf2ff' : '#fff',
-              color: subTab === 'fb' ? '#185abd' : '#333',
-              border: subTab === 'fb' ? '2px solid #185abd' : '1px solid #bbb',
-              borderBottomLeftRadius: 10,
-              borderBottomRightRadius: 0,
-              borderTopLeftRadius: 10,
-              borderTopRightRadius: 0,
-              fontWeight: 700,
-              padding: '7px 32px',
-              cursor: 'pointer'
-            }}
-            onClick={() => setSubTab('fb')}
-          >
+        {/* SUBTABS */}
+        <div style={{ display: 'flex', gap: 0, marginBottom: 24, marginTop: 6 }}>
+          <button type="button" style={tabStyle('fb', 'left')} onClick={() => setSubTab('fb')}>
             FB Page Config
           </button>
+          <button type="button" style={tabStyle('sms', 'middle')} onClick={() => setSubTab('sms')}>
+            SMS Config
+          </button>
           {(user.role === 'superadmin' || user.role === 'admin') && (
-            <button
-              type="button"
-              className={subTab === 'users' ? 'clinicconfig-tab-btn active' : 'clinicconfig-tab-btn'}
-              style={{
-                background: subTab === 'users' ? '#eaf2ff' : '#fff',
-                color: subTab === 'users' ? '#185abd' : '#333',
-                border: subTab === 'users' ? '2px solid #185abd' : '1px solid #bbb',
-                borderBottomLeftRadius: 0,
-                borderBottomRightRadius: 10,
-                borderTopLeftRadius: 0,
-                borderTopRightRadius: 10,
-                fontWeight: 700,
-                padding: '7px 32px',
-                cursor: 'pointer'
-              }}
-              onClick={() => setSubTab('users')}
-            >
+            <button type="button" style={tabStyle('users', 'right')} onClick={() => setSubTab('users')}>
               Users Config
             </button>
           )}
         </div>
 
-        {/* ---- TAB CONTENT ---- */}
+        {/* FB PAGE CONFIG TAB */}
         {subTab === 'fb' && (
           <>
             {renderFbPageModal()}
             {(!user.role || clinics.length === 0) ? (
               <p>No clinic selected or available.</p>
             ) : (
-              <form
-                className="clinic-form-modern"
-                onSubmit={handleSubmit}
-                autoComplete="off"
-              >
+              <form className="clinic-form-modern" onSubmit={handleSubmit} autoComplete="off">
                 <div className="clinic-form-row">
                   <div className="clinic-form-field">
                     <label>Clinic Name*</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleFieldChange}
-                      required
-                    />
+                    <input type="text" name="name" value={formData.name} onChange={handleFieldChange} required />
                   </div>
                   <div className="clinic-form-field">
                     <label>Reminder Time*</label>
-                    <input
-                      type="time"
-                      name="reminder_time"
-                      value={formData.reminder_time}
-                      onChange={handleFieldChange}
-                      required
-                    />
+                    <input type="time" name="reminder_time" value={formData.reminder_time} onChange={handleFieldChange} required />
                   </div>
                 </div>
                 <div className="clinic-form-row">
@@ -468,71 +464,150 @@ function ClinicConfig({ user, clinicId, onBack }) {
                 <div className="clinic-form-row">
                   <div className="clinic-form-field">
                     <label>Address</label>
-                    <input
-                      type="text"
-                      name="address"
-                      value={formData.address}
-                      onChange={handleFieldChange}
-                    />
+                    <input type="text" name="address" value={formData.address} onChange={handleFieldChange} />
                   </div>
                   <div className="clinic-form-field">
                     <label>Contact Email</label>
-                    <input
-                      type="email"
-                      name="contact_email"
-                      value={formData.contact_email}
-                      onChange={handleFieldChange}
-                    />
+                    <input type="email" name="contact_email" value={formData.contact_email} onChange={handleFieldChange} />
                   </div>
                   <div className="clinic-form-field">
                     <label>Contact Phone</label>
-                    <input
-                      type="text"
-                      name="contact_phone"
-                      value={formData.contact_phone}
-                      onChange={handleFieldChange}
-                    />
+                    <input type="text" name="contact_phone" value={formData.contact_phone} onChange={handleFieldChange} />
                   </div>
                 </div>
                 <div className="clinic-form-row">
                   <div className="clinic-form-field">
                     <label>Facebook Page ID</label>
-                    <input
-                      type="text"
-                      name="fb_page_id"
-                      value={formData.fb_page_id}
-                      onChange={handleFieldChange}
-                      readOnly
-                    />
+                    <input type="text" name="fb_page_id" value={formData.fb_page_id} onChange={handleFieldChange} readOnly />
                   </div>
                   <div className="clinic-form-field">
                     <label>Messenger Page ID</label>
-                    <input
-                      type="text"
-                      name="messenger_page_id"
-                      value={formData.messenger_page_id}
-                      onChange={handleFieldChange}
-                      readOnly
-                    />
+                    <input type="text" name="messenger_page_id" value={formData.messenger_page_id} onChange={handleFieldChange} readOnly />
                   </div>
                 </div>
                 <div className="clinic-form-actions">
                   <button type="submit" disabled={loading}>
                     {isNew ? 'Save Clinic' : 'Update Clinic'}
                   </button>
-                  <button
-                    type="button"
-                    className="back-btn"
-                    onClick={handleBack}
-                  >
-                    Back
-                  </button>
+                  <button type="button" className="back-btn" onClick={handleBack}>Back</button>
                 </div>
               </form>
             )}
           </>
         )}
 
+        {/* SMS CONFIG TAB */}
+        {subTab === 'sms' && !isNew && (
+          <form className="clinic-form-modern" onSubmit={handleSaveSms} autoComplete="off">
+            <div className="clinic-form-row">
+              <div className="clinic-form-field">
+                <label>SMS Provider</label>
+                <select
+                  name="sms_provider"
+                  value={formData.sms_provider}
+                  onChange={handleFieldChange}
+                  style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #bbb', fontSize: '1rem' }}
+                >
+                  <option value="none">None (disabled)</option>
+                  <option value="semaphore">Semaphore (Philippines)</option>
+                  <option value="twilio">Twilio (International)</option>
+                </select>
+              </div>
+            </div>
+
+            {formData.sms_provider !== 'none' && (
+              <>
+                <div className="clinic-form-row">
+                  <div className="clinic-form-field">
+                    <label>
+                      {formData.sms_provider === 'semaphore' ? 'Semaphore API Key' : 'Twilio Account SID'}
+                    </label>
+                    <input
+                      type="text"
+                      name="sms_api_key"
+                      value={formData.sms_api_key}
+                      onChange={handleFieldChange}
+                      placeholder={formData.sms_provider === 'semaphore' ? 'Your Semaphore API key' : 'ACxxxxxxxxxxxxxxxx'}
+                    />
+                    {formData.sms_provider === 'semaphore' && (
+                      <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
+                        Get your API key from{' '}
+                        <a href="https://semaphore.co" target="_blank" rel="noreferrer">
+                          semaphore.co
+                        </a>{' '}
+                        → Account → API
+                      </small>
+                    )}
+                    {formData.sms_provider === 'twilio' && (
+                      <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
+                        Get your credentials from{' '}
+                        <a href="https://console.twilio.com" target="_blank" rel="noreferrer">
+                          console.twilio.com
+                        </a>{' '}
+                        → Account Info
+                      </small>
+                    )}
+                  </div>
+
+                  {formData.sms_provider === 'twilio' && (
+                    <div className="clinic-form-field">
+                      <label>Twilio Auth Token</label>
+                      <input
+                        type="password"
+                        name="sms_api_secret"
+                        value={formData.sms_api_secret}
+                        onChange={handleFieldChange}
+                        placeholder="Your Twilio auth token"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="clinic-form-row">
+                  <div className="clinic-form-field">
+                    <label>
+                      {formData.sms_provider === 'semaphore' ? 'Sender Name' : 'Twilio Phone Number'}
+                    </label>
+                    <input
+                      type="text"
+                      name="sms_sender"
+                      value={formData.sms_sender}
+                      onChange={handleFieldChange}
+                      placeholder={formData.sms_provider === 'semaphore' ? 'e.g. PALODENT' : '+1xxxxxxxxxx'}
+                    />
+                    {formData.sms_provider === 'semaphore' && (
+                      <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
+                        Sender name must be registered and approved in your Semaphore account.
+                      </small>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="clinic-form-actions">
+              <button type="submit" disabled={smsLoading}>
+                {smsLoading ? 'Saving...' : 'Save SMS Settings'}
+              </button>
+              {formData.sms_provider !== 'none' && formData.sms_api_key && (
+                <button
+                  type="button"
+                  onClick={handleTestSms}
+                  style={{ marginLeft: 12, background: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7', borderRadius: 6, padding: '8px 20px', fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Send Test SMS
+                </button>
+              )}
+              <button type="button" className="back-btn" onClick={handleBack}>Back</button>
+            </div>
+          </form>
+        )}
+
+        {subTab === 'sms' && isNew && (
+          <p style={{ color: '#888', marginTop: 16 }}>Please save the clinic first before configuring SMS.</p>
+        )}
+
+        {/* USERS CONFIG TAB */}
         {subTab === 'users' && (user.role === 'superadmin' || user.role === 'admin') && (
           <div style={{ marginTop: 24 }}>
             <AdminUsersRoles clinicId={selectedClinicId} currentUser={user} />
