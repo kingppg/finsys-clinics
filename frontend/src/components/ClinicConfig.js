@@ -31,6 +31,8 @@ function ClinicConfig({ user, clinicId, onBack }) {
   const [fbPages, setFbPages] = useState(null);
   const [showFbPageModal, setShowFbPageModal] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
+  const [smsBalance, setSmsBalance] = useState(null);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   const [subTab, setSubTab] = useState('fb');
 
@@ -96,6 +98,14 @@ function ClinicConfig({ user, clinicId, onBack }) {
     }
   }, [selectedClinicId, clinics]);
 
+  // Auto-fetch balance when SMS tab opens
+  useEffect(() => {
+    if (subTab === 'sms' && formData.sms_provider === 'semaphore' && formData.sms_api_key) {
+      fetchSmsBalance();
+    }
+    // eslint-disable-next-line
+  }, [subTab, selectedClinicId]);
+
   function handleFieldChange(e) {
     const { name, value } = e.target;
     setFormData((prev) => ({
@@ -113,6 +123,20 @@ function ClinicConfig({ user, clinicId, onBack }) {
   function handleBack() {
     if (typeof onBack === 'function') {
       onBack();
+    }
+  }
+
+  async function fetchSmsBalance() {
+    if (!selectedClinicId || formData.sms_provider !== 'semaphore' || !formData.sms_api_key) return;
+    setBalanceLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms/balance`);
+      const data = await res.json();
+      setSmsBalance(data.credit_balance ?? null);
+    } catch {
+      setSmsBalance(null);
+    } finally {
+      setBalanceLoading(false);
     }
   }
 
@@ -196,6 +220,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
         .eq('id', selectedClinicId);
       if (error) throw error;
       await fetchClinics(selectedClinicId);
+      await fetchSmsBalance();
       Swal.fire({ title: 'SMS Settings Saved!', icon: 'success', timer: 1500, showConfirmButton: false });
     } catch {
       Swal.fire({ title: 'Error', text: 'Failed to save SMS settings.', icon: 'error' });
@@ -228,6 +253,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
       const data = await res.json();
       if (res.ok) {
         Swal.fire({ title: 'Test SMS Sent!', text: `Sent to ${testNumber}`, icon: 'success' });
+        await fetchSmsBalance();
       } else {
         Swal.fire({ title: 'Failed', text: data.error || 'Could not send test SMS.', icon: 'error' });
       }
@@ -367,7 +393,6 @@ function ClinicConfig({ user, clinicId, onBack }) {
     );
   }
 
-  // Tab button style helper
   const tabStyle = (tab, position) => ({
     background: subTab === tab ? '#eaf2ff' : '#fff',
     color: subTab === tab ? '#185abd' : '#333',
@@ -499,6 +524,61 @@ function ClinicConfig({ user, clinicId, onBack }) {
         {/* SMS CONFIG TAB */}
         {subTab === 'sms' && !isNew && (
           <form className="clinic-form-modern" onSubmit={handleSaveSms} autoComplete="off">
+
+            {/* BALANCE DISPLAY */}
+            {formData.sms_provider === 'semaphore' && formData.sms_api_key && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 16px',
+                background: smsBalance !== null && smsBalance < 500 ? '#fff8e1' : '#f0f7ff',
+                border: `1px solid ${smsBalance !== null && smsBalance < 500 ? '#ffe082' : '#b3d1f7'}`,
+                borderRadius: 8,
+                marginBottom: 20
+              }}>
+                <span style={{ fontSize: '1rem' }}>
+                  {smsBalance !== null && smsBalance < 500 ? '⚠️' : '💳'}
+                </span>
+                <span style={{ fontWeight: 600, color: '#333' }}>
+                  SMS Credits:&nbsp;
+                  {balanceLoading
+                    ? 'Checking...'
+                    : smsBalance !== null
+                      ? (
+                        <span style={{ color: smsBalance < 500 ? '#e65100' : '#185abd' }}>
+                          {smsBalance.toLocaleString()} credits remaining
+                        </span>
+                      )
+                      : 'Unable to fetch'
+                  }
+                </span>
+                {smsBalance !== null && smsBalance < 500 && (
+                  <span style={{ fontSize: '0.85rem', color: '#e65100' }}>
+                    — Low balance! Top up at{' '}
+                    <a href="https://semaphore.co" target="_blank" rel="noreferrer">semaphore.co</a>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={fetchSmsBalance}
+                  disabled={balanceLoading}
+                  style={{
+                    marginLeft: 'auto',
+                    background: 'none',
+                    border: '1px solid #b3d1f7',
+                    borderRadius: 6,
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    color: '#185abd',
+                    fontWeight: 600
+                  }}
+                >
+                  {balanceLoading ? '...' : '↻ Refresh'}
+                </button>
+              </div>
+            )}
+
             <div className="clinic-form-row">
               <div className="clinic-form-field">
                 <label>SMS Provider</label>
@@ -532,19 +612,15 @@ function ClinicConfig({ user, clinicId, onBack }) {
                     {formData.sms_provider === 'semaphore' && (
                       <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
                         Get your API key from{' '}
-                        <a href="https://semaphore.co" target="_blank" rel="noreferrer">
-                          semaphore.co
-                        </a>{' '}
-                        → Account → API
+                        <a href="https://semaphore.co" target="_blank" rel="noreferrer">semaphore.co</a>
+                        {' '}→ Account → API
                       </small>
                     )}
                     {formData.sms_provider === 'twilio' && (
                       <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
                         Get your credentials from{' '}
-                        <a href="https://console.twilio.com" target="_blank" rel="noreferrer">
-                          console.twilio.com
-                        </a>{' '}
-                        → Account Info
+                        <a href="https://console.twilio.com" target="_blank" rel="noreferrer">console.twilio.com</a>
+                        {' '}→ Account Info
                       </small>
                     )}
                   </div>
@@ -566,14 +642,14 @@ function ClinicConfig({ user, clinicId, onBack }) {
                 <div className="clinic-form-row">
                   <div className="clinic-form-field">
                     <label>
-                      {formData.sms_provider === 'semaphore' ? 'Sender Name' : 'Twilio Phone Number'}
+                      {formData.sms_provider === 'twilio' ? 'Twilio Phone Number' : 'Sender Name'}
                     </label>
                     <input
                       type="text"
                       name="sms_sender"
                       value={formData.sms_sender}
                       onChange={handleFieldChange}
-                      placeholder={formData.sms_provider === 'semaphore' ? 'e.g. PALODENT' : '+1xxxxxxxxxx'}
+                      placeholder={formData.sms_provider === 'twilio' ? '+1xxxxxxxxxx' : 'e.g. PALODENT'}
                     />
                     {formData.sms_provider === 'semaphore' && (
                       <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
@@ -593,7 +669,16 @@ function ClinicConfig({ user, clinicId, onBack }) {
                 <button
                   type="button"
                   onClick={handleTestSms}
-                  style={{ marginLeft: 12, background: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7', borderRadius: 6, padding: '8px 20px', fontWeight: 600, cursor: 'pointer' }}
+                  style={{
+                    marginLeft: 12,
+                    background: '#e8f5e9',
+                    color: '#2e7d32',
+                    border: '1px solid #a5d6a7',
+                    borderRadius: 6,
+                    padding: '8px 20px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
                 >
                   Send Test SMS
                 </button>
