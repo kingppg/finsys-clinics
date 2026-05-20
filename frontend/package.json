@@ -17,6 +17,7 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.12.2",
     "date-fns": "^4.1.0",
+    "html2pdf.js": "^0.14.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-big-calendar": "^1.19.4",
