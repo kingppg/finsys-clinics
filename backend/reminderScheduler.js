@@ -1,6 +1,3 @@
-// Automated appointment reminders for Messenger bookings, dynamic cron per clinic with hot-reload
-// NOW FULLY SUPABASE (no direct pg Pool/SQL)
-
 require('dotenv').config();
 
 const cron = require('node-cron');
@@ -17,33 +14,72 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// --- Clinic-aware functions ---
-
-// Send Messenger message using clinic's page token
+// --- Send Messenger message ---
 async function sendMessengerMessage(messenger_id, text, page_access_token) {
   if (!messenger_id || !page_access_token) return;
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v17.0/me/messages?access_token=${page_access_token}`,
-      {
-        recipient: { id: messenger_id },
-        message: { text },
-        messaging_type: "MESSAGE_TAG",        // ← ADD
-        tag: "CONFIRMED_EVENT_UPDATE",         // ← ADD
-      }
-    );
-    console.log(`✅ Sent Messenger reminder to ${messenger_id}: ${text}`);
-  } catch (err) {
-    console.error("❌ Error sending Messenger reminder:", err.response?.data || err.message, err.stack || '');
+  await axios.post(
+    `https://graph.facebook.com/v17.0/me/messages?access_token=${page_access_token}`,
+    {
+      recipient: { id: messenger_id },
+      message: { text },
+      messaging_type: "MESSAGE_TAG",
+      tag: "CONFIRMED_EVENT_UPDATE",
+    }
+  );
+  console.log(`✅ Sent Messenger reminder to ${messenger_id}`);
+}
+
+// --- Send SMS via Semaphore ---
+async function sendSemaphoreSMS(phone, text, apiKey, senderName) {
+  if (!phone || !apiKey) return;
+  await axios.post('https://api.semaphore.co/api/v4/messages', {
+    apikey: apiKey,
+    number: phone,
+    message: text,
+    sendername: senderName || 'SEMAPHORE'
+  });
+  console.log(`✅ Sent Semaphore SMS to ${phone}`);
+}
+
+// --- Send SMS via Twilio ---
+async function sendTwilioSMS(phone, text, accountSid, authToken, fromNumber) {
+  if (!phone || !accountSid || !authToken || !fromNumber) return;
+  await axios.post(
+    `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+    new URLSearchParams({
+      To: phone,
+      From: fromNumber,
+      Body: text
+    }),
+    {
+      auth: { username: accountSid, password: authToken }
+    }
+  );
+  console.log(`✅ Sent Twilio SMS to ${phone}`);
+}
+
+// --- Send SMS based on clinic provider ---
+async function sendSMS(phone, text, clinic) {
+  if (!phone) {
+    console.log(`[SMS] Skipped — no phone number.`);
+    return;
+  }
+  if (!clinic.sms_provider || clinic.sms_provider === 'none') {
+    console.log(`[SMS] Skipped — no SMS provider configured for clinic "${clinic.name}".`);
+    return;
+  }
+  if (clinic.sms_provider === 'semaphore') {
+    await sendSemaphoreSMS(phone, text, clinic.sms_api_key, clinic.sms_sender);
+  } else if (clinic.sms_provider === 'twilio') {
+    await sendTwilioSMS(phone, text, clinic.sms_api_key, clinic.sms_api_secret, clinic.sms_sender);
   }
 }
 
-// Get all clinics with Messenger token and reminder time
+// --- Get all clinics ---
 async function getAllClinics() {
   const { data, error } = await supabase
     .from('clinics')
-    .select('id, name, fb_page_access_token, reminder_time, time_zone') // ✅ fetch time_zone
-    .not('fb_page_access_token', 'is', null)
+    .select('id, name, fb_page_access_token, reminder_time, time_zone, sms_provider, sms_api_key, sms_api_secret, sms_sender')
     .not('reminder_time', 'is', null);
 
   if (error) {
@@ -53,13 +89,13 @@ async function getAllClinics() {
   return data || [];
 }
 
-// Get all upcoming appointments with reminders enabled for a specific clinic
+// --- Get appointments with reminders enabled for a clinic ---
 async function getAppointmentsWithReminders(clinic_id) {
   const { data, error } = await supabase
     .from('appointments')
     .select(`
       *,
-      patient:patient_id (messenger_id, name)
+      patient:patient_id (messenger_id, name, phone)
     `)
     .eq('clinic_id', clinic_id)
     .eq('deleted', false)
@@ -72,27 +108,23 @@ async function getAppointmentsWithReminders(clinic_id) {
     return [];
   }
 
-  // Filter: must have patient.messenger_id or guardian_messenger_id
   return (data || []).filter(appt =>
     (appt.patient && appt.patient.messenger_id && appt.patient.messenger_id !== '') ||
-    (appt.guardian_messenger_id && appt.guardian_messenger_id !== '')
+    (appt.guardian_messenger_id && appt.guardian_messenger_id !== '') ||
+    (appt.patient && appt.patient.phone && appt.patient.phone !== '')
   );
 }
 
-// ✅ Get "today" date string in the clinic's own timezone (e.g. 'Asia/Manila', 'Europe/Moscow')
 function getTodayInTimezone(timeZone) {
-  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date()); // returns YYYY-MM-DD
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
 }
 
-// ✅ Check if appointment is exactly daysAhead from today in the clinic's timezone
 function isDaysBefore(appointment_time, daysAhead, timeZone) {
   const appointmentDate = new Date(
     new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(appointment_time))
   );
-
   const todayStr = getTodayInTimezone(timeZone);
   const today = new Date(todayStr);
-
   const timeDiff = appointmentDate.getTime() - today.getTime();
   const days = Math.round(timeDiff / (1000 * 60 * 60 * 24));
   return days === daysAhead;
@@ -101,24 +133,18 @@ function isDaysBefore(appointment_time, daysAhead, timeZone) {
 function parseReminderDays(reminder_days) {
   if (!reminder_days || (Array.isArray(reminder_days) && reminder_days.length === 0)) return [];
   if (Array.isArray(reminder_days)) {
-    const vals = reminder_days.map(d => Number(d)).filter(d => !isNaN(d));
-    return vals;
+    return reminder_days.map(d => Number(d)).filter(d => !isNaN(d));
   }
   if (typeof reminder_days === 'string') {
     try {
       const arr = JSON.parse(reminder_days);
-      if (Array.isArray(arr)) {
-        const vals = arr.map(d => Number(d)).filter(d => !isNaN(d));
-        return vals;
-      }
-    } catch { /* Ignore error */ }
-    const vals = reminder_days.split(',').map(d => Number(d.trim())).filter(d => !isNaN(d));
-    return vals;
+      if (Array.isArray(arr)) return arr.map(d => Number(d)).filter(d => !isNaN(d));
+    } catch { /* ignore */ }
+    return reminder_days.split(',').map(d => Number(d.trim())).filter(d => !isNaN(d));
   }
   return [];
 }
 
-// --- Supabase: get sent reminders (prevent duplicate) ---
 async function alreadySentReminder(appointment_id, daysAhead, messenger_id, todayStr) {
   const { data, error } = await supabase
     .from('appointment_reminders')
@@ -132,7 +158,6 @@ async function alreadySentReminder(appointment_id, daysAhead, messenger_id, toda
   return !!(data && data.id);
 }
 
-// --- Supabase: log sent reminder ---
 async function logReminder({ appointment_id, daysAhead, messenger_id, reminderText, todayStr, clinic_id }) {
   const { error } = await supabase
     .from('appointment_reminders')
@@ -157,13 +182,12 @@ async function sendRemindersForClinic(clinic) {
   const clinic_id = clinic.id;
   const page_access_token = clinic.fb_page_access_token;
   const clinic_name = clinic.name;
-  const timeZone = clinic.time_zone || 'Asia/Manila'; // ✅ use clinic's timezone, fallback to PH
+  const timeZone = clinic.time_zone || 'Asia/Manila';
 
   console.log(`[ReminderScheduler][${clinic_name}] sendRemindersForClinic started (timezone: ${timeZone})`);
   const appointments = await getAppointmentsWithReminders(clinic_id);
   console.log(`[${clinic_name}] Found ${appointments.length} appointments with reminders enabled.`);
 
-  // ✅ Get today's date string in the clinic's own timezone
   const todayStr = getTodayInTimezone(timeZone);
 
   for (const appt of appointments) {
@@ -171,69 +195,97 @@ async function sendRemindersForClinic(clinic) {
     if (!reminderDays || reminderDays.length === 0) continue;
 
     for (const daysAhead of reminderDays) {
-      // ✅ Pass clinic timezone so "today" is computed correctly
-      if (isDaysBefore(appt.appointment_time, daysAhead, timeZone)) {
-        let recipientMessengerId = (appt.patient && appt.patient.messenger_id) || appt.guardian_messenger_id;
-        if (!recipientMessengerId) continue;
+      if (!isDaysBefore(appt.appointment_time, daysAhead, timeZone)) continue;
 
-        // Prevent duplicate reminders
-        const alreadySent = await alreadySentReminder(appt.id, daysAhead, recipientMessengerId, todayStr);
-        if (alreadySent) continue;
+      const recipientMessengerId =
+        (appt.patient && appt.patient.messenger_id) || appt.guardian_messenger_id;
+      const recipientPhone = appt.patient?.phone || null;
 
-        // ✅ Format appointment date/time in the clinic's timezone
-        const apptDate = new Date(appt.appointment_time);
-        const dateStr = apptDate.toLocaleDateString('en-US', {
-          timeZone,
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        });
-        const timeStr = apptDate.toLocaleTimeString('en-US', {
-          timeZone,
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
+      // Skip if no way to reach patient at all
+      if (!recipientMessengerId && !recipientPhone) continue;
 
-        let reminderText = appt.reminder_message && appt.reminder_message.trim().length > 0
-          ? appt.reminder_message
-          : `Hello ${appt.patient?.name || ''}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+      // Use messenger_id as the unique key for dedup; fall back to phone
+      const dedupId = recipientMessengerId || recipientPhone;
 
-        reminderText += `\n\nSee you soon!`;
+      const alreadySent = await alreadySentReminder(appt.id, daysAhead, dedupId, todayStr);
+      if (alreadySent) continue;
 
-        await sendMessengerMessage(recipientMessengerId, reminderText, page_access_token);
+      // Format appointment date/time
+      const apptDate = new Date(appt.appointment_time);
+      const dateStr = apptDate.toLocaleDateString('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      const timeStr = apptDate.toLocaleTimeString('en-US', {
+        timeZone,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
 
-        await logReminder({
-          appointment_id: appt.id,
-          daysAhead,
-          messenger_id: recipientMessengerId,
-          reminderText,
-          todayStr,
-          clinic_id
-        });
+      let reminderText = appt.reminder_message && appt.reminder_message.trim().length > 0
+        ? appt.reminder_message
+        : `Hello ${appt.patient?.name || ''}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
 
-        console.log(`[${clinic_name}] Logged reminder for appointment ${appt.id}, ${daysAhead} days ahead.`);
+      reminderText += `\n\nSee you soon!`;
+
+      // --- Try Messenger first, fall back to SMS ---
+      let sent = false;
+
+      if (recipientMessengerId && page_access_token) {
+        try {
+          await sendMessengerMessage(recipientMessengerId, reminderText, page_access_token);
+          sent = true;
+        } catch (err) {
+          const fbErrCode = err?.response?.data?.error?.code;
+          if (fbErrCode === 10) {
+            console.log(`[${clinic_name}] Messenger window closed for ${recipientMessengerId} — falling back to SMS.`);
+          } else {
+            console.error(`[${clinic_name}] Messenger error for appt ${appt.id}:`, err?.response?.data || err.message);
+          }
+        }
       }
+
+      if (!sent && recipientPhone) {
+        try {
+          await sendSMS(recipientPhone, reminderText, clinic);
+          sent = true;
+        } catch (err) {
+          console.error(`[${clinic_name}] SMS error for appt ${appt.id}:`, err?.response?.data || err.message);
+        }
+      }
+
+      if (!sent) {
+        console.log(`[${clinic_name}] Could not send reminder for appt ${appt.id} — no valid channel.`);
+        continue;
+      }
+
+      await logReminder({
+        appointment_id: appt.id,
+        daysAhead,
+        messenger_id: dedupId,
+        reminderText,
+        todayStr,
+        clinic_id
+      });
+
+      console.log(`[${clinic_name}] Logged reminder for appointment ${appt.id}, ${daysAhead} days ahead.`);
     }
   }
 }
 
-// ✅ FIXED: Convert reminder_time (HH:MM:SS stored in clinic's local time) to UTC cron string
-// Uses reliable Intl.DateTimeFormat.formatToParts instead of toLocaleString arithmetic
 function getCronStringUTC(reminderTime, timeZone) {
   const parts = reminderTime.split(':');
   const localHour = parseInt(parts[0], 10);
   const localMinute = parseInt(parts[1] || '0', 10);
 
-  // Get today's date string in the clinic's timezone (YYYY-MM-DD)
   const now = new Date();
   const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(now);
 
-  // Create a Date by treating the local time as UTC first (placeholder),
-  // then find the actual UTC equivalent using the offset at that moment
-  const naiveUTC = new Date(`${todayStr}T${String(localHour).padStart(2,'0')}:${String(localMinute).padStart(2,'0')}:00Z`);
+  const naiveUTC = new Date(`${todayStr}T${String(localHour).padStart(2, '0')}:${String(localMinute).padStart(2, '0')}:00Z`);
 
-  // Get what the clinic's timezone thinks this UTC moment is
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone,
     hour: 'numeric',
@@ -244,10 +296,7 @@ function getCronStringUTC(reminderTime, timeZone) {
   const displayedHour = parseInt(localParts.find(p => p.type === 'hour').value, 10);
   const displayedMinute = parseInt(localParts.find(p => p.type === 'minute').value, 10);
 
-  // The difference between what we want and what naiveUTC displays in local TZ
   const diffMinutes = (localHour * 60 + localMinute) - (displayedHour * 60 + displayedMinute);
-
-  // Adjust naiveUTC by the difference to land on the correct UTC time
   const correctUTC = new Date(naiveUTC.getTime() + diffMinutes * 60 * 1000);
   const utcHour = correctUTC.getUTCHours();
   const utcMinute = correctUTC.getUTCMinutes();
@@ -256,20 +305,21 @@ function getCronStringUTC(reminderTime, timeZone) {
   return `${utcMinute} ${utcHour} * * *`;
 }
 
-// --- HOT-RELOAD SCHEDULER LOGIC ---
+// --- HOT-RELOAD SCHEDULER ---
 const scheduledJobs = new Map();
 
 async function rescheduleJobs() {
   const clinics = await getAllClinics();
 
-  // Remove jobs for clinics that no longer exist or have changed time/token/timezone
   for (const [clinicId, jobMeta] of scheduledJobs) {
     const clinic = clinics.find(c => c.id === clinicId);
     if (
       !clinic ||
       jobMeta.reminder_time !== clinic.reminder_time ||
       jobMeta.fb_page_access_token !== clinic.fb_page_access_token ||
-      jobMeta.time_zone !== clinic.time_zone // ✅ also re-schedule if timezone changed
+      jobMeta.time_zone !== clinic.time_zone ||
+      jobMeta.sms_provider !== clinic.sms_provider ||
+      jobMeta.sms_api_key !== clinic.sms_api_key
     ) {
       jobMeta.job.stop();
       scheduledJobs.delete(clinicId);
@@ -277,11 +327,9 @@ async function rescheduleJobs() {
     }
   }
 
-  // Add jobs for new clinics or changed schedule
   for (const clinic of clinics) {
     if (!scheduledJobs.has(clinic.id)) {
       const timeZone = clinic.time_zone || 'Asia/Manila';
-      // ✅ Convert clinic's local reminder_time to UTC cron string
       const cronStr = getCronStringUTC(clinic.reminder_time, timeZone);
       const job = cron.schedule(cronStr, async () => {
         try {
@@ -294,7 +342,9 @@ async function rescheduleJobs() {
         job,
         reminder_time: clinic.reminder_time,
         fb_page_access_token: clinic.fb_page_access_token,
-        time_zone: timeZone, // ✅ store for change detection
+        time_zone: timeZone,
+        sms_provider: clinic.sms_provider,
+        sms_api_key: clinic.sms_api_key,
         name: clinic.name
       });
       console.log(`[ReminderScheduler] Scheduled reminders for clinic "${clinic.name}" (ID ${clinic.id}) at ${clinic.reminder_time} ${timeZone} (UTC cron: ${cronStr})`);
@@ -302,29 +352,20 @@ async function rescheduleJobs() {
   }
 }
 
-// Initial scheduling
 rescheduleJobs();
-
-// Poll for changes every 1 minute
 setInterval(rescheduleJobs, 1 * 60000);
 
-// Graceful shutdown
 process.on('SIGINT', () => {
-  for (const [_, jobMeta] of scheduledJobs) {
-    jobMeta.job.stop();
-  }
+  for (const [_, jobMeta] of scheduledJobs) jobMeta.job.stop();
   console.log('Gracefully stopped all scheduled jobs.');
   process.exit(0);
 });
 process.on('SIGTERM', () => {
-  for (const [_, jobMeta] of scheduledJobs) {
-    jobMeta.job.stop();
-  }
+  for (const [_, jobMeta] of scheduledJobs) jobMeta.job.stop();
   console.log('Gracefully stopped all scheduled jobs.');
   process.exit(0);
 });
 
-// For manual running/testing (single clinic)
 if (require.main === module) {
   (async () => {
     const clinics = await getAllClinics();
