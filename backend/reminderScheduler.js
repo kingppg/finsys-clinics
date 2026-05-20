@@ -28,6 +28,8 @@ async function sendMessengerMessage(messenger_id, text, page_access_token) {
       {
         recipient: { id: messenger_id },
         message: { text },
+        messaging_type: "MESSAGE_TAG",        // ← ADD
+        tag: "CONFIRMED_EVENT_UPDATE",         // ← ADD
       }
     );
     console.log(`✅ Sent Messenger reminder to ${messenger_id}: ${text}`);

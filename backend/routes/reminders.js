@@ -3,22 +3,20 @@
 const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
-const { sendMessage } = require('../webhook'); // Import sendMessage from webhook.js
+const { sendMessage } = require('../webhook');
 
-// Supabase client setup (env vars must be set)
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY // Use service key for backend access
+  process.env.SUPABASE_SERVICE_KEY
 );
 
-// Utility: get appointment by id and clinic
 async function getAppointment(id, clinicId) {
   const { data, error } = await supabase
     .from('appointments')
     .select('*')
     .eq('id', id)
     .eq('clinic_id', clinicId)
-    .eq('deleted', false)        // ← ADD THIS
+    .eq('deleted', false)
     .single();
   if (error) {
     console.error('Supabase error fetching appointment:', error);
@@ -36,7 +34,6 @@ router.get('/:id/reminder-settings', async (req, res) => {
   const appt = await getAppointment(appointmentId, clinicId);
   if (!appt) return res.status(404).json({ error: 'Appointment not found for this clinic' });
 
-  // Fetch sent reminders and status update logs (clinic-scoped)
   const { data: sentRemindersRaw, error: logError } = await supabase
     .from('appointment_reminders')
     .select('id, days_ahead, sent_on, messenger_id, is_manual, message')
@@ -48,7 +45,6 @@ router.get('/:id/reminder-settings', async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch sent reminders' });
   }
 
-  // Add a derived "type" to each log entry for easier frontend display
   const sentReminders = (sentRemindersRaw || []).map(rem => {
     let type = "Automated Reminder";
     if (rem.is_manual && rem.days_ahead == null) type = "Status Update";
@@ -72,13 +68,11 @@ router.put('/:id/reminder-settings', async (req, res) => {
   const clinicId = req.query.clinic_id;
   if (!clinicId) return res.status(400).json({ error: 'Missing clinic_id' });
 
-  // Validate appointment ownership
   const appt = await getAppointment(appointmentId, clinicId);
   if (!appt) return res.status(404).json({ error: 'Appointment not found for this clinic' });
 
   const { reminder_enabled, reminder_days, reminder_message, reminder_recipient_type } = req.body;
 
-  // Update appointment
   const { error: updateError } = await supabase
     .from('appointments')
     .update({
@@ -102,8 +96,20 @@ router.post('/:id/send-reminder', async (req, res) => {
   const clinicId = req.query.clinic_id;
   if (!clinicId) return res.status(400).json({ error: 'Missing clinic_id' });
 
-  // Fetch appointment & patient info (clinic-scoped)
-  const { data: apptRows, error: apptErr } = await supabase
+  // ✅ Fetch clinic token AND timezone FIRST
+  const { data: clinicRow, error: clinicError } = await supabase
+    .from('clinics')
+    .select('fb_page_access_token, time_zone')
+    .eq('id', clinicId)
+    .single();
+
+  const pageToken = clinicRow?.fb_page_access_token;
+  if (clinicError || !pageToken) {
+    return res.status(400).json({ error: 'No Messenger Page token found for this clinic.' });
+  }
+
+  // Fetch appointment & patient info
+  const { data: appt, error: apptErr } = await supabase
     .from('appointments')
     .select(`
       *,
@@ -115,14 +121,10 @@ router.post('/:id/send-reminder', async (req, res) => {
     .eq('id', appointmentId)
     .eq('clinic_id', clinicId)
     .single();
-  const appt = apptRows;
-  if (apptErr) {
-    return res.status(500).json({ error: 'Failed to fetch appointment' });
-  }
-  if (!appt) return res.status(404).json({ error: 'Appointment not found for this clinic' });
+
+  if (apptErr || !appt) return res.status(404).json({ error: 'Appointment not found for this clinic' });
   if (!appt.reminder_enabled) return res.status(400).json({ error: 'Reminders for this appointment are disabled.' });
 
-  // Determine recipient, prefer override, else guardian if patient has no Messenger ID, else patient
   let messenger_id = req.body.recipient_override ||
     (appt.patient?.messenger_id ? appt.patient.messenger_id : appt.guardian_messenger_id);
 
@@ -130,41 +132,31 @@ router.post('/:id/send-reminder', async (req, res) => {
     return res.status(400).json({ error: 'No Messenger ID found for patient or guardian.' });
   }
 
-  // Format reminder message - CORRECT TIMEZONE!
+  // ✅ Use clinic timezone instead of hardcoded Asia/Manila
+  const clinicTZ = clinicRow?.time_zone || 'Asia/Manila';
   const apptDate = new Date(appt.appointment_time);
-  const dateStr = apptDate.toLocaleDateString('en-US', { 
-    year: 'numeric', 
-    month: 'long', 
+  const dateStr = apptDate.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
     day: 'numeric',
-    timeZone: 'Asia/Manila' 
+    timeZone: clinicTZ
   });
-  const timeStr = apptDate.toLocaleTimeString('en-US', { 
-    hour: '2-digit', 
-    minute: '2-digit', 
+  const timeStr = apptDate.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
     hour12: true,
-    timeZone: 'Asia/Manila' 
+    timeZone: clinicTZ
   });
+
   let reminderText = req.body.message_override ||
     appt.reminder_message ||
-  `   Hello ${appt.patient?.name}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+    `Hello ${appt.patient?.name}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
 
-  // --- Get Messenger Page token for clinic ---
-  const { data: clinicRow, error: clinicError } = await supabase
-    .from('clinics')
-    .select('fb_page_access_token')
-    .eq('id', clinicId)
-    .single();
-  const pageToken = clinicRow?.fb_page_access_token;
-  if (clinicError || !pageToken) {
-    return res.status(400).json({ error: 'No Messenger Page token found for this clinic.' });
-  }
-
-  // Messenger Send
+  // ✅ Use sendMessage from webhook.js which already sets CONFIRMED_EVENT_UPDATE
   try {
-    await sendMessage(messenger_id, reminderText, { pageAccessToken: pageToken }); // <-- Pass the token here!
+    await sendMessage(messenger_id, reminderText, { pageAccessToken: pageToken });
 
-    // Log sent reminder, using the new uniqueness logic (with sent_on_date)
-    const sent_on_date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const sent_on_date = new Date().toISOString().slice(0, 10);
     try {
       await supabase.from('appointment_reminders').insert({
         appointment_id: appointmentId,
@@ -176,7 +168,6 @@ router.post('/:id/send-reminder', async (req, res) => {
         is_manual: true,
         clinic_id: clinicId
       });
-      // No unique constraint will block manual reminders!
     } catch (err) {
       if (err.code === '23505') {
         return res.status(409).json({ error: 'Reminder already sent for this recipient/appointment/day.' });
