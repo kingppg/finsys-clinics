@@ -4,7 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 const http = require('http');
 const socketio = require('socket.io');
-const axios = require('axios'); // For Facebook OAuth callback
+const axios = require('axios');
 
 // --- Supabase Client ---
 const { createClient } = require('@supabase/supabase-js');
@@ -23,7 +23,6 @@ require('./reminderScheduler');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Serve static files from public folder (for webview, etc.)
 app.use(express.static('../public'));
 
 console.log('STARTING BACKEND');
@@ -38,7 +37,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// --- LOGIN ENDPOINT --- (NOW USING SUPABASE)
+// --- LOGIN ENDPOINT ---
 app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -85,7 +84,7 @@ app.get('/api/clinics/:id/facebook/connect', (req, res) => {
 });
 
 // --- FACEBOOK OAUTH PAGE SELECTION FLOW ---
-const fbPagesCache = {}; // Simple in-memory cache (use Redis for production!)
+const fbPagesCache = {};
 
 app.get('/api/clinics/:id/facebook/callback', async (req, res) => {
   const clinicId = req.params.id;
@@ -95,7 +94,6 @@ app.get('/api/clinics/:id/facebook/callback', async (req, res) => {
   const redirectUri = `http://localhost:5000/api/clinics/${clinicId}/facebook/callback`;
 
   try {
-    // Exchange code for user access token
     const tokenRes = await axios.get('https://graph.facebook.com/v17.0/oauth/access_token', {
       params: {
         client_id: fbClientId,
@@ -106,7 +104,6 @@ app.get('/api/clinics/:id/facebook/callback', async (req, res) => {
     });
     const userAccessToken = tokenRes.data.access_token;
 
-    // Get user pages with name, access_token, and picture
     const pagesRes = await axios.get('https://graph.facebook.com/v17.0/me/accounts', {
       params: {
         access_token: userAccessToken,
@@ -119,13 +116,11 @@ app.get('/api/clinics/:id/facebook/callback', async (req, res) => {
       return res.send('No Facebook page found! Please make sure you have a Facebook Page linked.');
     }
 
-    // Cache the pages per clinic for frontend modal selection (expires after 5 min)
     fbPagesCache[clinicId] = {
       pages: fbPages,
       expires: Date.now() + 5 * 60 * 1000
     };
 
-    // Just show a message. Frontend will poll /api/clinics/:id/facebook/pages.
     res.send(`
       <html>
         <body>
@@ -154,7 +149,7 @@ app.get('/api/clinics/:id/facebook/pages', (req, res) => {
   }
 });
 
-// Save selected page to DB -- NOW USING SUPABASE
+// Save selected page to DB
 app.post('/api/clinics/:id/facebook/select-page', async (req, res) => {
   const clinicId = req.params.id;
   const { pageId, pageAccessToken } = req.body;
@@ -181,18 +176,87 @@ app.post('/api/clinics/:id/facebook/select-page', async (req, res) => {
   }
 });
 
+// --- SMS BALANCE ENDPOINT ---
+app.get('/api/clinics/:id/sms/balance', async (req, res) => {
+  const clinicId = req.params.id;
+  try {
+    const { data: clinic, error } = await supabase
+      .from('clinics')
+      .select('sms_provider, sms_api_key')
+      .eq('id', clinicId)
+      .single();
+
+    if (error || !clinic) {
+      return res.status(404).json({ error: 'Clinic not found.' });
+    }
+    if (clinic.sms_provider !== 'semaphore' || !clinic.sms_api_key) {
+      return res.status(400).json({ error: 'No Semaphore API key configured.' });
+    }
+
+    const response = await axios.get(`https://semaphore.co/api/v4/account?apikey=${clinic.sms_api_key}`);
+    res.json({ credit_balance: response.data.credit_balance });
+  } catch (err) {
+    console.error('SMS balance error:', err.response?.data || err.message);
+    res.status(500).json({ error: 'Failed to fetch SMS balance.' });
+  }
+});
+
+// --- SMS TEST ENDPOINT ---
+app.post('/api/clinics/:id/sms/test', async (req, res) => {
+  const clinicId = req.params.id;
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ error: 'Missing phone number.' });
+
+  try {
+    const { data: clinic, error } = await supabase
+      .from('clinics')
+      .select('sms_provider, sms_api_key, sms_api_secret, sms_sender, name')
+      .eq('id', clinicId)
+      .single();
+
+    if (error || !clinic) {
+      return res.status(404).json({ error: 'Clinic not found.' });
+    }
+    if (!clinic.sms_provider || clinic.sms_provider === 'none' || !clinic.sms_api_key) {
+      return res.status(400).json({ error: 'No SMS provider configured.' });
+    }
+
+    const message = `This is a test SMS from ${clinic.name}. Your SMS reminders are working correctly!`;
+
+    if (clinic.sms_provider === 'semaphore') {
+      await axios.post('https://api.semaphore.co/api/v4/messages', {
+        apikey: clinic.sms_api_key,
+        number: phone,
+        message,
+        sendername: clinic.sms_sender || 'SEMAPHORE'
+      });
+    } else if (clinic.sms_provider === 'twilio') {
+      await axios.post(
+        `https://api.twilio.com/2010-04-01/Accounts/${clinic.sms_api_key}/Messages.json`,
+        new URLSearchParams({ To: phone, From: clinic.sms_sender, Body: message }),
+        { auth: { username: clinic.sms_api_key, password: clinic.sms_api_secret } }
+      );
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('SMS test error:', err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.message || 'Failed to send test SMS.' });
+  }
+});
+
 // Test route
 app.get('/', (req, res) => {
   res.send('Dental Clinic Backend is running!');
 });
 
-// Keep-alive endpoint — forces full process wake on Render
+// Keep-alive endpoint
 app.post('/api/keep-alive', (req, res) => {
   console.log('[KeepAlive] Full process wake at', new Date().toISOString());
   res.json({ ok: true });
 });
 
-// --- SOCKET.IO SETUP --- //
+// --- SOCKET.IO SETUP ---
 const server = http.createServer(app);
 const io = socketio(server, {
   cors: {
@@ -205,20 +269,15 @@ const io = socketio(server, {
   }
 });
 
-// Pass io to req BEFORE registering routes that need it
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
 
-// Register routes AFTER req.io is available
 app.use('/appointments', remindersRouter);
 app.use('/status-notifications', statusNotificationsRouter);
-
-// Messenger webhook endpoint
 app.use('/webhook', webhookRouter);
 
-// Start the server (use server instead of app)
 server.listen(PORT, () => {
   console.log(`Server started on http://localhost:${PORT}`);
 });
