@@ -1,10 +1,10 @@
 // webhook.js — Full AI-powered version (Claude Haiku handles intent + human-like responses)
 // NOW with context object pattern for clinic-level data (timezone, tokens, etc.)
 // AI Brain (Ate Claire) has been moved to ./ai/claire.js
+// Messenger helpers have been moved to ./helpers/messengerHelpers.js
 
 console.log("webhook.js loaded");
 const express = require("express");
-const axios = require("axios");
 const { createClient } = require("@supabase/supabase-js");
 
 // --- IMPORT MENU COMPONENTS (unchanged) ---
@@ -15,8 +15,17 @@ const sendConfirmationButtonTemplate = require('./menu/sendConfirmationButtonTem
 const sendBookingPromptButtonTemplate = require('./menu/sendBookingPromptButtonTemplate');
 const sendUnknownInputCard = require('./menu/sendUnknownInputCard');
 
-// ✅ Claire AI Brain — moved to separate file
+// ✅ Claire AI Brain
 const { getClaudeResponse } = require('./ai/claire');
+
+// ✅ Messenger helpers
+const {
+  sendMessage,
+  emitAppointmentUpdate,
+  getClinicByMessengerPageId,
+  buildContext,
+  getUtcOffset
+} = require('./helpers/messengerHelpers');
 
 const router = express.Router();
 
@@ -30,55 +39,6 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
-
-// ---------------------------------------------------------------------------
-// CONTEXT OBJECT PATTERN
-// ---------------------------------------------------------------------------
-// Single object passed through all functions containing clinic-level data
-// Structure: { clinicId, pageAccessToken, timeZone, clinicName, fb_page_id, clinic }
-
-// --- Helper: emit full appointment row ---
-async function emitAppointmentUpdate(io, clinicId, appointmentId) {
-  try {
-    if (!io || !clinicId || !appointmentId) return;
-    const { data: appt, error } = await supabase
-      .from('appointments')
-      .select('*')
-      .eq('clinic_id', clinicId)
-      .eq('id', appointmentId)
-      .maybeSingle();
-    if (error || !appt) return;
-    io.emit("appointment-updated", appt);
-  } catch (err) {
-    console.error("emitAppointmentUpdate error:", err);
-  }
-}
-
-// --- Clinic lookup by Messenger Page ID ---
-async function getClinicByMessengerPageId(pageId) {
-  const { data, error } = await supabase
-    .from('clinics')
-    .select('*')
-    .eq('messenger_page_id', pageId)
-    .maybeSingle();
-  if (error) {
-    console.error("Supabase clinic lookup error:", error);
-    return null;
-  }
-  return data || null;
-}
-
-// --- Build context object from clinic record ---
-function buildContext(clinic) {
-  return {
-    clinicId: clinic.id,
-    pageAccessToken: clinic.fb_page_access_token,
-    timeZone: clinic.time_zone || 'Asia/Manila',
-    clinicName: clinic.name,
-    fb_page_id: clinic.messenger_page_id,
-    clinic: clinic  // ✅ full clinic object so Claire can read name/address/phone
-  };
-}
 
 // --- Conversation state ---
 let userStates = {};
@@ -109,50 +69,26 @@ function to24HourFormat(time12) {
   return `${h.toString().padStart(2, '0')}:${m}`;
 }
 
-// Get UTC offset for a timezone dynamically
-function getUtcOffset(timeZone) {
-  const now = new Date();
-  const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const tzDate = new Date(now.toLocaleString('en-US', { timeZone }));
-  const diff = tzDate - utcDate;
-  const hours = Math.floor(Math.abs(diff) / 3600000).toString().padStart(2, '0');
-  const minutes = ((Math.abs(diff) % 3600000) / 60000).toString().padStart(2, '0');
-  return `${diff >= 0 ? '+' : '-'}${hours}:${minutes}`;
-}
-
-// Messenger send
-async function sendMessage(sender_psid, response, context) {
-  if (!context.pageAccessToken) {
-    console.error("❌ Missing pageAccessToken.");
-    return;
-  }
-  try {
-    await axios.post(
-      `https://graph.facebook.com/v17.0/me/messages?access_token=${context.pageAccessToken}`,
-      { recipient: { id: sender_psid }, message: { text: response }, messaging_type: "MESSAGE_TAG", tag: "CONFIRMED_EVENT_UPDATE" }
-    );
-  } catch (err) {
-    console.error("❌ Error sending message:", err.response?.data || err.message);
-  }
-}
-
 // --- Active dentists ---
 async function getActiveDentists(context) {
-  let query = supabase
+  const { data, error } = await supabase
     .from('dentists')
     .select('id,name')
     .eq('is_active', true)
     .eq('clinic_id', context.clinicId)
     .order('name', { ascending: true });
-  const { data, error } = await query;
   if (error) { console.error("getActiveDentists error:", error); return []; }
   return data || [];
 }
 
 // --- Find patient by messenger_id ---
 async function findPatientByMessengerId(messenger_id, context) {
-  let query = supabase.from('patients').select('*').eq('messenger_id', messenger_id).eq('clinic_id', context.clinicId);
-  const { data, error } = await query.maybeSingle();
+  const { data, error } = await supabase
+    .from('patients')
+    .select('*')
+    .eq('messenger_id', messenger_id)
+    .eq('clinic_id', context.clinicId)
+    .maybeSingle();
   if (error) { console.error("findPatientByMessengerId error:", error); return null; }
   return data || null;
 }
@@ -160,12 +96,21 @@ async function findPatientByMessengerId(messenger_id, context) {
 // --- Find patient by name & phone ---
 async function findPatientByNameAndPhone(name, phone, context) {
   if (phone) {
-    let q = supabase.from('patients').select('*').eq('phone', phone).ilike('name', name).eq('clinic_id', context.clinicId).limit(1);
-    const { data, error } = await q;
+    const { data, error } = await supabase
+      .from('patients')
+      .select('*')
+      .eq('phone', phone)
+      .ilike('name', name)
+      .eq('clinic_id', context.clinicId)
+      .limit(1);
     if (!error && data && data.length > 0) return data[0];
   }
-  let q2 = supabase.from('patients').select('*').ilike('name', name).eq('clinic_id', context.clinicId).limit(1);
-  const { data: data2, error: error2 } = await q2;
+  const { data: data2, error: error2 } = await supabase
+    .from('patients')
+    .select('*')
+    .ilike('name', name)
+    .eq('clinic_id', context.clinicId)
+    .limit(1);
   if (error2) { console.error("findPatientByNameAndPhone error:", error2); return null; }
   return (data2 && data2.length > 0) ? data2[0] : null;
 }
@@ -242,9 +187,13 @@ async function getAvailableSlots(dateStr, context) {
     }
   }
 
-  // For bookings on today: remove past slots (timezone-aware)
   const timeZone = context.timeZone || 'Asia/Manila';
-  const todayStrInTZ = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const todayStrInTZ = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(new Date());
 
   let filteredSlots = availableSlots;
   if (dateStr === todayStrInTZ) {
@@ -272,9 +221,13 @@ async function hasDoubleBookingOnDate(patient_id, dateStr, context) {
   const offset = getUtcOffset(context.timeZone);
   const startISO = `${dateStr}T00:00:00${offset}`;
   const endISO = `${dateStr}T23:59:59${offset}`;
-  let query = supabase.from('appointments').select('id,status')
-    .eq('patient_id', patient_id).gte('appointment_time', startISO).lte('appointment_time', endISO).eq('clinic_id', context.clinicId);
-  const { data, error } = await query;
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('id,status')
+    .eq('patient_id', patient_id)
+    .gte('appointment_time', startISO)
+    .lte('appointment_time', endISO)
+    .eq('clinic_id', context.clinicId);
   if (error) { console.error("hasDoubleBookingOnDate error:", error); return false; }
   return (data || []).filter(a => a.status !== 'Cancelled').length > 0;
 }
@@ -362,7 +315,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
   let normalizedMsg = normalize(message);
 
   // --- Postback buttons — handle directly, no Claude needed ---
-
   if (message === 'UNKNOWN_INPUT_YES') {
     userStates[sender_psid] = { state: "default", data: {} };
     await sendIntroMenu(sender_psid, context.pageAccessToken);
