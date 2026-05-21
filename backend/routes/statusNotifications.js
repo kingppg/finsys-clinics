@@ -192,8 +192,37 @@ router.post('/:appointmentId', async (req, res) => {
     }
   }
 
+  // ✅ FIX: If all notification channels failed, still return 200 with sent: false
+  // so the frontend shows a warning instead of an error modal.
+  // The status was already saved in Supabase before this route was called.
   if (!sent) {
-    return res.status(500).json({ error: 'Failed to send notification via Messenger or SMS.' });
+    if (req.io) {
+      req.io.emit('appointment-updated', {
+        ...appt,
+        status,
+        checked_in_at: status === 'Checked-In' ? new Date().toISOString() : appt.checked_in_at,
+      });
+    }
+    const sent_on_date = new Date().toISOString().slice(0, 10);
+    try {
+      await supabase.from('appointment_reminders').insert({
+        appointment_id: appointmentId,
+        sent_on: new Date().toISOString(),
+        days_ahead: null,
+        messenger_id: messenger_id || phone,
+        message: `Status updated to "${status}" but notification failed — Messenger and SMS both unsuccessful.`,
+        sent_on_date,
+        is_manual: true,
+        clinic_id,
+      });
+    } catch (dbErr) {
+      console.error("[status-notifications] Log error:", dbErr);
+    }
+    return res.status(200).json({
+      success: true,
+      sent: false,
+      warning: 'Status saved but notification could not be sent via Messenger or SMS.'
+    });
   }
 
   // Log in DB
