@@ -32,6 +32,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
   const [showFbPageModal, setShowFbPageModal] = useState(false);
   const [smsLoading, setSmsLoading] = useState(false);
   const [smsBalance, setSmsBalance] = useState(null);
+  const [smsBalanceCurrency, setSmsBalanceCurrency] = useState('credits');
   const [balanceLoading, setBalanceLoading] = useState(false);
 
   const [subTab, setSubTab] = useState('fb');
@@ -100,7 +101,11 @@ function ClinicConfig({ user, clinicId, onBack }) {
 
   // Auto-fetch balance when SMS tab opens
   useEffect(() => {
-    if (subTab === 'sms' && formData.sms_provider === 'semaphore' && formData.sms_api_key) {
+    if (
+      subTab === 'sms' &&
+      (formData.sms_provider === 'semaphore' || formData.sms_provider === 'twilio') &&
+      formData.sms_api_key
+    ) {
       fetchSmsBalance();
     }
     // eslint-disable-next-line
@@ -127,12 +132,17 @@ function ClinicConfig({ user, clinicId, onBack }) {
   }
 
   async function fetchSmsBalance() {
-    if (!selectedClinicId || formData.sms_provider !== 'semaphore' || !formData.sms_api_key) return;
+    if (
+      !selectedClinicId ||
+      !formData.sms_api_key ||
+      (formData.sms_provider !== 'semaphore' && formData.sms_provider !== 'twilio')
+    ) return;
     setBalanceLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms/balance`);
       const data = await res.json();
       setSmsBalance(data.credit_balance ?? null);
+      setSmsBalanceCurrency(data.currency || 'credits');
     } catch {
       setSmsBalance(null);
     } finally {
@@ -403,6 +413,12 @@ function ClinicConfig({ user, clinicId, onBack }) {
     cursor: 'pointer'
   });
 
+  const isLowBalance = smsBalance !== null && (
+    formData.sms_provider === 'semaphore'
+      ? parseFloat(smsBalance) < 500
+      : parseFloat(smsBalance) < 5
+  );
+
   return (
     <div className="clinic-config-fullscreen">
       <div className="clinic-config-card">
@@ -526,39 +542,46 @@ function ClinicConfig({ user, clinicId, onBack }) {
           <form className="clinic-form-modern" onSubmit={handleSaveSms} autoComplete="off">
 
             {/* BALANCE DISPLAY */}
-            {formData.sms_provider === 'semaphore' && formData.sms_api_key && (
+            {(formData.sms_provider === 'semaphore' || formData.sms_provider === 'twilio') && formData.sms_api_key && (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 12,
                 padding: '10px 16px',
-                background: smsBalance !== null && smsBalance < 500 ? '#fff8e1' : '#f0f7ff',
-                border: `1px solid ${smsBalance !== null && smsBalance < 500 ? '#ffe082' : '#b3d1f7'}`,
+                background: isLowBalance ? '#fff8e1' : '#f0f7ff',
+                border: `1px solid ${isLowBalance ? '#ffe082' : '#b3d1f7'}`,
                 borderRadius: 8,
                 marginBottom: 20
               }}>
                 <span style={{ fontSize: '1rem' }}>
-                  {smsBalance !== null && smsBalance < 500 ? '⚠️' : '💳'}
+                  {isLowBalance ? '⚠️' : '💳'}
                 </span>
                 <span style={{ fontWeight: 600, color: '#333' }}>
-                  SMS Credits:&nbsp;
+                  SMS Balance:&nbsp;
                   {balanceLoading
                     ? 'Checking...'
                     : smsBalance !== null
                       ? (
-                        <span style={{ color: smsBalance < 500 ? '#e65100' : '#185abd' }}>
-                          {smsBalance.toLocaleString()} credits remaining
+                        <span style={{ color: isLowBalance ? '#e65100' : '#185abd' }}>
+                          {formData.sms_provider === 'semaphore'
+                            ? `${Number(smsBalance).toLocaleString()} credits remaining`
+                            : `${smsBalance} ${smsBalanceCurrency} remaining`
+                          }
                         </span>
                       )
                       : 'Unable to fetch'
                   }
                 </span>
-                {smsBalance !== null && smsBalance < 500 && (
-                  <span style={{ fontSize: '0.85rem', color: '#e65100' }}>
-                    — Low balance! Top up at{' '}
-                    <a href="https://semaphore.co" target="_blank" rel="noreferrer">semaphore.co</a>
-                  </span>
-                )}
+                {isLowBalance && (() => {
+                  const topUpUrl = formData.sms_provider === 'semaphore' ? 'https://semaphore.co' : 'https://console.twilio.com';
+                  const topUpLabel = formData.sms_provider === 'semaphore' ? 'semaphore.co' : 'console.twilio.com';
+                    return (
+                    <span style={{ fontSize: '0.85rem', color: '#e65100' }}>
+                      {'— Low balance! Top up at '}
+                      <a href={topUpUrl} target="_blank" rel="noreferrer">{topUpLabel}</a>
+                    </span>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={fetchSmsBalance}
