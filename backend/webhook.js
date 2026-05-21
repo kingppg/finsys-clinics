@@ -1,5 +1,6 @@
 // webhook.js — Full AI-powered version (Claude Haiku handles intent + human-like responses)
 // NOW with context object pattern for clinic-level data (timezone, tokens, etc.)
+// AI Brain (Ate Claire) has been moved to ./ai/claire.js
 
 console.log("webhook.js loaded");
 const express = require("express");
@@ -13,6 +14,9 @@ const sendTimeSlotButtonTemplate = require('./menu/sendTimeSlotButtonTemplate');
 const sendConfirmationButtonTemplate = require('./menu/sendConfirmationButtonTemplate');
 const sendBookingPromptButtonTemplate = require('./menu/sendBookingPromptButtonTemplate');
 const sendUnknownInputCard = require('./menu/sendUnknownInputCard');
+
+// ✅ Claire AI Brain — moved to separate file
+const { getClaudeResponse } = require('./ai/claire');
 
 const router = express.Router();
 
@@ -31,243 +35,7 @@ const supabase = createClient(
 // CONTEXT OBJECT PATTERN
 // ---------------------------------------------------------------------------
 // Single object passed through all functions containing clinic-level data
-// Structure: { clinicId, pageAccessToken, timeZone, clinicName, fb_page_id, ... }
-
-// ---------------------------------------------------------------------------
-// CLAUDE — FULL AI RECEPTIONIST
-// ---------------------------------------------------------------------------
-
-const userConversationHistory = {};
-const intentHistoryTimestamps = {};
-
-const CLAUDE_SYSTEM_PROMPT = `Ikaw si "Ate Claire", ang friendly, mainit, at HONEST na virtual receptionist ng Palo Dentcare dental clinic sa Pilipinas.
-Nagsasalita ka ng natural na Taglish (mixed Tagalog at English), at minsan Bisaya kung naririnig mo ito sa patient.
-
-Ang trabaho mo:
-1. Intindihin ang mensahe ng patient
-2. I-detect ang kanyang intent
-3. Mag-generate ng natural, warm, HONEST na reply
-
-CLINIC INFO (ang TANGING facts na alam mo):
-- Pangalan: Palo Dentcare
-- Bukas: Lunes hanggang Sabado, 9:00 AM - 6:00 PM
-- Sarado: Linggo at holidays
-- Lunch break: 12:00 PM - 1:00 PM (walang booking sa oras na ito)
-- Appointment slots: bawat 20 minuto
-- Bookings: pwede mag-book, mag-confirm, o mag-cancel ng appointment
-
-BOOKING RULES (IMPORTANTENG PATAKARAN — HUWAG KALIMUTAN):
-- ISANG APPOINTMENT LANG PER PERSON PER DATE — hindi pwedeng mag-book ng dalawa o higit pa ang iisang tao sa iisang araw
-- Kung may appointment na ang isang tao sa isang petsa, HINDI siya pwedeng mag-book ulit sa SAME DATE para sa kanilang sarili
-- PERO pwede siyang mag-book ng appointment para sa IBANG TAO (anak, asawa, magulang, etc.) sa same date
-- Hindi pwedeng mag-cancel ng appointment na less than 1 hour bago ang schedule
-- Hindi pwedeng mag-cancel ng nakaraang appointments
-- Ang cancellation ay valid lang para sa appointments na may hawak na appointment code
-
-KAPAG TINANONG KUNG PWEDENG MAG-BOOK ULIT SA SAME DATE:
-- HUWAG sabihing "Oo, pwede!" — MALI ITO
-- Itama: "Pasensya na po, isang appointment lang po ang pwede per person per date. 
-  Pero pwede po kayong mag-book para sa ibang tao (anak, asawa, etc.) sa same date, 
-  o pumili ng ibang petsa para sa inyo. 😊"
-
-TUNGKOL SA PETSA, ARAW, AT ORAS NGAYON:
-- Ang REAL-TIME date at oras ay laging kasama sa bawat mensahe ng patient sa format na: [REAL-TIME: <date> (Philippine Time)]
-- GAMITIN ito para sagutin ang mga tanong tungkol sa petsa, araw, at oras ngayon
-- Halimbawa kung tinanong "anong araw ngayon?" — tingnan ang REAL-TIME field at sagutin accurately
-- Halimbawa kung tinanong "anong oras na?" — tingnan ang REAL-TIME field at sagutin accurately
-- HUWAG sabihing "hindi ko alam ang petsa" — ALAM mo na dahil nasa REAL-TIME field ito
-- HUWAG mag-claim ng "system limitations" — wala naman talagang limitasyon, alam mo ang oras!
-
-HINDI KO ALAM — HUWAG MAG-INVENT NG SAGOT:
-- Sino ang dentist on duty (wala akong access sa schedule ng dentists)
-- Exact pricing ng kahit anong service (cleaning, extraction, braces, etc.)
-- Exact address o location ng clinic
-- Current promos o discounts
-- Patient records o history
-- Insurance coverage
-- Availability ng specific dentist
-
-KAPAG TINANONG ANG HINDI KO ALAM:
-- HUWAG KAILANMAN mag-invent, mag-assume, o mag-hallucinate ng sagot
-- Maging honest na wala akong access sa impormasyong iyon
-- I-redirect palagi sa clinic para sa tamang sagot
-- Gamitin ang template na ito: "Hindi ko po alam ang [topic]. Para sa tamang info, mas better po kung tumawag directly sa clinic. 😊"
-
-TUNGKOL SA PAGIGING AI:
-- Kung tinanong kung AI ka — maging honest at charming
-- "Opo, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo nang mabilis at madali. 😊"
-- HUWAG magpanggap na tao kung direktang tinanong
-
-INTENTS na kailangan mong i-detect:
-- "greet"               → nagbabati ang patient
-- "book_appointment"    → gusto mag-book ng appointment
-- "cancel_appointment"  → gusto i-cancel ang appointment
-- "confirm_appointment" → gusto i-confirm ang appointment gamit ang code
-- "cancel_flow"         → gusto huminto / mag-exit sa kasalukuyang proseso
-- "gratitude"           → nagpapasalamat ang patient
-- "yes"                 → pumapayag / nagko-confirm
-- "no"                  → tumututol / nagde-decline
-- "unknown"             → nagtatanong ng ibang bagay o hindi malinaw ang mensahe
-
-PERSONALITY:
-- Warm, maalalahanin, propesyonal, at HONEST
-- Gumagamit ng "po" at "opo" nang natural
-- Gumagamit ng emojis nang paminsan-minsan 😊🦷
-- Maikli at malinaw ang mga sagot — hindi masyadong mahaba
-- Parang tunay na receptionist — hindi robot, hindi nagsisinungaling
-- HINDI nagki-claim ng bagay na hindi niya alam
-
-STATES at kung paano ka dapat mag-respond:
-- "default"                    → Tanggapin ang kanyang mensahe at tulungan siya
-- "awaiting_date"              → Hintayin ang date sa format YYYY-MM-DD
-- "awaiting_slot"              → Pinipili ng patient ang time slot
-- "awaiting_my_name"           → Hihingin ang pangalan ng patient
-- "awaiting_my_phone"          → Hihingin ang phone number (o skip)
-- "awaiting_patient_name"      → Hihingin ang pangalan ng taong ibo-book
-- "awaiting_patient_phone"     → Hihingin ang phone number ng taong ibo-book
-- "awaiting_my_confirm_match"  → Nag-ask kung siya ba yung nakitang record (YES/NO)
-- "awaiting_for_whom"          → Nag-ask kung para kanino ang booking
-- "awaiting_confirm_code"      → Hintayin ang appointment code para i-confirm
-- "awaiting_cancel_code"       → Hintayin ang appointment code para i-cancel
-- "awaiting_cancel_code_retry" → Nagkamali ng code, try again o cancel
-- "awaiting_booking_prompt_response" → Nag-ask kung gusto pang mag-book
-- "confirming"                 → Nag-show ng booking summary, waiting for confirm/cancel
-- "awaiting_unknown_confirm"   → Hindi naintindihan ang mensahe
-
-RULES:
-- Laging mag-return ng PURE JSON — walang markdown, walang backticks, walang extra text
-- Ang "reply" field ay ang mensahe na makikita ng patient sa Messenger
-- Huwag mag-include ng booking details sa reply — hawak ng code ang structured data
-- Kung may state na "awaiting_date", palaging i-remind ang format: YYYY-MM-DD
-- Kung may state na "awaiting_slot", sabihin na mag-tap ng button
-- Kung may state na "confirming", hintayin ang kanilang confirmation
-- HUWAG mag-invent ng facts na wala sa CLINIC INFO section
-
-JSON FORMAT — return ONLY this, nothing else:
-{"intent":"<intent>","confidence":<0.0-1.0>,"reply":"<natural Taglish reply>"}
-
-EXAMPLES ng magandang HONEST replies:
-- Greeting: "Magandang araw po! 😊 Welcome sa Palo Dentcare! Paano kita matutulungan ngayon? Pwede kayong mag-book ng appointment, i-confirm, o i-cancel. 🦷"
-- AI question: "Opo, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo with appointments. Paano kita matutulungan? 😊"
-- Sunday closed: "Pasensya na po, sarado kami tuwing Linggo. 😊 Bukas po kami Lunes hanggang Sabado, 9AM-6PM lang po!"
-- Pricing: "Hindi ko po alam ang exact pricing ng aming services. Para sa tamang rates, mas better po kung tumawag directly sa clinic. 😊 Gusto ninyo pong mag-book?"
-- Dentist on duty: "Hindi ko po access ang schedule ng aming mga dentist. Para malaman kung sino ang on duty, tumawag na lang po sa clinic. 😊"
-- Location: "Hindi ko po alam ang exact address ng clinic. Pwede po kayong makipag-ugnayan sa clinic directly para sa directions. 😊"
-- Promo: "Hindi po ako updated sa mga current promos. Para sa latest offers, tumawag na lang po sa clinic. 😊"
-- Book: "Sige po! Paki-type lang po ang inyong preferred na petsa sa format na YYYY-MM-DD (halimbawa: 2026-05-20). 😊"
-- Gratitude: "Salamat din po! God bless kayo! 🙏 Kung may katanungan pa kayo, nandito lang kami. 😊"
-- Cancel flow: "Okay lang po! Kung kailangan ninyo ng tulong sa ibang pagkakataon, nandito lang kami. Ingat po! 😊"`;
-
-async function getClaudeResponse(message, sender_psid, currentState, context, extraContext = "") {
-  const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-  if (!ANTHROPIC_API_KEY) {
-    console.error("Missing ANTHROPIC_API_KEY");
-    return { intent: "unknown", confidence: 0, reply: "Sorry, may technical issue kami ngayon. Pakisubukan ulit mamaya." };
-  }
-
-  if (!userConversationHistory[sender_psid]) {
-    userConversationHistory[sender_psid] = [];
-  }
-
-  const timeZone = context.timeZone || 'Asia/Manila';
-  const now = new Date();
-  const phTime = new Intl.DateTimeFormat('en-PH', {
-    timeZone,
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true
-  }).format(now);
-
-  const contextualMessage = "[CURRENT STATE: " + currentState + (extraContext ? " | CONTEXT: " + extraContext : "") + " | REAL-TIME: " + phTime + " (Clinic Timezone)]\nPatient message: " + message;
-
-  userConversationHistory[sender_psid].push({
-    role: "user",
-    content: contextualMessage
-  });
-
-  const history = userConversationHistory[sender_psid].slice(-10);
-
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 400,
-        system: CLAUDE_SYSTEM_PROMPT,
-        messages: history
-      })
-    });
-
-    const data = await response.json();
-
-    if (data.error) {
-      console.error("Claude API error:", data.error);
-      return { intent: "unknown", confidence: 0, reply: "Sorry po, may technical issue kami. Pakisubukan ulit." };
-    }
-
-    const raw = data.content && data.content[0] ? data.content[0].text.trim() : "{}";
-
-    let parsed = { intent: "unknown", confidence: 0, reply: null };
-    try {
-      let clean = raw.replace(/```json|```/g, "").trim();
-      const jsonMatch = clean.match(/\{[\s\S]*\}/);
-      if (jsonMatch) clean = jsonMatch[0];
-      clean = clean.replace(/[\r\n]+/g, " ");
-      parsed = JSON.parse(clean);
-    } catch (parseErr) {
-      console.error("JSON parse failed, using regex fallback:", parseErr.message);
-      const intentMatch = raw.match(/"intent"\s*:\s*"([^"]+)"/);
-      const replyMatch = raw.match(/"reply"\s*:\s*"([\s\S]*?)(?:"|$)/);
-      const confidenceMatch = raw.match(/"confidence"\s*:\s*([\d.]+)/);
-      parsed = {
-        intent: intentMatch ? intentMatch[1] : "unknown",
-        confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5,
-        reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : null
-      };
-      console.log("[CLAUDE FALLBACK] intent=" + parsed.intent);
-      if (!parsed.reply) {
-        parsed.reply = "Pasensya na po! Hindi ko po maunawaan ang inyong mensahe. Pwede po ba ninyong ulitin? 😊";
-      }
-    }
-
-    userConversationHistory[sender_psid].push({
-      role: "assistant",
-      content: raw
-    });
-
-    console.log("[CLAUDE] state=" + currentState + " intent=" + parsed.intent);
-    return parsed;
-
-  } catch (err) {
-    console.error("getClaudeResponse error:", err.message);
-    return { intent: "unknown", confidence: 0, reply: "Sorry po, may nangyari. Pakisubukan ulit." };
-  }
-}
-
-// Cleanup old histories every 30 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const psid of Object.keys(intentHistoryTimestamps)) {
-    if (now - intentHistoryTimestamps[psid] > 60 * 60 * 1000) {
-      delete userConversationHistory[psid];
-      delete intentHistoryTimestamps[psid];
-      console.log(`[CLEANUP] Removed history for ${psid}`);
-    }
-  }
-}, 30 * 60 * 1000);
-
-// ---------------------------------------------------------------------------
-// END CLAUDE AI RECEPTIONIST
-// ---------------------------------------------------------------------------
+// Structure: { clinicId, pageAccessToken, timeZone, clinicName, fb_page_id, clinic }
 
 // --- Helper: emit full appointment row ---
 async function emitAppointmentUpdate(io, clinicId, appointmentId) {
@@ -307,7 +75,8 @@ function buildContext(clinic) {
     pageAccessToken: clinic.fb_page_access_token,
     timeZone: clinic.time_zone || 'Asia/Manila',
     clinicName: clinic.name,
-    fb_page_id: clinic.messenger_page_id
+    fb_page_id: clinic.messenger_page_id,
+    clinic: clinic  // ✅ full clinic object so Claire can read name/address/phone
   };
 }
 
@@ -512,7 +281,6 @@ async function hasDoubleBookingOnDate(patient_id, dateStr, context) {
 
 // ---------------------------------------------------------------------------
 // SHARED HELPER: show slots or handle no-slot edge cases
-// Reused across multiple states to avoid duplication
 // ---------------------------------------------------------------------------
 async function proceedToSlotSelection(sender_psid, userState, context) {
   const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
@@ -563,7 +331,6 @@ router.post("/", async (req, res) => {
         if (!clinic) { console.warn('[WARN] No clinic linked to page_id:', page_id); continue; }
 
         const context = buildContext(clinic);
-        intentHistoryTimestamps[sender_psid] = Date.now();
 
         try {
           if (webhook_event.message?.text) {
@@ -858,16 +625,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         return;
       }
 
-      // -----------------------------------------------------------------------
-      // AWAITING DATE
-      // Gate order:
-      //   1. Format check
-      //   2. Sunday check
-      //   3. Past date check
-      //   4. Slot availability check  ← catches "no slots" AND "past office hours today"
-      //   5. Double booking check     ← only runs when date is confirmed bookable
-      //   6. Collect name/phone       ← only if patient is unknown
-      // -----------------------------------------------------------------------
       case "awaiting_date": {
         if (topIntent === 'cancel_flow') {
           if (aiReply) await sendMessage(sender_psid, aiReply, context);
@@ -875,7 +632,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        // Gate 1: format
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
         if (!dateRegex.test(message.trim())) {
           const looksLikeDateAttempt = /\d/.test(message.trim());
@@ -888,23 +644,19 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        // Gate 2: Sunday
         if (!isClinicOpen(message.trim())) {
           await sendMessage(sender_psid, "Pasensya na po, sarado kami tuwing Linggo! 😊 Pwede po kayong pumili ng ibang araw — Lunes hanggang Sabado lang po kami bukas.", context);
           return;
         }
 
-        // Gate 3: past date
         const today = new Date(); today.setHours(0, 0, 0, 0);
         if (new Date(message.trim()) < today) {
           await sendMessage(sender_psid, "Ay, nakaraan na po ang petsang iyon! 😅 Paki-type ng petsa na hindi pa nakaraan po.", context);
           return;
         }
 
-        // Save date
         userState.data.date = message.trim();
 
-        // Gate 4: slot availability — covers full days AND today-past-office-hours
         const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
         userState.data.slots = slots;
         userState.data.activeDentists = activeDentists;
@@ -916,33 +668,27 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         }
         if (slots.length === 0) {
           await sendMessage(sender_psid, "Pasensya na po, wala nang available na slots para sa araw na iyon. 😔 Pwede po kayong pumili ng ibang petsa?", context);
-          // Stay in awaiting_date so they can immediately type a new date
           userState.data = {};
           return;
         }
 
-        // Gate 5: double booking check (requires known patient)
         const patient = await findPatientByMessengerId(sender_psid, context);
 
         if (patient) {
-          // Known patient
           const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
           if (doubleBooked) {
-            // Has conflict — ask for whom BEFORE collecting any more info
             userState.data.booking_for = null;
             userState.state = "awaiting_for_whom";
             await sendMessage(sender_psid, "Mukhang may appointment na kayo sa petsang iyon! 😊 Para kanino po ito — para sa inyo o para sa ibang tao?", context);
             await sendAppointmentForButtonTemplate(sender_psid, context.pageAccessToken);
             return;
           }
-          // No conflict — go straight to slots, no questions needed
           userState.data.booking_for = "me";
           userState.data.patient_id = patient.id;
           userState.state = "awaiting_slot";
           await sendMessage(sender_psid, `Narito po ang mga available na time slots para sa ${userState.data.date}. Pumili lang po kayo! 😊`, context);
           await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, context.pageAccessToken);
         } else {
-          // Unknown patient — must collect name/phone first, then check double booking
           userState.data.booking_for = "me";
           userState.state = "awaiting_my_name";
           await sendMessage(sender_psid, "Paki-type lang po ang inyong buong pangalan para sa appointment. 😊", context);
@@ -988,10 +734,8 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         const patient = await findPatientByNameAndPhone(userState.data.patient_name, phone, context);
 
         if (patient) {
-          // Found existing record — check double booking BEFORE linking
           const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
           if (doubleBooked) {
-            // ✅ FIX: Same behaviour as known patient — offer "For Someone Else" instead of dead end
             userState.data.found_patient_id = patient.id;
             userState.data.found_patient_name = patient.name;
             userState.data.found_patient_phone = patient.phone;
@@ -1004,7 +748,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
             await sendAppointmentForButtonTemplate(sender_psid, context.pageAccessToken);
             return;
           }
-          // Not double booked — show confirm match as before
           userState.data.found_patient_id = patient.id;
           userState.data.found_patient_name = patient.name;
           userState.data.found_patient_phone = patient.phone;
@@ -1014,7 +757,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           msg += "\nKayo po ba ito? I-reply ng YES para i-link ang inyong Messenger, o NO para gumawa ng bagong record. 😊";
           await sendMessage(sender_psid, msg, context);
         } else {
-          // No existing record — proceed to slot selection (slots already checked in awaiting_date)
           userState.data.patient_id = null;
           userState.state = "awaiting_slot";
           await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
@@ -1029,13 +771,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
             .eq('id', userState.data.found_patient_id).eq('clinic_id', context.clinicId);
           userState.data.patient_id = userState.data.found_patient_id;
           userState.state = "awaiting_slot";
-          // Slots already fetched and cached — use them directly
           await sendMessage(sender_psid, "Na-link na po kayo! Narito ang mga available na slots. Pumili lang po! 😊", context);
           await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
         } else if (topIntent === 'no') {
           userState.data.patient_id = null;
           userState.state = "awaiting_slot";
-          // Slots already fetched and cached — use them directly
           await sendMessage(sender_psid, "Sige po! Gawa na kami ng bagong record para sa inyo. Narito ang mga available na slots! 😊", context);
           await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
         } else {
@@ -1046,7 +786,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
       case "awaiting_for_whom": {
         if (normalizedMsg === "1" || normalizedMsg === "for me" || normalizedMsg === "for_me") {
-          // Patient wants it for themselves but is already double booked — pick another date
           await sendMessage(sender_psid, "Mayroon na po kayong appointment sa petsang iyon. Paki-type ng ibang petsa (YYYY-MM-DD). 😊", context);
           userStates[sender_psid].state = "awaiting_date";
           userStates[sender_psid].data = {};
@@ -1099,7 +838,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
         const patient = await findPatientByNameAndPhone(userState.data.patient_name, phone, context);
         if (patient) {
-          // Check double booking for the other person on this date
           const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
           if (doubleBooked) {
             await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.patient_name} sa ${userState.data.date}. 😔 Paki-type ng ibang petsa (YYYY-MM-DD).`, context);
@@ -1112,7 +850,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           userState.data.patient_id = null;
         }
 
-        // Slots already fetched and cached in awaiting_date — use them directly
         userState.state = "awaiting_slot";
         await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
         await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
@@ -1273,7 +1010,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
             if (req?.io && appointmentId) await emitAppointmentUpdate(req.io, context.clinicId, appointmentId);
 
             await sendMessage(sender_psid,
-              `✅ Na-book na po ang inyong appointment!\n\n📅 Petsa: ${userState.data.date}\n⏰ Oras: ${userState.data.slot}\n👤 Pangalan: ${bookedName}\n🔖 Appointment Code: ${appointmentId || ''}\n\nSalamat po sa pagpili ng Palo Dentcare! Ingat at God bless! 🦷😊`,
+              `✅ Na-book na po ang inyong appointment!\n\n📅 Petsa: ${userState.data.date}\n⏰ Oras: ${userState.data.slot}\n👤 Pangalan: ${bookedName}\n🔖 Appointment Code: ${appointmentId || ''}\n\nSalamat po sa pagpili ng ${context.clinicName}! Ingat at God bless! 🦷😊`,
               context
             );
           } catch (err) {

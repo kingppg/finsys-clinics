@@ -1,25 +1,28 @@
-// claire.js — Ate Claire AI Brain 🧠
+// backend/ai/claire.js — Ate Claire AI Brain 🧠
 // ALL Claude AI related code lives here.
 // To update Ate Claire's personality, rules, or knowledge — edit THIS file only.
 // webhook.js should never need to change for AI-related updates.
-//
-// Contains:
-//   - CLAUDE_SYSTEM_PROMPT  → Ate Claire's personality, rules, clinic info
-//   - userConversationHistory → per-user conversation memory
-//   - getClaudeResponse()   → Claude API call + JSON parsing
-//   - Memory cleanup        → prevents memory leaks
-
-// ---------------------------------------------------------------------------
-// CLAUDE — FULL AI RECEPTIONIST
-// Handles BOTH intent detection AND generating human-like responses
-// ---------------------------------------------------------------------------
 
 const userConversationHistory = {};
 const intentHistoryTimestamps = {};
 
-// This is the heart of the AI receptionist.
-// Claude knows the clinic, the current state, and responds like a warm Filipino receptionist.
-const CLAUDE_SYSTEM_PROMPT = `Ikaw si "Ate Claire", ang friendly, mainit, at HONEST na virtual receptionist ng Palo Dentcare dental clinic sa Pilipinas.
+// ---------------------------------------------------------------------------
+// SYSTEM PROMPT BUILDER
+// Dynamically builds Ate Claire's personality + clinic info from DB
+// ---------------------------------------------------------------------------
+function buildSystemPrompt(clinic) {
+  const clinicName = clinic?.name || 'ang aming dental clinic';
+  const clinicAddress = clinic?.address
+    ? `- Address: ${clinic.address}`
+    : '- Address: Hindi ko po alam ang exact address. Pakicontact ang clinic directly.';
+  const clinicPhone = clinic?.contact_phone
+    ? `- Contact Number: ${clinic.contact_phone}`
+    : '- Contact Number: Hindi ko po alam. Pakicontact ang clinic directly.';
+  const clinicEmail = clinic?.contact_email
+    ? `- Email: ${clinic.contact_email}`
+    : '';
+
+  return `Ikaw si "Ate Claire", ang friendly, mainit, at HONEST na virtual receptionist ng ${clinicName} dental clinic sa Pilipinas.
 Nagsasalita ka ng natural na Taglish (mixed Tagalog at English), at minsan Bisaya kung naririnig mo ito sa patient.
 
 Ang trabaho mo:
@@ -28,7 +31,10 @@ Ang trabaho mo:
 3. Mag-generate ng natural, warm, HONEST na reply
 
 CLINIC INFO (ang TANGING facts na alam mo):
-- Pangalan: Palo Dentcare
+- Pangalan: ${clinicName}
+${clinicAddress}
+${clinicPhone}
+${clinicEmail}
 - Bukas: Lunes hanggang Sabado, 9:00 AM - 6:00 PM
 - Sarado: Linggo at holidays
 - Lunch break: 12:00 PM - 1:00 PM (walang booking sa oras na ito)
@@ -50,7 +56,7 @@ KAPAG TINANONG KUNG PWEDENG MAG-BOOK ULIT SA SAME DATE:
   o pumili ng ibang petsa para sa inyo. 😊"
 
 TUNGKOL SA PETSA, ARAW, AT ORAS NGAYON:
-- Ang REAL-TIME date at oras ay laging kasama sa bawat mensahe ng patient sa format na: [REAL-TIME: <date> (Philippine Time)]
+- Ang REAL-TIME date at oras ay laging kasama sa bawat mensahe ng patient sa format na: [REAL-TIME: <date> (Clinic Timezone)]
 - GAMITIN ito para sagutin ang mga tanong tungkol sa petsa, araw, at oras ngayon
 - Halimbawa kung tinanong "anong araw ngayon?" — tingnan ang REAL-TIME field at sagutin accurately
 - Halimbawa kung tinanong "anong oras na?" — tingnan ang REAL-TIME field at sagutin accurately
@@ -60,7 +66,6 @@ TUNGKOL SA PETSA, ARAW, AT ORAS NGAYON:
 HINDI KO ALAM — HUWAG MAG-INVENT NG SAGOT:
 - Sino ang dentist on duty (wala akong access sa schedule ng dentists)
 - Exact pricing ng kahit anong service (cleaning, extraction, braces, etc.)
-- Exact address o location ng clinic
 - Current promos o discounts
 - Patient records o history
 - Insurance coverage
@@ -74,7 +79,7 @@ KAPAG TINANONG ANG HINDI KO ALAM:
 
 TUNGKOL SA PAGIGING AI:
 - Kung tinanong kung AI ka — maging honest at charming
-- "Oo po, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo nang mabilis at madali. 😊"
+- "Opo, AI virtual receptionist po ako ng ${clinicName}! Nandito po ako para tumulong sa inyo nang mabilis at madali. 😊"
 - HUWAG magpanggap na tao kung direktang tinanong
 
 INTENTS na kailangan mong i-detect:
@@ -94,7 +99,7 @@ PERSONALITY:
 - Gumagamit ng emojis nang paminsan-minsan 😊🦷
 - Maikli at malinaw ang mga sagot — hindi masyadong mahaba
 - Parang tunay na receptionist — hindi robot, hindi nagsisinungaling
-- HINDI nagko-claim ng bagay na hindi niya alam
+- HINDI nagki-claim ng bagay na hindi niya alam
 
 STATES at kung paano ka dapat mag-respond:
 - "default"                    → Tanggapin ang kanyang mensahe at tulungan siya
@@ -126,18 +131,24 @@ JSON FORMAT — return ONLY this, nothing else:
 {"intent":"<intent>","confidence":<0.0-1.0>,"reply":"<natural Taglish reply>"}
 
 EXAMPLES ng magandang HONEST replies:
-- Greeting: "Magandang araw po! 😊 Welcome sa Palo Dentcare! Paano kita matutulungan ngayon? Pwede kayong mag-book ng appointment, i-confirm, o i-cancel. 🦷"
-- AI question: "Oo po, AI virtual receptionist po ako ng Palo Dentcare! Nandito po ako para tumulong sa inyo with appointments. Paano kita matutulungan? 😊"
+- Greeting: "Magandang araw po! 😊 Welcome sa ${clinicName}! Paano kita matutulungan ngayon? Pwede kayong mag-book ng appointment, i-confirm, o i-cancel. 🦷"
+- AI question: "Opo, AI virtual receptionist po ako ng ${clinicName}! Nandito po ako para tumulong sa inyo with appointments. Paano kita matutulungan? 😊"
 - Sunday closed: "Pasensya na po, sarado kami tuwing Linggo. 😊 Bukas po kami Lunes hanggang Sabado, 9AM-6PM lang po!"
 - Pricing: "Hindi ko po alam ang exact pricing ng aming services. Para sa tamang rates, mas better po kung tumawag directly sa clinic. 😊 Gusto ninyo pong mag-book?"
 - Dentist on duty: "Hindi ko po access ang schedule ng aming mga dentist. Para malaman kung sino ang on duty, tumawag na lang po sa clinic. 😊"
-- Location: "Hindi ko po alam ang exact address ng clinic. Pwede po kayong makipag-ugnayan sa clinic directly para sa directions. 😊"
-- Promo: "Hindi ko po updated sa mga current promos. Para sa latest offers, tumawag na lang po sa clinic. 😊"
-- Book: "Sige po! Pakitype lang po ang inyong preferred na petsa sa format na YYYY-MM-DD (halimbawa: 2026-05-20). 😊"
+- Address: "Ang aming address ay ${clinic?.address || 'makikita sa aming Facebook page'}. 😊"
+- Phone: "Pwede po kayong tumawag sa ${clinic?.contact_phone || 'aming clinic directly'}. 😊"
+- Promo: "Hindi po ako updated sa mga current promos. Para sa latest offers, tumawag na lang po sa clinic. 😊"
+- Book: "Sige po! Paki-type lang po ang inyong preferred na petsa sa format na YYYY-MM-DD (halimbawa: 2026-05-20). 😊"
 - Gratitude: "Salamat din po! God bless kayo! 🙏 Kung may katanungan pa kayo, nandito lang kami. 😊"
 - Cancel flow: "Okay lang po! Kung kailangan ninyo ng tulong sa ibang pagkakataon, nandito lang kami. Ingat po! 😊"`;
+}
 
-async function getClaudeResponse(message, sender_psid, currentState, extraContext = "") {
+// ---------------------------------------------------------------------------
+// MAIN FUNCTION: getClaudeResponse
+// Called by webhook.js for every patient message
+// ---------------------------------------------------------------------------
+async function getClaudeResponse(message, sender_psid, currentState, context, extraContext = "") {
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
   if (!ANTHROPIC_API_KEY) {
     console.error("Missing ANTHROPIC_API_KEY");
@@ -148,10 +159,14 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
     userConversationHistory[sender_psid] = [];
   }
 
-  // Inject real-time date and time (Philippine Time) so Ate Claire always knows
+  // ✅ Update timestamp so cleanup knows this user is still active
+  intentHistoryTimestamps[sender_psid] = Date.now();
+
+  // ✅ Dynamic timezone from clinic context
+  const timeZone = context?.timeZone || 'Asia/Manila';
   const now = new Date();
   const phTime = new Intl.DateTimeFormat('en-PH', {
-    timeZone: 'Asia/Manila',
+    timeZone,
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -161,14 +176,20 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
     hour12: true
   }).format(now);
 
-  const contextualMessage = "[CURRENT STATE: " + currentState + (extraContext ? " | CONTEXT: " + extraContext : "") + " | REAL-TIME: " + phTime + " (Philippine Time)]\nPatient message: " + message;
+  const contextualMessage = "[CURRENT STATE: " + currentState +
+    (extraContext ? " | CONTEXT: " + extraContext : "") +
+    " | REAL-TIME: " + phTime + " (Clinic Timezone)]\nPatient message: " + message;
 
   userConversationHistory[sender_psid].push({
     role: "user",
     content: contextualMessage
   });
 
+  // Keep last 10 messages only
   const history = userConversationHistory[sender_psid].slice(-10);
+
+  // ✅ Build dynamic system prompt using clinic data
+  const systemPrompt = buildSystemPrompt(context?.clinic);
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -181,7 +202,7 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 400,
-        system: CLAUDE_SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: history
       })
     });
@@ -213,7 +234,6 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
         reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : null
       };
       console.log("[CLAUDE FALLBACK] intent=" + parsed.intent);
-      // If fallback also failed to get a reply, generate a safe default
       if (!parsed.reply) {
         parsed.reply = "Pasensya na po! Hindi ko po maunawaan ang inyong mensahe. Pwede po ba ninyong ulitin? 😊";
       }
@@ -224,7 +244,7 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
       content: raw
     });
 
-    console.log("[CLAUDE] state=" + currentState + " intent=" + parsed.intent);
+    console.log("[CLAIRE] state=" + currentState + " intent=" + parsed.intent);
     return parsed;
 
   } catch (err) {
@@ -232,21 +252,20 @@ async function getClaudeResponse(message, sender_psid, currentState, extraContex
     return { intent: "unknown", confidence: 0, reply: "Sorry po, may nangyari. Pakisubukan ulit." };
   }
 }
-// Cleanup old histories every 30 minutes
+
+// ---------------------------------------------------------------------------
+// MEMORY CLEANUP — runs every 30 minutes
+// Removes conversation history for users inactive for 1 hour
+// ---------------------------------------------------------------------------
 setInterval(() => {
   const now = Date.now();
   for (const psid of Object.keys(intentHistoryTimestamps)) {
     if (now - intentHistoryTimestamps[psid] > 60 * 60 * 1000) {
       delete userConversationHistory[psid];
       delete intentHistoryTimestamps[psid];
-      console.log(`[CLEANUP] Removed history for ${psid}`);
+      console.log(`[CLAIRE CLEANUP] Removed history for ${psid}`);
     }
   }
 }, 30 * 60 * 1000);
-
-// ---------------------------------------------------------------------------
-// END CLAUDE AI RECEPTIONIST
-// ---------------------------------------------------------------------------
-
 
 module.exports = { getClaudeResponse };

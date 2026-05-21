@@ -1,12 +1,10 @@
 // backend/routes/statusNotifications.js
-// API routes for sending Messenger notifications when appointment status is updated (Supabase version, robust)
-
 const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
-const { sendMessage } = require('../webhook'); // Your Messenger send logic
+const { sendMessage } = require('../webhook');
+const axios = require('axios');
 
-// Safety: Check env before creating client
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
   throw new Error('Supabase env vars are missing!');
 }
@@ -16,7 +14,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
-// Utility: get appointment & patient info by ID, clinic-scoped
 async function getAppointmentWithPatient(id, clinicId) {
   const { data, error } = await supabase
     .from('appointments')
@@ -24,7 +21,8 @@ async function getAppointmentWithPatient(id, clinicId) {
       *,
       patient:patient_id (
         messenger_id,
-        name
+        name,
+        phone
       )
     `)
     .eq('id', id)
@@ -32,18 +30,47 @@ async function getAppointmentWithPatient(id, clinicId) {
     .single();
 
   if (error) {
-    console.error('[status-notifications] Supabase error fetching appointment with patient:', error);
+    console.error('[status-notifications] Supabase error:', error);
     return null;
   }
   if (!data) {
-    console.error('[status-notifications] No appointment data found for id:', id, 'clinicId:', clinicId);
+    console.error('[status-notifications] No appointment found for id:', id);
     return null;
   }
   return {
     ...data,
     messenger_id: data.patient?.messenger_id,
     patient_name: data.patient?.name,
+    patient_phone: data.patient?.phone,
   };
+}
+
+// --- Send SMS based on clinic provider ---
+async function sendSMS(phone, text, clinic) {
+  if (!phone) {
+    console.log(`[SMS] Skipped — no phone number.`);
+    return;
+  }
+  if (!clinic.sms_provider || clinic.sms_provider === 'none') {
+    console.log(`[SMS] Skipped — no SMS provider configured for clinic "${clinic.name}".`);
+    return;
+  }
+  if (clinic.sms_provider === 'semaphore') {
+    await axios.post('https://api.semaphore.co/api/v4/messages', {
+      apikey: clinic.sms_api_key,
+      number: phone,
+      message: text,
+      sendername: clinic.sms_sender || 'SEMAPHORE'
+    });
+    console.log(`✅ Sent Semaphore SMS to ${phone}`);
+  } else if (clinic.sms_provider === 'twilio') {
+    await axios.post(
+      `https://api.twilio.com/2010-04-01/Accounts/${clinic.sms_api_key}/Messages.json`,
+      new URLSearchParams({ To: phone, From: clinic.sms_sender, Body: text }),
+      { auth: { username: clinic.sms_api_key, password: clinic.sms_api_secret } }
+    );
+    console.log(`✅ Sent Twilio SMS to ${phone}`);
+  }
 }
 
 // POST /status-notifications/:appointmentId
@@ -53,78 +80,37 @@ router.post('/:appointmentId', async (req, res) => {
 
   console.log('[status-notifications] Incoming:', { appointmentId, status, message, recipient, clinic_id });
 
-  // Fetch appointment info
   const appt = await getAppointmentWithPatient(appointmentId, clinic_id);
-
   if (!appt) {
     console.error('[status-notifications] Appointment not found');
     return res.status(404).json({ error: 'Appointment not found' });
   }
 
-  let messenger_id = recipient || appt.messenger_id || appt.guardian_messenger_id;
-
-  // Get clinic info (name, phone, and Messenger Page token) in one query
+  // ✅ Fetch clinic with SMS config AND timezone
   const { data: clinicRow, error: clinicError } = await supabase
     .from('clinics')
-    .select('fb_page_access_token, name, contact_phone')
+    .select('fb_page_access_token, name, contact_phone, time_zone, sms_provider, sms_api_key, sms_api_secret, sms_sender')
     .eq('id', clinic_id)
     .single();
+
+  if (clinicError || !clinicRow) {
+    return res.status(400).json({ error: 'Clinic not found.' });
+  }
 
   const pageToken = clinicRow?.fb_page_access_token;
   const clinicName = clinicRow?.name || 'your clinic';
   const clinicPhone = clinicRow?.contact_phone || null;
 
-  if (!messenger_id) {
-    // No Messenger ID — emit socket so queue display still updates, then log and return.
-    if (req.io) {
-      req.io.emit('appointment-updated', {
-        ...appt,
-        status,
-        checked_in_at: status === 'Checked-In' ? new Date().toISOString() : null,
-      });
-    }
-
-    const sent_on_date = new Date().toISOString().slice(0, 10);
-    try {
-      await supabase.from('appointment_reminders').insert({
-        appointment_id: appointmentId,
-        sent_on: new Date().toISOString(),
-        days_ahead: null,
-        messenger_id: null,
-        message: `Status updated to "${status}" but no Messenger notification was sent — no Messenger ID on file for this patient or guardian.`,
-        sent_on_date,
-        is_manual: true,
-        clinic_id,
-      });
-    } catch (dbErr) {
-      console.error("[status-notifications] Supabase log error for missing Messenger ID:", dbErr);
-    }
-
-    return res.status(200).json({
-      success: true,
-      sent: false,
-      warning: 'No Messenger ID on file for this patient or guardian. Status was updated but the patient was not notified.'
-    });
-  }
-
-  if (clinicError || !pageToken) {
-    console.error('[status-notifications] No Messenger Page token found for this clinic.');
-    return res.status(400).json({ error: 'No Messenger Page token found for this clinic.' });
-  }
-
-  // Format appointment date & time (Asia/Manila timezone)
+  // ✅ Use clinic timezone instead of hardcoded Asia/Manila
+  const clinicTZ = clinicRow?.time_zone || 'Asia/Manila';
   const apptDate = new Date(appt.appointment_time);
   const dateStr = apptDate.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'Asia/Manila'
+    year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: clinicTZ
   });
   const timeStr = apptDate.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-    timeZone: 'Asia/Manila'
+    hour: '2-digit', minute: '2-digit', hour12: true,
+    timeZone: clinicTZ
   });
 
   const contactLine = clinicPhone
@@ -140,34 +126,95 @@ router.post('/:appointmentId', async (req, res) => {
     "Cancelled":  `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment on ${dateStr} at ${timeStr} has been cancelled. ${contactLine}`,
   };
 
-  const finalMsg = message || defaultMessages[status] || `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment status has been updated to "${status}" as of ${dateStr} at ${timeStr}.`;
+  const finalMsg = message || defaultMessages[status] ||
+    `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment status has been updated to "${status}" as of ${dateStr} at ${timeStr}.`;
 
-  // Send Messenger message
-  try {
-    await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
-  } catch (err) {
-    console.error("[status-notifications] ❌ Error sending Messenger status notification:", err);
-    return res.status(500).json({ error: 'Failed to send Messenger notification.' });
+  const messenger_id = recipient || appt.messenger_id || appt.guardian_messenger_id;
+  const phone = appt.patient_phone || null;
+
+  // ✅ If no way to reach patient at all
+  if (!messenger_id && !phone) {
+    if (req.io) {
+      req.io.emit('appointment-updated', {
+        ...appt,
+        status,
+        checked_in_at: status === 'Checked-In' ? new Date().toISOString() : null,
+      });
+    }
+    const sent_on_date = new Date().toISOString().slice(0, 10);
+    try {
+      await supabase.from('appointment_reminders').insert({
+        appointment_id: appointmentId,
+        sent_on: new Date().toISOString(),
+        days_ahead: null,
+        messenger_id: null,
+        message: `Status updated to "${status}" but no notification sent — no Messenger ID or phone on file.`,
+        sent_on_date,
+        is_manual: true,
+        clinic_id,
+      });
+    } catch (dbErr) {
+      console.error("[status-notifications] Log error:", dbErr);
+    }
+    return res.status(200).json({
+      success: true,
+      sent: false,
+      warning: 'No Messenger ID or phone number on file. Status was updated but patient was not notified.'
+    });
   }
 
-  // Log in DB for audit (do not fail response if logging fails)
+  // ✅ Try Messenger first, fall back to SMS
+  let sent = false;
+  let channelUsed = null;
+
+  if (messenger_id && pageToken) {
+    try {
+      await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
+      sent = true;
+      channelUsed = 'messenger';
+    } catch (err) {
+      const fbErrCode = err?.response?.data?.error?.code;
+      if (fbErrCode === 10) {
+        console.log(`[status-notifications] Messenger window closed for ${messenger_id} — falling back to SMS.`);
+      } else {
+        console.error(`[status-notifications] Messenger error:`, err?.response?.data || err.message);
+      }
+    }
+  }
+
+  if (!sent && phone) {
+    try {
+      await sendSMS(phone, finalMsg, clinicRow);
+      sent = true;
+      channelUsed = 'sms';
+    } catch (err) {
+      console.error(`[status-notifications] SMS error:`, err?.response?.data || err.message);
+    }
+  }
+
+  if (!sent) {
+    return res.status(500).json({ error: 'Failed to send notification via Messenger or SMS.' });
+  }
+
+  // Log in DB
   const sent_on_date = new Date().toISOString().slice(0, 10);
+  const logId = messenger_id || phone;
   try {
     await supabase.from('appointment_reminders').insert({
       appointment_id: appointmentId,
       sent_on: new Date().toISOString(),
       days_ahead: null,
-      messenger_id,
+      messenger_id: logId,
       message: finalMsg,
       sent_on_date,
       is_manual: true,
       clinic_id,
     });
   } catch (dbErr) {
-    console.error("[status-notifications] Supabase log error after Messenger send:", dbErr);
+    console.error("[status-notifications] Supabase log error:", dbErr);
   }
 
-  // Emit socket event so queue display updates in real-time
+  // Emit socket event
   if (req.io) {
     req.io.emit('appointment-updated', {
       ...appt,
@@ -176,7 +223,7 @@ router.post('/:appointmentId', async (req, res) => {
     });
   }
 
-  res.json({ success: true, sent: true });
+  res.json({ success: true, sent: true, channel: channelUsed });
 });
 
 module.exports = router;
