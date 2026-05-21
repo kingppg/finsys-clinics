@@ -543,18 +543,64 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
       }
 
       case "awaiting_for_whom": {
-        if (normalizedMsg === "1" || normalizedMsg === "for me" || normalizedMsg === "for_me") {
+        if (topIntent === 'cancel_flow') {
+          if (aiReply) await sendMessage(sender_psid, aiReply, context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        // ✅ "For Me" — postback button, Claude intent, or free text
+        const isForMe =
+          normalizedMsg === "1" ||
+          normalizedMsg === "for me" ||
+          normalizedMsg === "for_me" ||
+          topIntent === 'no' ||
+          normalizedMsg.includes('akin') ||
+          normalizedMsg.includes('ako') ||
+          normalizedMsg.includes('sarili') ||
+          normalizedMsg.includes('para sa akin') ||
+          normalizedMsg.includes('para ako');
+
+        // ✅ "For Someone Else" — postback button, Claude intent, or free text
+        const isForSomeoneElse =
+          normalizedMsg === "2" ||
+          normalizedMsg === "for someone else" ||
+          normalizedMsg === "for_someone_else" ||
+          topIntent === 'yes' ||
+          normalizedMsg.includes('anak') ||
+          normalizedMsg.includes('asawa') ||
+          normalizedMsg.includes('magulang') ||
+          normalizedMsg.includes('kapatid') ||
+          normalizedMsg.includes('lolo') ||
+          normalizedMsg.includes('lola') ||
+          normalizedMsg.includes('kaibigan') ||
+          normalizedMsg.includes('friend') ||
+          normalizedMsg.includes('ibang') ||
+          normalizedMsg.includes('someone') ||
+          normalizedMsg.includes('iba') ||
+          normalizedMsg.includes('pamilya') ||
+          normalizedMsg.includes('nanay') ||
+          normalizedMsg.includes('tatay') ||
+          normalizedMsg.includes('mama') ||
+          normalizedMsg.includes('papa');
+
+        if (isForMe) {
           await sendMessage(sender_psid, "Mayroon na po kayong appointment sa petsang iyon. Paki-type ng ibang petsa (YYYY-MM-DD). 😊", context);
           userStates[sender_psid].state = "awaiting_date";
           userStates[sender_psid].data = {};
           return;
         }
-        if (normalizedMsg === "2" || normalizedMsg === "for someone else" || normalizedMsg === "for_someone_else") {
+
+        if (isForSomeoneElse) {
           userState.data.booking_for = "someone else";
           userState.state = "awaiting_patient_name";
-          await sendMessage(sender_psid, "Paki-type po ang buong pangalan ng taong gusto ninyong i-book (halimbawa: inyong anak). 😊", context);
+          const reply = aiReply || "Paki-type po ang buong pangalan ng taong gusto ninyong i-book. 😊";
+          await sendMessage(sender_psid, reply, context);
           return;
         }
+
+        // Truly unclear — ask politely once more with buttons
+        await sendMessage(sender_psid, "Pasensya na po, hindi ko po naintindihan. Para kanino po ito? 😊", context);
         await sendAppointmentForButtonTemplate(sender_psid, context.pageAccessToken);
         return;
       }

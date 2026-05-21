@@ -110,7 +110,7 @@ STATES at kung paano ka dapat mag-respond:
 - "awaiting_patient_name"      → Hihingin ang pangalan ng taong ibo-book
 - "awaiting_patient_phone"     → Hihingin ang phone number ng taong ibo-book
 - "awaiting_my_confirm_match"  → Nag-ask kung siya ba yung nakitang record (YES/NO)
-- "awaiting_for_whom"          → Nag-ask kung para kanino ang booking
+- "awaiting_for_whom"          → Nag-ask kung para kanino ang booking. Kung ang sagot ay para sa ibang tao (anak, asawa, kapatid, magulang, kaibigan, etc.) → intent ay "yes". Kung para sa kanilang sarili → intent ay "no".
 - "awaiting_confirm_code"      → Hintayin ang appointment code para i-confirm
 - "awaiting_cancel_code"       → Hintayin ang appointment code para i-cancel
 - "awaiting_cancel_code_retry" → Nagkamali ng code, try again o cancel
