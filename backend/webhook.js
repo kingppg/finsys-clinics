@@ -430,6 +430,33 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
+        // ✅ If already booking for someone else with known name, skip patient collection
+        if (userState.data.booking_for === "someone else" && userState.data.patient_name) {
+          const patient = await findPatientByNameAndPhone(userState.data.patient_name, userState.data.patient_phone || null, context);
+          if (patient) {
+            const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
+            if (doubleBooked) {
+              const savedPatientName = userState.data.patient_name;
+              const savedPatientPhone = userState.data.patient_phone;
+              await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.patient_name} sa ${userState.data.date}. 😔 Paki-type ng ibang petsa (YYYY-MM-DD).`, context);
+              userStates[sender_psid].state = "awaiting_date";
+              userStates[sender_psid].data = {
+                booking_for: "someone else",
+                patient_name: savedPatientName,
+                patient_phone: savedPatientPhone
+              };
+              return;
+            }
+            userState.data.patient_id = patient.id;
+          } else {
+          userState.data.patient_id = null;
+          }
+          userState.state = "awaiting_slot";
+          await sendMessage(sender_psid, `Narito po ang mga available na slots para sa ${userState.data.date}. Pumili lang po! 😊`, context);
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, slots, context.pageAccessToken);
+          return;
+        }
+
         const patient = await findPatientByMessengerId(sender_psid, context);
 
         if (patient) {
@@ -593,6 +620,22 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
         if (isForSomeoneElse) {
           userState.data.booking_for = "someone else";
+
+          // ✅ If we already have patient name and slots from a previous attempt
+          // (e.g. redirected back after double-booking on same date),
+          // skip straight to slot selection instead of asking for name again
+          if (userState.data.patient_name && userState.data.slots && userState.data.slots.length > 0) {
+            userState.state = "awaiting_slot";
+            await sendMessage(
+              sender_psid,
+              `Narito po ang mga available na slots para sa ${userState.data.date}. Pumili lang po! 😊`,
+              context
+            );
+            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
+            return;
+          }
+
+          // Fresh booking for someone else — ask for name
           userState.state = "awaiting_patient_name";
           const reply = aiReply || "Paki-type po ang buong pangalan ng taong gusto ninyong i-book. 😊";
           await sendMessage(sender_psid, reply, context);
@@ -644,9 +687,16 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         if (patient) {
           const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
           if (doubleBooked) {
+            // ✅ Keep patient_name so we don't ask again if they pick a new date
+            const savedPatientName = userState.data.patient_name;
+            const savedPatientPhone = userState.data.patient_phone;
             await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.patient_name} sa ${userState.data.date}. 😔 Paki-type ng ibang petsa (YYYY-MM-DD).`, context);
             userStates[sender_psid].state = "awaiting_date";
-            userStates[sender_psid].data = {};
+            userStates[sender_psid].data = {
+              booking_for: "someone else",
+              patient_name: savedPatientName,
+              patient_phone: savedPatientPhone
+            };
             return;
           }
           userState.data.patient_id = patient.id;
