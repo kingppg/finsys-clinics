@@ -147,6 +147,7 @@ EXAMPLES ng magandang HONEST replies:
 // ---------------------------------------------------------------------------
 // MAIN FUNCTION: getClaudeResponse
 // Called by webhook.js for every patient message
+// ✅ Includes retry logic for Anthropic overloaded_error
 // ---------------------------------------------------------------------------
 async function getClaudeResponse(message, sender_psid, currentState, context, extraContext = "") {
   const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -191,65 +192,91 @@ async function getClaudeResponse(message, sender_psid, currentState, context, ex
   // ✅ Build dynamic system prompt using clinic data
   const systemPrompt = buildSystemPrompt(context?.clinic);
 
-  try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 400,
-        system: systemPrompt,
-        messages: history
-      })
-    });
+  // ✅ Retry up to 3 times on overloaded error
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 2000; // 2 seconds between retries
 
-    const data = await response.json();
-
-    if (data.error) {
-      console.error("Claude API error:", data.error);
-      return { intent: "unknown", confidence: 0, reply: "Sorry po, may technical issue kami. Pakisubukan ulit." };
-    }
-
-    const raw = data.content && data.content[0] ? data.content[0].text.trim() : "{}";
-
-    let parsed = { intent: "unknown", confidence: 0, reply: null };
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      let clean = raw.replace(/```json|```/g, "").trim();
-      const jsonMatch = clean.match(/\{[\s\S]*\}/);
-      if (jsonMatch) clean = jsonMatch[0];
-      clean = clean.replace(/[\r\n]+/g, " ");
-      parsed = JSON.parse(clean);
-    } catch (parseErr) {
-      console.error("JSON parse failed, using regex fallback:", parseErr.message);
-      const intentMatch = raw.match(/"intent"\s*:\s*"([^"]+)"/);
-      const replyMatch = raw.match(/"reply"\s*:\s*"([\s\S]*?)(?:"|$)/);
-      const confidenceMatch = raw.match(/"confidence"\s*:\s*([\d.]+)/);
-      parsed = {
-        intent: intentMatch ? intentMatch[1] : "unknown",
-        confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5,
-        reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : null
-      };
-      console.log("[CLAUDE FALLBACK] intent=" + parsed.intent);
-      if (!parsed.reply) {
-        parsed.reply = "Pasensya na po! Hindi ko po maunawaan ang inyong mensahe. Pwede po ba ninyong ulitin? 😊";
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 400,
+          system: systemPrompt,
+          messages: history
+        })
+      });
+
+      const data = await response.json();
+
+      // ✅ Retry on overloaded
+      if (data.error?.type === 'overloaded_error') {
+        console.warn(`[CLAIRE] Overloaded (attempt ${attempt}/${MAX_RETRIES}), retrying in ${RETRY_DELAY_MS}ms...`);
+        if (attempt < MAX_RETRIES) {
+          await new Promise(res => setTimeout(res, RETRY_DELAY_MS));
+          continue;
+        } else {
+          console.error("[CLAIRE] All retries exhausted — Anthropic still overloaded.");
+          return {
+            intent: "unknown",
+            confidence: 0,
+            reply: "Pasensya na po, medyo busy kami ngayon. Pakisubukan ulit after a few seconds. 😊"
+          };
+        }
+      }
+
+      if (data.error) {
+        console.error("Claude API error:", data.error);
+        return { intent: "unknown", confidence: 0, reply: "Sorry po, may technical issue kami. Pakisubukan ulit." };
+      }
+
+      const raw = data.content && data.content[0] ? data.content[0].text.trim() : "{}";
+
+      let parsed = { intent: "unknown", confidence: 0, reply: null };
+      try {
+        let clean = raw.replace(/```json|```/g, "").trim();
+        const jsonMatch = clean.match(/\{[\s\S]*\}/);
+        if (jsonMatch) clean = jsonMatch[0];
+        clean = clean.replace(/[\r\n]+/g, " ");
+        parsed = JSON.parse(clean);
+      } catch (parseErr) {
+        console.error("JSON parse failed, using regex fallback:", parseErr.message);
+        const intentMatch = raw.match(/"intent"\s*:\s*"([^"]+)"/);
+        const replyMatch = raw.match(/"reply"\s*:\s*"([\s\S]*?)(?:"|$)/);
+        const confidenceMatch = raw.match(/"confidence"\s*:\s*([\d.]+)/);
+        parsed = {
+          intent: intentMatch ? intentMatch[1] : "unknown",
+          confidence: confidenceMatch ? parseFloat(confidenceMatch[1]) : 0.5,
+          reply: replyMatch ? replyMatch[1].replace(/\\n/g, "\n") : null
+        };
+        console.log("[CLAIRE FALLBACK] intent=" + parsed.intent);
+        if (!parsed.reply) {
+          parsed.reply = "Pasensya na po! Hindi ko po maunawaan ang inyong mensahe. Pwede po ba ninyong ulitin? 😊";
+        }
+      }
+
+      userConversationHistory[sender_psid].push({
+        role: "assistant",
+        content: raw
+      });
+
+      console.log("[CLAIRE] state=" + currentState + " intent=" + parsed.intent);
+      return parsed;
+
+    } catch (err) {
+      console.error(`getClaudeResponse error (attempt ${attempt}):`, err.message);
+      if (attempt < MAX_RETRIES) {
+        await new Promise(res => setTimeout(res, RETRY_DELAY_MS));
+      } else {
+        return { intent: "unknown", confidence: 0, reply: "Sorry po, may nangyari. Pakisubukan ulit." };
       }
     }
-
-    userConversationHistory[sender_psid].push({
-      role: "assistant",
-      content: raw
-    });
-
-    console.log("[CLAIRE] state=" + currentState + " intent=" + parsed.intent);
-    return parsed;
-
-  } catch (err) {
-    console.error("getClaudeResponse error:", err.message);
-    return { intent: "unknown", confidence: 0, reply: "Sorry po, may nangyari. Pakisubukan ulit." };
   }
 }
 
