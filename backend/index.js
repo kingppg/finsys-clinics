@@ -81,13 +81,25 @@ app.get('/api/clinics/:id/facebook/connect', (req, res) => {
   const clinicId = req.params.id;
   const fbClientId = process.env.FB_CLIENT_ID;
   const redirectUri = `${BACKEND_URL}/api/clinics/${clinicId}/facebook/callback`;
-  const scope = [
-    'pages_messaging',
-    'pages_manage_metadata',
-    'pages_read_engagement',
-    'pages_show_list'
-  ].join(',');
-  const fbOauthUrl = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${fbClientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&response_type=code`;
+  const base = `https://www.facebook.com/v17.0/dialog/oauth?client_id=${fbClientId}` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code`;
+
+  // If a Facebook Login for Business Configuration ID is set, use the config_id
+  // flow (permissions come from the Configuration). Otherwise fall back to the
+  // classic scope-based flow (regular Facebook Login).
+  const configId = process.env.FB_LOGIN_CONFIG_ID;
+  let fbOauthUrl;
+  if (configId) {
+    fbOauthUrl = `${base}&config_id=${configId}`;
+  } else {
+    const scope = [
+      'pages_messaging',
+      'pages_manage_metadata',
+      'pages_read_engagement',
+      'pages_show_list'
+    ].join(',');
+    fbOauthUrl = `${base}&scope=${scope}`;
+  }
   res.redirect(fbOauthUrl);
 });
 
