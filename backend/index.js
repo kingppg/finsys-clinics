@@ -26,7 +26,6 @@ const PORT = process.env.PORT || 5000;
 app.use(express.static('../public'));
 
 console.log('STARTING BACKEND');
-console.log('ENVIRONMENT:', process.env);
 
 // Middleware
 app.use(cors({
@@ -35,7 +34,11 @@ app.use(cors({
     "https://finsys-clinics-gq55.vercel.app"
   ]
 }));
-app.use(express.json());
+// Capture the raw request body so the webhook can verify Facebook's
+// X-Hub-Signature-256 HMAC against the unparsed payload.
+app.use(express.json({
+  verify: (req, res, buf) => { req.rawBody = buf; }
+}));
 
 // --- LOGIN ENDPOINT ---
 app.post('/api/login', async (req, res) => {

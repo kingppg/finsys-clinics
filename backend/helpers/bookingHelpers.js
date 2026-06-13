@@ -80,7 +80,10 @@ async function findPatientByMessengerId(messenger_id, context) {
   return data || null;
 }
 
-async function findPatientByNameAndPhone(name, phone, context) {
+// allowNameOnly: when false, a match REQUIRES phone+name (no name-only fallback).
+// Use strict matching when booking for someone else, so we never silently
+// attach the appointment to a different person who happens to share the name.
+async function findPatientByNameAndPhone(name, phone, context, allowNameOnly = true) {
   if (phone) {
     const { data, error } = await supabase
       .from('patients')
@@ -91,6 +94,7 @@ async function findPatientByNameAndPhone(name, phone, context) {
       .limit(1);
     if (!error && data && data.length > 0) return data[0];
   }
+  if (!allowNameOnly) return null;
   const { data: data2, error: error2 } = await supabase
     .from('patients')
     .select('*')

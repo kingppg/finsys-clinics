@@ -110,6 +110,7 @@ STATES at kung paano ka dapat mag-respond:
 - "awaiting_patient_name"      → Hihingin ang pangalan ng taong ibo-book
 - "awaiting_patient_phone"     → Hihingin ang phone number ng taong ibo-book
 - "awaiting_my_confirm_match"  → Nag-ask kung siya ba yung nakitang record (YES/NO)
+- "awaiting_guardian_confirm_match" → Nag-ask kung tama ang nakitang record para sa taong ibo-book para sa iba (YES/NO)
 - "awaiting_for_whom"          → Nag-ask kung para kanino ang booking. Kung ang sagot ay para sa ibang tao (anak, asawa, kapatid, magulang, kaibigan, etc.) → intent ay "yes". Kung para sa kanilang sarili → intent ay "no".
 - "awaiting_confirm_code"      → Hintayin ang appointment code para i-confirm
 - "awaiting_cancel_code"       → Hintayin ang appointment code para i-cancel
@@ -181,13 +182,22 @@ async function getClaudeResponse(message, sender_psid, currentState, context, ex
     (extraContext ? " | CONTEXT: " + extraContext : "") +
     " | REAL-TIME: " + phTime + " (Clinic Timezone)]\nPatient message: " + message;
 
-  userConversationHistory[sender_psid].push({
-    role: "user",
-    content: contextualMessage
-  });
+  // ✅ The new user turn. We do NOT push it into stored history yet —
+  // it only gets committed AFTER a successful API response. This prevents
+  // a dangling user turn (with no matching assistant turn) from corrupting
+  // the conversation on any error/early-return path. (Bug #2)
+  const userTurn = { role: "user", content: contextualMessage };
 
-  // Keep last 10 messages only
-  const history = userConversationHistory[sender_psid].slice(-10);
+  // ✅ Build the messages array for THIS request: prior clean history + new turn.
+  // Then trim to the last N entries while guaranteeing the sequence still
+  // starts with a "user" turn. The Anthropic Messages API requires the first
+  // message to be role "user" and roles to alternate — a naive slice(-10)
+  // could begin on an "assistant" turn and 400 every call. (Bug #1)
+  const MAX_TURNS = 10;
+  let history = [...userConversationHistory[sender_psid], userTurn].slice(-MAX_TURNS);
+  while (history.length && history[0].role !== "user") {
+    history.shift();
+  }
 
   // ✅ Build dynamic system prompt using clinic data
   const systemPrompt = buildSystemPrompt(context?.clinic);
@@ -261,10 +271,19 @@ async function getClaudeResponse(message, sender_psid, currentState, context, ex
         }
       }
 
-      userConversationHistory[sender_psid].push({
-        role: "assistant",
-        content: raw
-      });
+      // ✅ Commit BOTH turns together, only now that the call succeeded.
+      // This keeps stored history as clean alternating user/assistant pairs
+      // (always starting with user, always even length).
+      const stored = userConversationHistory[sender_psid];
+      stored.push(userTurn);
+      stored.push({ role: "assistant", content: raw });
+
+      // Bound stored history so it never grows unbounded. Trim in whole pairs
+      // (even cap) so the kept window still starts on a user turn.
+      const MAX_STORED = 20;
+      if (stored.length > MAX_STORED) {
+        userConversationHistory[sender_psid] = stored.slice(-MAX_STORED);
+      }
 
       console.log("[CLAIRE] state=" + currentState + " intent=" + parsed.intent);
       return parsed;

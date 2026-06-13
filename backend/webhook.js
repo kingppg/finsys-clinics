@@ -6,6 +6,7 @@
 
 console.log("webhook.js loaded");
 const express = require("express");
+const crypto = require("crypto");
 const { createClient } = require("@supabase/supabase-js");
 
 // --- IMPORT MENU COMPONENTS ---
@@ -44,7 +45,37 @@ const {
 
 const router = express.Router();
 
-const VERIFY_TOKEN = "palodentcare_secret_token";
+const VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN || "palodentcare_secret_token";
+
+// Facebook signs every webhook POST with HMAC-SHA256 of the raw body using the
+// app secret. We verify it so only genuine Facebook events are processed —
+// otherwise anyone who learns the URL could spam fake events and burn API spend.
+const FB_APP_SECRET = process.env.FB_APP_SECRET || process.env.FB_CLIENT_SECRET;
+
+function verifyFbSignature(req) {
+  // Allow local dev when no secret is configured, but make it loud.
+  if (!FB_APP_SECRET) {
+    console.warn("[WARN] FB_APP_SECRET/FB_CLIENT_SECRET not set — skipping webhook signature verification (dev only).");
+    return true;
+  }
+  const signature = req.get("x-hub-signature-256");
+  if (!signature || !req.rawBody) {
+    console.warn("[WARN] Missing X-Hub-Signature-256 or raw body on webhook request.");
+    return false;
+  }
+  const expected = "sha256=" + crypto
+    .createHmac("sha256", FB_APP_SECRET)
+    .update(req.rawBody)
+    .digest("hex");
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
 
 // --- Supabase Client ---
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
@@ -55,9 +86,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY
 );
 
+// Minimum confidence before we ACT on a state-changing AI intent (book / cancel /
+// confirm). Below this we treat the message as a question and let Claire answer
+// instead of yanking the user into a flow on a shaky classification. (Bug #7)
+const CONFIDENCE_THRESHOLD = 0.6;
+
 // --- Conversation state ---
 let userStates = {};
-let justCancelled = {};
 
 // --- WEBHOOK VERIFY ---
 router.get("/", (req, res) => {
@@ -75,6 +110,10 @@ router.get("/", (req, res) => {
 
 // --- WEBHOOK EVENT HANDLER ---
 router.post("/", async (req, res) => {
+  if (!verifyFbSignature(req)) {
+    console.warn("[WARN] Rejected webhook event — invalid signature.");
+    return res.sendStatus(403);
+  }
   const body = req.body;
   if (body.object === "page") {
     res.status(200).send("EVENT_RECEIVED");
@@ -159,7 +198,10 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
   if (message === 'CONFIRM_BOOKING') normalizedMsg = 'confirm_booking';
   if (message === 'CANCEL_BOOKING') normalizedMsg = 'cancel_booking';
 
-  const isPostback = ['for_me', 'for_someone_else'].includes(message) ||
+  // ✅ The "Who is this for?" buttons send uppercase payloads (FOR_ME /
+  // FOR_SOMEONE_ELSE). Match both cases so these deterministic taps skip Claude
+  // entirely — no wasted API call and no chance of a misfired intent. (Bug #8)
+  const isPostback = ['for_me', 'for_someone_else', 'FOR_ME', 'FOR_SOMEONE_ELSE'].includes(message) ||
     message.startsWith('SLOT_') || message.startsWith('slot_');
 
   let claudeResult = { intent: "unknown", confidence: 0, reply: null };
@@ -178,8 +220,10 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
   const topIntent = claudeResult.intent || "unknown";
   const aiReply = claudeResult.reply || null;
+  const confidence = typeof claudeResult.confidence === 'number' ? claudeResult.confidence : 0;
+  const confidentIntent = confidence >= CONFIDENCE_THRESHOLD;
 
-  console.log(`[DEBUG] topIntent="${topIntent}" aiReply="${aiReply?.substring(0, 60)}"`);
+  console.log(`[DEBUG] topIntent="${topIntent}" confidence=${confidence} aiReply="${aiReply?.substring(0, 60)}"`);
 
   try {
     switch (userState.state) {
@@ -187,31 +231,30 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
       case "default": {
         if (topIntent === 'greet') {
           if (aiReply) await sendMessage(sender_psid, aiReply, context);
+          // ✅ Detect a tacked-on question using word-boundary tokens, so 'ai'
+          // doesn't match inside "available", 'ano' inside "Romano", etc. (Bug #10)
+          const greetTokens = message.toLowerCase().split(/\s+/).map(t => t.replace(/[^a-z0-9]/g, '')).filter(Boolean);
+          const questionWords = ['ba', 'ano', 'pano', 'paano', 'ai', 'bot', 'ask',
+            'magkano', 'pwede', 'kailan', 'saan', 'bakit', 'sino'];
           const hasQuestion = message.includes('?') ||
-            message.toLowerCase().includes('ba') ||
-            message.toLowerCase().includes('ask') ||
-            message.toLowerCase().includes('ano') ||
-            message.toLowerCase().includes('pano') ||
-            message.toLowerCase().includes('paano') ||
-            message.toLowerCase().includes('ai') ||
-            message.toLowerCase().includes('bot') ||
-            message.split(' ').length > 6;
+            greetTokens.some(t => questionWords.includes(t)) ||
+            greetTokens.length > 6;
           if (!hasQuestion) {
             await sendIntroMenu(sender_psid, context.pageAccessToken);
           }
           return;
         }
-        if (topIntent === 'book_appointment') {
+        if (topIntent === 'book_appointment' && confidentIntent) {
           userState.state = "awaiting_date";
           if (aiReply) await sendMessage(sender_psid, aiReply, context);
           return;
         }
-        if (topIntent === 'cancel_appointment') {
+        if (topIntent === 'cancel_appointment' && confidentIntent) {
           userState.state = "awaiting_cancel_code";
           if (aiReply) await sendMessage(sender_psid, aiReply, context);
           return;
         }
-        if (topIntent === 'confirm_appointment') {
+        if (topIntent === 'confirm_appointment' && confidentIntent) {
           userState.state = "awaiting_confirm_code";
           if (aiReply) await sendMessage(sender_psid, aiReply, context);
           return;
@@ -432,7 +475,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
         // ✅ If already booking for someone else with known name, skip patient collection
         if (userState.data.booking_for === "someone else" && userState.data.patient_name) {
-          const patient = await findPatientByNameAndPhone(userState.data.patient_name, userState.data.patient_phone || null, context);
+          const patient = await findPatientByNameAndPhone(userState.data.patient_name, userState.data.patient_phone || null, context, false);
           if (patient) {
             const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
             if (doubleBooked) {
@@ -576,48 +619,34 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        // ✅ "For Me" — postback button, Claude intent, or free text
-        const isForMe =
-          normalizedMsg === "1" ||
-          normalizedMsg === "for me" ||
-          normalizedMsg === "for_me" ||
-          topIntent === 'no' ||
-          normalizedMsg.includes('akin') ||
-          normalizedMsg.includes('ako') ||
-          normalizedMsg.includes('sarili') ||
-          normalizedMsg.includes('para sa akin') ||
-          normalizedMsg.includes('para ako');
+        // ✅ Tokenize once for word-boundary matching, so short words like 'ako'
+        // or 'iba' don't match inside unrelated words/names. (Bug #9, #10)
+        const whomTokens = normalizedMsg.split(/\s+/).filter(Boolean);
+        const hasToken = (list) => list.some(w => whomTokens.includes(w));
+        const hasPhrase = (list) => list.some(p => normalizedMsg.includes(p));
 
-        // ✅ "For Someone Else" — postback button, Claude intent, or free text
+        // Relationship / third-party words → booking for someone else.
+        const elseTokens = ['anak', 'asawa', 'magulang', 'kapatid', 'lolo', 'lola',
+          'nanay', 'tatay', 'mama', 'papa', 'kaibigan', 'friend', 'pamilya',
+          'pinsan', 'someone', 'iba', 'ibang'];
+        const elsePhrases = ['ibang tao', 'para kay', 'para sa anak', 'para sa asawa',
+          'para sa kapatid', 'para sa magulang', 'para sa kaibigan', 'para sa iba'];
+
+        // First-person words → booking for self.
+        const meTokens = ['ako', 'akin', 'sakin', 'sarili'];
+        const mePhrases = ['para sa akin', 'para sa sarili', 'para sa aking', 'para ako'];
+
+        const explicitForMe = ['1', 'for me', 'for_me'].includes(normalizedMsg);
+        const explicitForElse = ['2', 'for someone else', 'for_someone_else'].includes(normalizedMsg);
+
         const isForSomeoneElse =
-          normalizedMsg === "2" ||
-          normalizedMsg === "for someone else" ||
-          normalizedMsg === "for_someone_else" ||
-          topIntent === 'yes' ||
-          normalizedMsg.includes('anak') ||
-          normalizedMsg.includes('asawa') ||
-          normalizedMsg.includes('magulang') ||
-          normalizedMsg.includes('kapatid') ||
-          normalizedMsg.includes('lolo') ||
-          normalizedMsg.includes('lola') ||
-          normalizedMsg.includes('kaibigan') ||
-          normalizedMsg.includes('friend') ||
-          normalizedMsg.includes('ibang') ||
-          normalizedMsg.includes('someone') ||
-          normalizedMsg.includes('iba') ||
-          normalizedMsg.includes('pamilya') ||
-          normalizedMsg.includes('nanay') ||
-          normalizedMsg.includes('tatay') ||
-          normalizedMsg.includes('mama') ||
-          normalizedMsg.includes('papa');
+          explicitForElse || topIntent === 'yes' || hasToken(elseTokens) || hasPhrase(elsePhrases);
+        const isForMe =
+          explicitForMe || topIntent === 'no' || hasToken(meTokens) || hasPhrase(mePhrases);
 
-        if (isForMe) {
-          await sendMessage(sender_psid, "Mayroon na po kayong appointment sa petsang iyon. Paki-type ng ibang petsa (YYYY-MM-DD). 😊", context);
-          userStates[sender_psid].state = "awaiting_date";
-          userStates[sender_psid].data = {};
-          return;
-        }
-
+        // ✅ Evaluate "someone else" FIRST: an explicit relationship word is a
+        // stronger signal than a stray first-person token, so a message like
+        // "para sa anak, hindi sa akin" resolves to someone else. (Bug #9)
         if (isForSomeoneElse) {
           userState.data.booking_for = "someone else";
 
@@ -639,6 +668,13 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           userState.state = "awaiting_patient_name";
           const reply = aiReply || "Paki-type po ang buong pangalan ng taong gusto ninyong i-book. 😊";
           await sendMessage(sender_psid, reply, context);
+          return;
+        }
+
+        if (isForMe) {
+          await sendMessage(sender_psid, "Mayroon na po kayong appointment sa petsang iyon. Paki-type ng ibang petsa (YYYY-MM-DD). 😊", context);
+          userStates[sender_psid].state = "awaiting_date";
+          userStates[sender_psid].data = {};
           return;
         }
 
@@ -683,9 +719,10 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         }
         userState.data.patient_phone = phone;
 
-        const patient = await findPatientByNameAndPhone(userState.data.patient_name, phone, context);
-        if (patient) {
-          const doubleBooked = await hasDoubleBookingOnDate(patient.id, userState.data.date, context);
+        // ✅ Strong match: same phone AND name → confident it's the same person. (Bug #6)
+        const strictMatch = await findPatientByNameAndPhone(userState.data.patient_name, phone, context, false);
+        if (strictMatch) {
+          const doubleBooked = await hasDoubleBookingOnDate(strictMatch.id, userState.data.date, context);
           if (doubleBooked) {
             // ✅ Keep patient_name so we don't ask again if they pick a new date
             const savedPatientName = userState.data.patient_name;
@@ -699,14 +736,71 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
             };
             return;
           }
-          userState.data.patient_id = patient.id;
-        } else {
-          userState.data.patient_id = null;
+          userState.data.patient_id = strictMatch.id;
+          userState.state = "awaiting_slot";
+          await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
+          return;
         }
 
+        // ✅ No strong match, but a record with the SAME NAME exists. Don't guess —
+        // ask the guardian to confirm it's the same person before reusing it,
+        // otherwise we'd risk booking onto a stranger's record. (Bug #6 + confirmation)
+        const nameOnlyMatch = await findPatientByNameAndPhone(userState.data.patient_name, null, context, true);
+        if (nameOnlyMatch) {
+          userState.data.found_patient_id = nameOnlyMatch.id;
+          userState.data.found_patient_name = nameOnlyMatch.name;
+          userState.state = "awaiting_guardian_confirm_match";
+          let gMsg = `May nakita po kaming record na pareho ng pangalan:\nPangalan: ${nameOnlyMatch.name}\n`;
+          if (nameOnlyMatch.phone) gMsg += `Mobile: ••••${String(nameOnlyMatch.phone).slice(-4)}\n`;
+          gMsg += `\nIto po ba ang taong gusto ninyong i-book? I-reply ng YES kung siya, o NO para gumawa ng bagong record. 😊`;
+          await sendMessage(sender_psid, gMsg, context);
+          return;
+        }
+
+        // Truly new person — a fresh record will be created at confirmation.
+        userState.data.patient_id = null;
         userState.state = "awaiting_slot";
         await sendMessage(sender_psid, "Narito po ang mga available na slots! Pumili lang po. 😊", context);
         await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
+        return;
+      }
+
+      case "awaiting_guardian_confirm_match": {
+        if (topIntent === 'cancel_flow') {
+          if (aiReply) await sendMessage(sender_psid, aiReply, context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        if (topIntent === 'yes') {
+          const foundId = userState.data.found_patient_id;
+          const doubleBooked = await hasDoubleBookingOnDate(foundId, userState.data.date, context);
+          if (doubleBooked) {
+            const savedPatientName = userState.data.patient_name;
+            const savedPatientPhone = userState.data.patient_phone;
+            await sendMessage(sender_psid, `Mayroon na pong appointment si ${userState.data.found_patient_name} sa ${userState.data.date}. 😔 Paki-type ng ibang petsa (YYYY-MM-DD).`, context);
+            userStates[sender_psid].state = "awaiting_date";
+            userStates[sender_psid].data = {
+              booking_for: "someone else",
+              patient_name: savedPatientName,
+              patient_phone: savedPatientPhone
+            };
+            return;
+          }
+          userState.data.patient_id = foundId;
+          userState.state = "awaiting_slot";
+          await sendMessage(sender_psid, "Sige po! Narito ang mga available na slots. Pumili lang po! 😊", context);
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
+          return;
+        }
+        if (topIntent === 'no') {
+          userState.data.patient_id = null;
+          userState.state = "awaiting_slot";
+          await sendMessage(sender_psid, "Sige po! Gagawa kami ng bagong record. Narito ang mga available na slots! 😊", context);
+          await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
+          return;
+        }
+        await sendMessage(sender_psid, "I-reply lang po ng YES o NO. 😊", context);
         return;
       }
 
@@ -750,6 +844,71 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
       }
 
       case "confirming": {
+        const wantsCancel = topIntent === 'cancel_flow' || normalizedMsg === 'cancel_booking';
+        const wantsConfirm = topIntent === 'yes' || normalizedMsg === 'confirm_booking' ||
+          ['ok', 'confirm'].includes(normalizedMsg);
+
+        // ✅ Cancel at the summary screen. We DO record this — on an EXPLICIT
+        // cancel only — to capture the contact for the customer list, feed
+        // analytics, and let staff follow up with people who backed out.
+        // Unclear input (handled below) still writes nothing. (Bug #5, revised)
+        if (wantsCancel) {
+          try {
+            // Resolve the patient so the contact is captured. Reuse a known id,
+            // else find an existing record by messenger (for "me"), else insert
+            // a lightweight record.
+            let cancelPatientId = userState.data.patient_id;
+            if (!cancelPatientId && userState.data.booking_for === "me") {
+              const existing = await findPatientByMessengerId(sender_psid, context);
+              if (existing) cancelPatientId = existing.id;
+            }
+            if (!cancelPatientId && userState.data.patient_name) {
+              const cancelPayload = {
+                name: String(userState.data.patient_name),
+                phone: userState.data.patient_phone || null,
+                clinic_id: context.clinicId
+              };
+              if (userState.data.booking_for === "me") cancelPayload.messenger_id = sender_psid;
+              const { data: newPatient, error: cancelInsErr } = await supabase.from('patients')
+                .insert(cancelPayload).select('id').single();
+              if (!cancelInsErr && newPatient) cancelPatientId = newPatient.id;
+            }
+
+            // Record a Cancelled appointment for analytics / follow-up. Status
+            // 'Cancelled' means getAvailableSlots ignores it, so it never blocks
+            // a real slot. The sender's messenger id is captured via guardian id.
+            if (cancelPatientId && userState.data.date && userState.data.slot) {
+              const cancelDentistId = userState.data.activeDentists?.[0]?.id || null;
+              if (cancelDentistId) {
+                const slot24c = to24HourFormat(userState.data.slot);
+                const offsetc = getUtcOffset(context.timeZone);
+                const datetimec = `${userState.data.date}T${slot24c}:00${offsetc}`;
+                const { data: cancelAppt } = await supabase.from('appointments').insert({
+                  dentist_id: cancelDentistId, patient_id: cancelPatientId, appointment_time: datetimec,
+                  booking_origin: 'Messenger Booking', status: 'Cancelled',
+                  reason: 'Cancelled at confirmation (Messenger)',
+                  guardian_messenger_id: sender_psid, clinic_id: context.clinicId
+                }).select('id').single();
+                if (req?.io && cancelAppt?.id) await emitAppointmentUpdate(req.io, context.clinicId, cancelAppt.id);
+              }
+            }
+          } catch (err) {
+            // Recording is best-effort — never let it break the user's exit.
+            console.error("Error recording cancellation:", err);
+          }
+          const reply = aiReply || "Na-cancel po ang inyong booking. Kung gusto ninyong mag-book ulit, sabihin lang po! 😊";
+          await sendMessage(sender_psid, reply, context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+
+        // ✅ Anything that isn't an explicit confirm → re-prompt, no DB writes.
+        if (!wantsConfirm) {
+          await sendMessage(sender_psid, "Pakitap lang po ang Confirm o Cancel button para matuloy. 😊", context);
+          return;
+        }
+
+        // --- From here on the user has CONFIRMED. Resolve the dentist, then write. ---
         const slot24 = to24HourFormat(userState.data.slot);
         const offset = getUtcOffset(context.timeZone);
         const datetime = `${userState.data.date}T${slot24}:00${offset}`;
@@ -784,6 +943,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
+        // ✅ Insert the patient ONLY now that the booking is confirmed. (Bug #5)
         let patient_id = userState.data.patient_id;
         if (!patient_id) {
           const insertPayload = {
@@ -806,33 +966,8 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         const { data: existingAppointments } = await supabase.from('appointments').select('id,status')
           .eq('dentist_id', assignedDentist.id).eq('appointment_time', datetime).eq('clinic_id', context.clinicId);
 
-        // Cancel booking
-        if (topIntent === 'cancel_flow' || normalizedMsg === 'cancel_booking') {
-          let targetId = null;
-          try {
-            if (existingAppointments?.length > 0) {
-              targetId = existingAppointments[0].id;
-              await supabase.from('appointments').update({ status: 'Cancelled', reason: 'Messenger Booking', guardian_messenger_id: sender_psid })
-                .eq('id', targetId).eq('clinic_id', context.clinicId);
-            } else {
-              const { data: ins } = await supabase.from('appointments').insert({
-                dentist_id: assignedDentist.id, patient_id, appointment_time: datetime,
-                booking_origin: 'Messenger Booking', status: 'Cancelled', reason: 'Messenger Booking',
-                guardian_messenger_id: sender_psid, clinic_id: context.clinicId
-              }).select('id').single();
-              if (ins) targetId = ins.id;
-            }
-          } catch (err) { console.error("Error saving cancelled:", err); }
-          if (req?.io && targetId) await emitAppointmentUpdate(req.io, context.clinicId, targetId);
-          const reply = aiReply || "Na-cancel po ang inyong booking. Kung gusto ninyong mag-book ulit, sabihin lang po! 😊";
-          await sendMessage(sender_psid, reply, context);
-          justCancelled[sender_psid] = true;
-          userStates[sender_psid] = { state: "default", data: {} };
-          return;
-        }
-
         // Confirm booking
-        if (topIntent === 'yes' || normalizedMsg === 'confirm_booking' || ['ok', 'confirm'].includes(normalizedMsg)) {
+        {
           let appointmentId;
           try {
             if (existingAppointments?.length > 0) {
@@ -874,9 +1009,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-
-        await sendMessage(sender_psid, "Pakitap lang po ang Confirm o Cancel button para matuloy. 😊", context);
-        return;
       }
 
       default: {
@@ -894,4 +1026,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
   }
 }
 
-module.exports = { router, sendMessage };
+// handleMessage and userStates are exported for the local test harness
+// (test-webhook.js) so flows can be driven without Facebook. They are not
+// used by the production server, which only consumes `router`.
+module.exports = { router, sendMessage, handleMessage, userStates };
