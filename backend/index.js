@@ -22,6 +22,11 @@ require('./reminderScheduler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+// Public base URL of THIS backend, used for OAuth redirect URIs. Must be set in
+// production (e.g. https://finsys-clinics.onrender.com); falls back to localhost
+// for dev. The same URL must be whitelisted in the Facebook app's Valid OAuth
+// Redirect URIs.
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
 
 app.use(express.static('../public'));
 
@@ -75,7 +80,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/clinics/:id/facebook/connect', (req, res) => {
   const clinicId = req.params.id;
   const fbClientId = process.env.FB_CLIENT_ID;
-  const redirectUri = `http://localhost:5000/api/clinics/${clinicId}/facebook/callback`;
+  const redirectUri = `${BACKEND_URL}/api/clinics/${clinicId}/facebook/callback`;
   const scope = [
     'pages_messaging',
     'pages_manage_metadata',
@@ -94,7 +99,7 @@ app.get('/api/clinics/:id/facebook/callback', async (req, res) => {
   const code = req.query.code;
   const fbClientId = process.env.FB_CLIENT_ID;
   const fbClientSecret = process.env.FB_CLIENT_SECRET;
-  const redirectUri = `http://localhost:5000/api/clinics/${clinicId}/facebook/callback`;
+  const redirectUri = `${BACKEND_URL}/api/clinics/${clinicId}/facebook/callback`;
 
   try {
     const tokenRes = await axios.get('https://graph.facebook.com/v17.0/oauth/access_token', {
@@ -265,6 +270,43 @@ app.post('/api/clinics/:id/sms/test', async (req, res) => {
   } catch (err) {
     console.error('SMS test error:', err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.message || 'Failed to send test SMS.' });
+  }
+});
+
+// --- SAVE SMS CONFIG (server-side, service key) ---
+// SMS credentials are secrets, so the client must NOT write them directly to
+// Supabase (the anon key is public). This endpoint persists them server-side.
+// A blank api_key/secret means "leave the existing one unchanged", so the UI can
+// edit provider/sender without seeing or wiping the stored key.
+app.put('/api/clinics/:id/sms', async (req, res) => {
+  const clinicId = req.params.id;
+  const { sms_provider, sms_api_key, sms_api_secret, sms_sender } = req.body || {};
+
+  const update = {
+    sms_provider: sms_provider || 'none',
+    sms_sender: sms_sender ?? null
+  };
+  if (typeof sms_api_key === 'string' && sms_api_key.trim() !== '') {
+    update.sms_api_key = sms_api_key.trim();
+  }
+  if (typeof sms_api_secret === 'string' && sms_api_secret.trim() !== '') {
+    update.sms_api_secret = sms_api_secret.trim();
+  }
+  // Disabling SMS clears stored credentials.
+  if (update.sms_provider === 'none') {
+    update.sms_api_key = null;
+    update.sms_api_secret = null;
+  }
+
+  try {
+    const { error } = await supabase.from('clinics').update(update).eq('id', clinicId);
+    if (error) {
+      return res.status(500).json({ error: 'Failed to save SMS settings.', details: error.message });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('SMS config save error:', err.message);
+    res.status(500).json({ error: 'Failed to save SMS settings.' });
   }
 });
 

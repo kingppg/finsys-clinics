@@ -6,6 +6,15 @@ import './ClinicConfig.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+// Columns the public anon key is allowed to read/write. Secrets
+// (fb_page_access_token, sms_api_key, sms_api_secret) are intentionally excluded
+// — they are read/written only server-side via the backend (service key).
+const SAFE_CLINIC_COLUMNS =
+  'id, name, address, contact_email, contact_phone, fb_page_id, created_at, ' +
+  'updated_at, messenger_page_id, reminder_time, is_active, time_zone, ' +
+  'queue_token, queue_stations, currency_symbol, currency_locale, ' +
+  'sms_provider, sms_sender';
+
 const initialClinicState = {
   name: '',
   fb_page_access_token: '',
@@ -42,7 +51,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
     try {
       const { data: clinicsData } = await supabase
         .from('clinics')
-        .select('*');
+        .select(SAFE_CLINIC_COLUMNS);
       setClinics(clinicsData || []);
 
       if (user.role === 'superadmin') {
@@ -103,8 +112,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
   useEffect(() => {
     if (
       subTab === 'sms' &&
-      (formData.sms_provider === 'semaphore' || formData.sms_provider === 'twilio') &&
-      formData.sms_api_key
+      (formData.sms_provider === 'semaphore' || formData.sms_provider === 'twilio')
     ) {
       fetchSmsBalance();
     }
@@ -134,7 +142,6 @@ function ClinicConfig({ user, clinicId, onBack }) {
   async function fetchSmsBalance() {
     if (
       !selectedClinicId ||
-      !formData.sms_api_key ||
       (formData.sms_provider !== 'semaphore' && formData.sms_provider !== 'twilio')
     ) return;
     setBalanceLoading(true);
@@ -170,19 +177,24 @@ function ClinicConfig({ user, clinicId, onBack }) {
 
     setLoading(true);
     try {
+      // Never send secret columns from the client — they're not granted to the
+      // anon key and are managed server-side (FB token via /facebook/select-page,
+      // SMS keys via /api/clinics/:id/sms).
+      const { fb_page_access_token, sms_api_key, sms_api_secret, ...safeFields } = formData;
+
       let updatedClinicId = selectedClinicId;
       if (isNew) {
         const { data: newClinic, error } = await supabase
           .from('clinics')
-          .insert([formData])
-          .select()
+          .insert([safeFields])
+          .select(SAFE_CLINIC_COLUMNS)
           .single();
         if (error) throw error;
         updatedClinicId = newClinic.id;
       } else {
         const { error } = await supabase
           .from('clinics')
-          .update(formData)
+          .update(safeFields)
           .eq('id', selectedClinicId);
         if (error) throw error;
       }
@@ -219,21 +231,30 @@ function ClinicConfig({ user, clinicId, onBack }) {
 
     setSmsLoading(true);
     try {
-      const { error } = await supabase
-        .from('clinics')
-        .update({
+      // SMS credentials are secrets — saved server-side so they never pass
+      // through (or get stored by) the public anon client. A blank key leaves
+      // the existing one unchanged.
+      const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           sms_provider: formData.sms_provider,
           sms_api_key: formData.sms_api_key,
           sms_api_secret: formData.sms_api_secret,
           sms_sender: formData.sms_sender
         })
-        .eq('id', selectedClinicId);
-      if (error) throw error;
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to save SMS settings.');
+      }
+      // Clear the secret fields from local state after saving.
+      setFormData((prev) => ({ ...prev, sms_api_key: '', sms_api_secret: '' }));
       await fetchClinics(selectedClinicId);
       await fetchSmsBalance();
       Swal.fire({ title: 'SMS Settings Saved!', icon: 'success', timer: 1500, showConfirmButton: false });
-    } catch {
-      Swal.fire({ title: 'Error', text: 'Failed to save SMS settings.', icon: 'error' });
+    } catch (err) {
+      Swal.fire({ title: 'Error', text: err.message || 'Failed to save SMS settings.', icon: 'error' });
     } finally {
       setSmsLoading(false);
     }
@@ -309,13 +330,14 @@ function ClinicConfig({ user, clinicId, onBack }) {
         }
         const { data: updatedClinic } = await supabase
           .from('clinics')
-          .select('*')
+          .select(SAFE_CLINIC_COLUMNS)
           .eq('id', selectedClinicId)
           .single();
-        if (updatedClinic?.fb_page_access_token && updatedClinic?.fb_page_id) {
+        // We can't read the token (it's secret/server-side); fb_page_id being set
+        // is the signal that the connection saved successfully.
+        if (updatedClinic?.fb_page_id) {
           setFormData((prev) => ({
             ...prev,
-            fb_page_access_token: updatedClinic.fb_page_access_token,
             fb_page_id: updatedClinic.fb_page_id,
             messenger_page_id: updatedClinic.messenger_page_id ?? ''
           }));
@@ -478,17 +500,21 @@ function ClinicConfig({ user, clinicId, onBack }) {
                 </div>
                 <div className="clinic-form-row">
                   <div className="clinic-form-field">
-                    <label>Messenger Page Access Token*</label>
+                    <label>Messenger Page Connection</label>
                     <div className="token-inline-row">
-                      <input
-                        type="text"
-                        name="fb_page_access_token"
-                        value={formData.fb_page_access_token}
-                        onChange={handleFieldChange}
-                        required
-                        readOnly
-                        className="token-input"
-                      />
+                      <span style={{
+                        flex: 1,
+                        padding: '8px 12px',
+                        borderRadius: 6,
+                        fontWeight: 600,
+                        color: formData.fb_page_id ? '#2e7d32' : '#b26a00',
+                        background: formData.fb_page_id ? '#e8f5e9' : '#fff8e1',
+                        border: `1px solid ${formData.fb_page_id ? '#a5d6a7' : '#ffe082'}`
+                      }}>
+                        {formData.fb_page_id
+                          ? `✓ Connected (Page ID: ${formData.fb_page_id})`
+                          : 'Not connected'}
+                      </span>
                       {!isNew && (
                         <button
                           type="button"
@@ -496,10 +522,15 @@ function ClinicConfig({ user, clinicId, onBack }) {
                           onClick={handleConnectFBPage}
                           disabled={fbConnecting}
                         >
-                          {fbConnecting ? 'Connecting...' : 'Connect Facebook Page'}
+                          {fbConnecting
+                            ? 'Connecting...'
+                            : (formData.fb_page_id ? 'Reconnect Facebook Page' : 'Connect Facebook Page')}
                         </button>
                       )}
                     </div>
+                    <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
+                      The access token is stored securely on the server and is not displayed here.
+                    </small>
                   </div>
                 </div>
                 <div className="clinic-form-row">
@@ -542,7 +573,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
           <form className="clinic-form-modern" onSubmit={handleSaveSms} autoComplete="off">
 
             {/* BALANCE DISPLAY */}
-            {(formData.sms_provider === 'semaphore' || formData.sms_provider === 'twilio') && formData.sms_api_key && (
+            {(formData.sms_provider === 'semaphore' || formData.sms_provider === 'twilio') && (
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -630,7 +661,8 @@ function ClinicConfig({ user, clinicId, onBack }) {
                       name="sms_api_key"
                       value={formData.sms_api_key}
                       onChange={handleFieldChange}
-                      placeholder={formData.sms_provider === 'semaphore' ? 'Your Semaphore API key' : 'ACxxxxxxxxxxxxxxxx'}
+                      placeholder={formData.sms_provider === 'semaphore' ? 'Enter key to set/change (blank = keep existing)' : 'ACxxxx… (blank = keep existing)'}
+                      autoComplete="off"
                     />
                     {formData.sms_provider === 'semaphore' && (
                       <small style={{ color: '#888', marginTop: 4, display: 'block' }}>
@@ -688,7 +720,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
               <button type="submit" disabled={smsLoading}>
                 {smsLoading ? 'Saving...' : 'Save SMS Settings'}
               </button>
-              {formData.sms_provider !== 'none' && formData.sms_api_key && (
+              {formData.sms_provider !== 'none' && (
                 <button
                   type="button"
                   onClick={handleTestSms}
