@@ -3,13 +3,29 @@
 const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
-const { sendMessage } = require('../webhook');
 const axios = require('axios');
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+// Direct Messenger send so we can DETECT failure (e.g. 24h window closed) and
+// fall back to SMS. We do NOT use the shared sendMessage from webhook here: it
+// swallows its own errors and never throws, so this route would always think
+// the send succeeded and never fall back. Throws on failure by design.
+async function sendMessengerMessage(messenger_id, text, page_access_token) {
+  await axios.post(
+    `https://graph.facebook.com/v17.0/me/messages?access_token=${page_access_token}`,
+    {
+      recipient: { id: messenger_id },
+      message: { text },
+      // UPDATE = proactive message within the 24h window (the old MESSAGE_TAG /
+      // CONFIRMED_EVENT_UPDATE tag is deprecated and rejected by Facebook).
+      messaging_type: "UPDATE"
+    }
+  );
+}
 
 async function getAppointment(id, clinicId) {
   const { data, error } = await supabase
@@ -27,14 +43,15 @@ async function getAppointment(id, clinicId) {
 }
 
 // --- Send SMS based on clinic provider ---
+// Returns true only if an SMS was actually sent.
 async function sendSMS(phone, text, clinic) {
   if (!phone) {
     console.log(`[SMS] Skipped — no phone number.`);
-    return;
+    return false;
   }
   if (!clinic.sms_provider || clinic.sms_provider === 'none') {
     console.log(`[SMS] Skipped — no SMS provider configured for clinic "${clinic.name}".`);
-    return;
+    return false;
   }
   if (clinic.sms_provider === 'semaphore') {
     await axios.post('https://api.semaphore.co/api/v4/messages', {
@@ -44,6 +61,7 @@ async function sendSMS(phone, text, clinic) {
       sendername: clinic.sms_sender || 'SEMAPHORE'
     });
     console.log(`✅ Sent Semaphore SMS to ${phone}`);
+    return true;
   } else if (clinic.sms_provider === 'twilio') {
     await axios.post(
       `https://api.twilio.com/2010-04-01/Accounts/${clinic.sms_api_key}/Messages.json`,
@@ -51,7 +69,9 @@ async function sendSMS(phone, text, clinic) {
       { auth: { username: clinic.sms_api_key, password: clinic.sms_api_secret } }
     );
     console.log(`✅ Sent Twilio SMS to ${phone}`);
+    return true;
   }
+  return false;
 }
 
 // GET: Fetch reminder settings & status for an appointment (clinic-scoped)
@@ -190,31 +210,37 @@ router.post('/:id/send-reminder', async (req, res) => {
 
   if (messenger_id && pageToken) {
     try {
-      await sendMessage(messenger_id, reminderText, { pageAccessToken: pageToken });
+      await sendMessengerMessage(messenger_id, reminderText, pageToken);
       sent = true;
       channelUsed = 'messenger';
     } catch (err) {
       const fbErrCode = err?.response?.data?.error?.code;
-      if (fbErrCode === 10) {
-        console.log(`[reminders.js] Messenger window closed for ${messenger_id} — falling back to SMS.`);
+      // 10 = outside 24h window; 100/1893061 = deprecated tag / not allowed.
+      if (fbErrCode === 10 || fbErrCode === 100) {
+        console.log(`[reminders.js] Messenger not deliverable to ${messenger_id} (out of window) — falling back to SMS.`);
       } else {
         console.error(`[reminders.js] Messenger error:`, err?.response?.data || err.message);
       }
     }
   }
 
+  // Only mark sent if an SMS truly went out (no provider / no phone => false).
   if (!sent && phone) {
     try {
-      await sendSMS(phone, reminderText, clinicRow);
-      sent = true;
-      channelUsed = 'sms';
+      const smsSent = await sendSMS(phone, reminderText, clinicRow);
+      if (smsSent) {
+        sent = true;
+        channelUsed = 'sms';
+      }
     } catch (err) {
       console.error(`[reminders.js] SMS error:`, err?.response?.data || err.message);
     }
   }
 
   if (!sent) {
-    return res.status(500).json({ error: 'Failed to send reminder via Messenger or SMS.' });
+    return res.status(500).json({
+      error: 'Reminder not delivered. The patient is outside the 24-hour Messenger window (they must message the page first), and no SMS was sent — configure an SMS provider in clinic settings and make sure the patient has a phone number.'
+    });
   }
 
   // Log sent reminder

@@ -2,7 +2,6 @@
 const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
-const { sendMessage } = require('../webhook');
 const axios = require('axios');
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
@@ -13,6 +12,22 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+// Direct Messenger send that THROWS on failure, so we can detect a closed 24h
+// window and fall back to SMS. The shared sendMessage swallows errors, so it
+// would always look successful and never fall back.
+async function sendMessengerMessage(messenger_id, text, page_access_token) {
+  await axios.post(
+    `https://graph.facebook.com/v17.0/me/messages?access_token=${page_access_token}`,
+    {
+      recipient: { id: messenger_id },
+      message: { text },
+      // UPDATE = proactive in-window message (deprecated CONFIRMED_EVENT_UPDATE
+      // tag is rejected by Facebook).
+      messaging_type: "UPDATE"
+    }
+  );
+}
 
 async function getAppointmentWithPatient(id, clinicId) {
   const { data, error } = await supabase
@@ -46,14 +61,15 @@ async function getAppointmentWithPatient(id, clinicId) {
 }
 
 // --- Send SMS based on clinic provider ---
+// Returns true only if an SMS was actually sent.
 async function sendSMS(phone, text, clinic) {
   if (!phone) {
     console.log(`[SMS] Skipped — no phone number.`);
-    return;
+    return false;
   }
   if (!clinic.sms_provider || clinic.sms_provider === 'none') {
     console.log(`[SMS] Skipped — no SMS provider configured for clinic "${clinic.name}".`);
-    return;
+    return false;
   }
   if (clinic.sms_provider === 'semaphore') {
     await axios.post('https://api.semaphore.co/api/v4/messages', {
@@ -63,6 +79,7 @@ async function sendSMS(phone, text, clinic) {
       sendername: clinic.sms_sender || 'SEMAPHORE'
     });
     console.log(`✅ Sent Semaphore SMS to ${phone}`);
+    return true;
   } else if (clinic.sms_provider === 'twilio') {
     await axios.post(
       `https://api.twilio.com/2010-04-01/Accounts/${clinic.sms_api_key}/Messages.json`,
@@ -70,7 +87,9 @@ async function sendSMS(phone, text, clinic) {
       { auth: { username: clinic.sms_api_key, password: clinic.sms_api_secret } }
     );
     console.log(`✅ Sent Twilio SMS to ${phone}`);
+    return true;
   }
+  return false;
 }
 
 // POST /status-notifications/:appointmentId
@@ -169,24 +188,28 @@ router.post('/:appointmentId', async (req, res) => {
 
   if (messenger_id && pageToken) {
     try {
-      await sendMessage(messenger_id, finalMsg, { pageAccessToken: pageToken });
+      await sendMessengerMessage(messenger_id, finalMsg, pageToken);
       sent = true;
       channelUsed = 'messenger';
     } catch (err) {
       const fbErrCode = err?.response?.data?.error?.code;
-      if (fbErrCode === 10) {
-        console.log(`[status-notifications] Messenger window closed for ${messenger_id} — falling back to SMS.`);
+      // 10 = outside 24h window; 100/1893061 = deprecated tag / not allowed.
+      if (fbErrCode === 10 || fbErrCode === 100) {
+        console.log(`[status-notifications] Messenger not deliverable to ${messenger_id} (out of window) — falling back to SMS.`);
       } else {
         console.error(`[status-notifications] Messenger error:`, err?.response?.data || err.message);
       }
     }
   }
 
+  // Only mark sent if an SMS truly went out (no provider / no phone => false).
   if (!sent && phone) {
     try {
-      await sendSMS(phone, finalMsg, clinicRow);
-      sent = true;
-      channelUsed = 'sms';
+      const smsSent = await sendSMS(phone, finalMsg, clinicRow);
+      if (smsSent) {
+        sent = true;
+        channelUsed = 'sms';
+      }
     } catch (err) {
       console.error(`[status-notifications] SMS error:`, err?.response?.data || err.message);
     }
