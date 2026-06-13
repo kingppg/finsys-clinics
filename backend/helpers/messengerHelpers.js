@@ -36,8 +36,12 @@ async function sendMessage(sender_psid, response, context) {
       {
         recipient: { id: sender_psid },
         message: { text: response },
-        messaging_type: "MESSAGE_TAG",
-        tag: "CONFIRMED_EVENT_UPDATE"
+        // RESPONSE = a normal reply within the 24-hour messaging window, which is
+        // always the case for webhook conversation. The old MESSAGE_TAG /
+        // CONFIRMED_EVENT_UPDATE tag is deprecated and now rejected by Facebook
+        // (error 1893061 "Deprecated Message Tag Not Allowed"), which was
+        // silently dropping every text reply.
+        messaging_type: "RESPONSE"
       }
     );
   } catch (err) {
