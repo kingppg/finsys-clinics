@@ -1,10 +1,22 @@
 # Dental Clinic System — Webhook & Reminders Handoff
 
 **Last updated:** 2026-06-13
-**Scope:** Messenger webhook hardening (Ate Claire AI), booking flow fixes, and reminder/notification delivery fixes.
+**Scope:** Messenger webhook hardening (Ate Claire AI), booking flow fixes, reminder/notification delivery fixes, Supabase data-exposure lockdown, and the Facebook Login for Business (`config_id`) connect flow.
 **Repo:** github.com/kingppg/finsys-clinics (branch `main`)
 **Backend host:** Render — https://finsys-clinics.onrender.com (auto-deploys on push to `main`)
 **Frontend:** Vercel. Backend URL is set in Vercel env `REACT_APP_API_URL` (not in the repo).
+
+### Environment variables (Render backend)
+| Var | Purpose |
+|---|---|
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | DB access (service role; bypasses RLS) |
+| `ANTHROPIC_API_KEY` | Claude (Claire) |
+| `FB_CLIENT_ID`, `FB_CLIENT_SECRET` | FB OAuth; `FB_CLIENT_SECRET` also used as the webhook signature secret (`FB_APP_SECRET` falls back to it) |
+| `BACKEND_URL` | `https://finsys-clinics.onrender.com` — base for the FB OAuth `redirect_uri` (was hardcoded localhost) |
+| `FB_LOGIN_CONFIG_ID` | `1735537977881310` — Facebook Login for Business Configuration ID; enables the `config_id` connect flow |
+| `FB_VERIFY_TOKEN` | (optional) webhook verify token; falls back to the legacy hardcoded value |
+
+Note: frontend uses the **public anon key** (`frontend/src/supabaseClient.js`) and logs in with **Supabase Auth**.
 
 ---
 
@@ -23,10 +35,12 @@ Key backend files:
 | `backend/reminderScheduler.js` | **Automatic** scheduled reminders (cron) |
 | `backend/routes/reminders.js` | **Manual** "Send Reminder Now" endpoint |
 | `backend/routes/statusNotifications.js` | Status-change messages (Confirmed/Checked-In/etc.) |
-| `backend/index.js` | Express app, socket.io, OAuth, SMS test/balance |
+| `backend/index.js` | Express app, socket.io, OAuth (`config_id`), SMS test/balance/save |
 | `backend/test-webhook.js` | Offline test harness (no FB/DB/LLM needed) |
+| `backend/db/secure-clinics-columns.sql` | Column-level grants locking clinic secrets (run in Supabase) |
+| `backend/db/secure-users-table.sql` | RLS locking the users table (run in Supabase) |
 
-Frontend: `frontend/src/components/AppointmentReminderControl.jsx` is the reminder settings + manual-send UI.
+Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder settings + manual send) and `frontend/src/components/ClinicConfig.js` (FB + SMS config; now reads/writes via safe columns + backend endpoints).
 
 ---
 
@@ -47,6 +61,16 @@ Frontend: `frontend/src/components/AppointmentReminderControl.jsx` is the remind
 ### c) Reminder + status notification delivery fixes — `7bda13d`, `9c2692a`
 - `reminderScheduler.js` (automatic): dropped the deprecated tag (now `messaging_type: "UPDATE"`); SMS helpers return whether they actually sent; a reminder is logged as "sent" **only when something truly went out** (previously a clinic with no SMS provider was logged as reminded and dedup blocked retries forever).
 - `routes/reminders.js` (manual) and `routes/statusNotifications.js`: these used the shared `sendMessage`, which **swallows its own errors and never throws** — so when the 24h window was closed, the send failed silently but the route reported success and never fell back to SMS. Both now use a local Messenger sender that throws on failure, and only report success when Messenger or SMS truly delivered. The manual button now returns an **honest error** when nothing could be delivered, instead of a fake "success."
+
+### d) Supabase data-exposure lockdown — `05848c9`, `4a7297b` (+ SQL run in Supabase)
+- **Problem:** the frontend uses the public anon key (ships in the JS bundle), and the `clinics` and `users` tables were readable by anyone with it — exposing every clinic's `fb_page_access_token` / `sms_api_key` / `sms_api_secret`, and all staff email/name/role. (`patients` was already protected.) Verified by querying the live REST API with the anon key.
+- **`clinics` fix** (`05848c9` + `backend/db/secure-clinics-columns.sql`, **run in Supabase ✅**): column-level grants — anon/authenticated can read/write only SAFE columns; the 3 secrets are service-key only. Secret handling moved server-side: FB token via `/api/clinics/:id/facebook/select-page`, SMS creds via new **`PUT /api/clinics/:id/sms`** (blank key = keep existing). Frontend `ClinicConfig.js` now reads only safe columns and shows FB **connection status** instead of the raw token. **Verified:** anon read of secrets → `permission denied`.
+- **`users` fix** (`4a7297b` + `backend/db/secure-users-table.sql`, **run in Supabase ✅**): RLS enabled; `authenticated` allowed (app uses Supabase Auth, all `users` reads happen post-login), `anon` denied. **Verified:** anon read → `[]`. Login + Users Config confirmed still working. Rollback if ever needed: `ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;`.
+
+### e) Facebook OAuth: env redirect + Login for Business config_id — `05848c9`, `9ab473c`
+- OAuth `redirect_uri` now uses the `BACKEND_URL` env (was hardcoded `http://localhost:5000`, which broke the connect flow in production).
+- The connect endpoint now uses **`config_id`** (`FB_LOGIN_CONFIG_ID` env) when set — required by "Facebook Login for Business" apps — and falls back to the classic `scope=` flow otherwise. **Verified** the live endpoint emits `&config_id=1735537977881310`.
+- **Current blocker (Meta-side, not code):** "Reconnect Facebook Page" returns *"Feature Unavailable… updating additional details for this app."* This is because the app's **App Review for the use-case permissions is incomplete — Meta asked the owner to resubmit the use-case demo videos.** Until that review passes, Facebook Login stays gated. The existing Palodentcare connection still works (uses its already-issued token); only *new* connections / going public are blocked. Nothing in our code needs to change — reconnect will work once Meta approves.
 
 ---
 
@@ -72,27 +96,33 @@ App Review approval (`pages_messaging` "message sending", `pages_show_list` "pag
 
 ## 4. ACTION REQUIRED (the real fix for reminders): turn on SMS
 
-The code already supports Semaphore/Twilio and falls back to SMS when Messenger can't deliver. SMS has no 24h window. As of 2026-06-13, **all clinics have `sms_provider = "none"`**, so reminders cannot reach dormant patients yet.
+The code already supports Semaphore/Twilio and falls back to SMS when Messenger can't deliver. SMS has no 24h window. SMS config is saved server-side via `PUT /api/clinics/:id/sms` (a blank key keeps the existing one). As of 2026-06-13, Palodentcare is set to **`sms_provider = "semaphore"` but has 0 credits**, so no SMS sends yet.
 
 Steps (clinic owner):
-1. Sign up at https://semaphore.co, load credits.
+1. Sign up at https://semaphore.co, **load credits** (currently 0 — the UI shows "0 credits remaining — Low balance").
 2. Copy the API key from the Semaphore dashboard.
-3. App → Clinic Settings → SMS: Provider = **Semaphore**, paste **API key**, Sender = **Palodentcare** (or "SEMAPHORE" if no custom sender approved).
+3. App → Clinic Settings → SMS: Provider = **Semaphore**, paste **API key**, Sender = **Palodentcare** (must be a Semaphore-approved sender name, else use "SEMAPHORE").
 4. Use the **Test SMS** button (`/api/clinics/:id/sms/test`) to confirm.
 5. Ensure patients have **phone numbers** saved — Messenger-only patients who typed "skip" on the phone question can't receive SMS.
 
-After this, both automatic and manual reminders reach anyone with a phone number, regardless of the 24h window. (Messenger is still tried first for free delivery to recently-active patients.)
+After credits are loaded, both automatic and manual reminders reach anyone with a phone number, regardless of the 24h window. (Messenger is still tried first for free delivery to recently-active patients.)
+
+Note: with 0 credits, the briefly-exposed Semaphore key has no value to an attacker, so rotation isn't urgent — but **rotate it (via Semaphore support) before loading credits for launch.** SMS save runs through the backend now, so the key never touches the public anon client.
 
 ---
 
 ## 5. Outstanding / future items
 
-1. **Configure SMS (Semaphore)** — see §4. This is the unblock for reminders. *Highest priority, on the clinic side.*
-2. **Facebook App Review** — get `pages_messaging` (and `pages_show_list`) approved to Advanced Access so the bot serves real patients, not just app testers. Required to go fully public. Does not affect the 24h rule.
-3. **`reminderScheduler.js` Messenger path for dormant patients** — Messenger reminders to out-of-window patients are impossible without **approved utility message templates** (the official replacement for tags) or **Recurring Notifications**. Until then, SMS is the channel; Messenger only catches recently-active patients.
-4. **FUTURE OPTION — Human Agent tag on the manual "Send Reminder Now" button.** Once Meta approves the **Human Agent permission**, the manual route (`routes/reminders.js`) could send with `messaging_type: "MESSAGE_TAG"`, `tag: "HUMAN_AGENT"` to reach patients who messaged **within the last 7 days** (vs 24h). Caveats: only helps recently-active patients (7-day cap from the patient's last message, not reset by sending); Meta intends this tag for genuine human support replies, not reminders, so it's a policy gray area and a review risk. Treat as a "best-effort for recently-active patients" enhancement, NOT a reminder solution. Not yet implemented — flagged here on request.
-5. **Recurring Notifications opt-in** — a Messenger-native way to send free reminders to patients who tap "Get appointment reminders." More involved build; optional alternative/supplement to SMS.
-6. **Phone capture** — encourage/normalize collecting patient phone numbers in the booking flow so SMS can reach them.
+1. **Meta App Review — resubmit use-case demo videos** *(current top blocker)*. Facebook Login is gated ("updating additional details") until the App Review for `pages_messaging` / `pages_show_list` passes. Meta asked the owner to resubmit the use-case screencast videos. This is the thing blocking new-page connections and going public. Meta-side, owner is working on it. (Offer stands to script the demo-video walkthrough.)
+2. **Load Semaphore credits** — see §4. The unblock for actually sending reminders. Rotate the key first if loading real credits for launch.
+3. **Auth on backend write endpoints** — `/api/clinics/:id/sms`, `/api/clinics/:id/sms/test`, `/api/clinics/:id/facebook/*` have **no login check** (consistent with the rest of the app). An attacker can't *read* anything (tables locked), but could *call* these to vandalize config. Add real login-based auth (the app uses Supabase Auth — verify the JWT) before public launch.
+4. **Per-clinic RLS scoping** — current `users`/`clinics` policies are permissive for any authenticated user; a logged-in staffer could read other clinics' rows via the API. UI already scopes by clinic, so it's a refinement, not a leak. Tighten before onboarding many clinics.
+5. **`reminderScheduler.js` Messenger path for dormant patients** — impossible without **approved utility templates** or **Recurring Notifications**. SMS is the channel; Messenger only catches recently-active patients.
+6. **FUTURE OPTION — Human Agent tag on the manual "Send Reminder Now" button.** Once Meta approves the **Human Agent permission**, `routes/reminders.js` could send with `messaging_type: "MESSAGE_TAG"`, `tag: "HUMAN_AGENT"` to reach patients who messaged **within the last 7 days**. Caveats: recently-active only (7-day cap from patient's last message, not reset by sending); Meta intends it for genuine human support, not reminders → policy gray area / review risk. A "best-effort" enhancement, NOT a reminder solution. Not implemented — flagged on request.
+7. **Recurring Notifications opt-in** — Messenger-native free reminders for patients who tap "Get appointment reminders." More involved; optional supplement to SMS.
+8. **Phone capture** — encourage collecting patient phone numbers in the booking flow so SMS can reach them.
+9. **Token rotation before launch** — FB Page token (auto-rotates on next successful Reconnect, once Meta unblocks) and Semaphore key (via support, before funding credits). Both were briefly anon-exposed before the lockdown.
+10. **`state`-param OAuth refactor** — so new clinics don't each need their own FB redirect URI entry (clinic id is currently in the callback path). Pass clinic id in OAuth `state` + one fixed callback.
 
 ---
 
@@ -102,10 +132,16 @@ After this, both automatic and manual reminders reach anyone with a phone number
 - **Backend health:** `GET https://finsys-clinics.onrender.com/` → "Dental Clinic Backend is running!"
 - **Signature active check:** `POST` an unsigned body to `/webhook` → expect `403 Forbidden`.
 - **Live conversation:** message the clinic page from a tester account; Claire should reply (text replies now deliver via `RESPONSE`).
-- **Reminders:** can only be verified end-to-end after SMS is configured (§4), or for a patient currently inside the 24h Messenger window.
+- **Reminders:** can only be verified end-to-end after SMS credits are loaded (§4), or for a patient currently inside the 24h Messenger window.
+- **Data-exposure lockdown:** with the public anon key, `clinics?select=...,fb_page_access_token,sms_api_key` should return `permission denied`, and `users?select=*` should return `[]`. Safe columns (name, sms_provider, etc.) still read fine.
+- **FB connect:** `GET /api/clinics/1/facebook/connect` (follow redirect header) should point to `…/dialog/oauth?...&config_id=1735537977881310`.
+
+### Local dev note
+A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
 
 ### Emergency rollback
-- If real Messenger events get dropped with `Rejected webhook event — invalid signature`: unset `FB_APP_SECRET`/`FB_CLIENT_SECRET` in Render env (drops to accept-with-warning), or `git revert <commit>`.
+- Webhook signature dropping real events (`Rejected webhook event — invalid signature`): unset `FB_APP_SECRET`/`FB_CLIENT_SECRET` in Render env, or `git revert <commit>`.
+- `users` RLS broke login/user-management: `ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;` in Supabase.
 
 ---
 
@@ -116,3 +152,9 @@ After this, both automatic and manual reminders reach anyone with a phone number
 | `64bea2e` | Hotfix: `messaging_type RESPONSE` instead of deprecated tag (text replies were all being dropped) |
 | `7bda13d` | Fix automatic reminders: drop deprecated tag, honest SMS fallback |
 | `9c2692a` | Fix manual reminders + status notifications: real delivery detection, honest success/error |
+| `bf949e7` | Add HANDOFF.md |
+| `05848c9` | Security: lock clinic secrets (backend SMS-save endpoint, env OAuth redirect, frontend reads safe columns, secure-clinics-columns.sql) |
+| `9ab473c` | FB: support Facebook Login for Business `config_id` flow |
+| `4a7297b` | Security: RLS on `users` table (secure-users-table.sql) |
+
+*(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
