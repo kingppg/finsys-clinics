@@ -22,8 +22,11 @@ async function sendMessengerMessage(messenger_id, text, page_access_token) {
     {
       recipient: { id: messenger_id },
       message: { text },
-      messaging_type: "MESSAGE_TAG",
-      tag: "CONFIRMED_EVENT_UPDATE",
+      // UPDATE = proactive message within the 24h window. The old MESSAGE_TAG /
+      // CONFIRMED_EVENT_UPDATE tag is deprecated (FB error 1893061) and always
+      // rejected now. Out-of-window patients can't be reached via Messenger at
+      // all without approved templates — those fall through to SMS below.
+      messaging_type: "UPDATE",
     }
   );
   console.log(`✅ Sent Messenger reminder to ${messenger_id}`);
@@ -31,7 +34,7 @@ async function sendMessengerMessage(messenger_id, text, page_access_token) {
 
 // --- Send SMS via Semaphore ---
 async function sendSemaphoreSMS(phone, text, apiKey, senderName) {
-  if (!phone || !apiKey) return;
+  if (!phone || !apiKey) return false;
   await axios.post('https://api.semaphore.co/api/v4/messages', {
     apikey: apiKey,
     number: phone,
@@ -39,11 +42,12 @@ async function sendSemaphoreSMS(phone, text, apiKey, senderName) {
     sendername: senderName || 'SEMAPHORE'
   });
   console.log(`✅ Sent Semaphore SMS to ${phone}`);
+  return true;
 }
 
 // --- Send SMS via Twilio ---
 async function sendTwilioSMS(phone, text, accountSid, authToken, fromNumber) {
-  if (!phone || !accountSid || !authToken || !fromNumber) return;
+  if (!phone || !accountSid || !authToken || !fromNumber) return false;
   await axios.post(
     `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
     new URLSearchParams({
@@ -56,23 +60,26 @@ async function sendTwilioSMS(phone, text, accountSid, authToken, fromNumber) {
     }
   );
   console.log(`✅ Sent Twilio SMS to ${phone}`);
+  return true;
 }
 
 // --- Send SMS based on clinic provider ---
+// Returns true only if an SMS was actually sent.
 async function sendSMS(phone, text, clinic) {
   if (!phone) {
     console.log(`[SMS] Skipped — no phone number.`);
-    return;
+    return false;
   }
   if (!clinic.sms_provider || clinic.sms_provider === 'none') {
     console.log(`[SMS] Skipped — no SMS provider configured for clinic "${clinic.name}".`);
-    return;
+    return false;
   }
   if (clinic.sms_provider === 'semaphore') {
-    await sendSemaphoreSMS(phone, text, clinic.sms_api_key, clinic.sms_sender);
+    return await sendSemaphoreSMS(phone, text, clinic.sms_api_key, clinic.sms_sender);
   } else if (clinic.sms_provider === 'twilio') {
-    await sendTwilioSMS(phone, text, clinic.sms_api_key, clinic.sms_api_secret, clinic.sms_sender);
+    return await sendTwilioSMS(phone, text, clinic.sms_api_key, clinic.sms_api_secret, clinic.sms_sender);
   }
+  return false;
 }
 
 // --- Get all clinics ---
@@ -240,25 +247,29 @@ async function sendRemindersForClinic(clinic) {
           sent = true;
         } catch (err) {
           const fbErrCode = err?.response?.data?.error?.code;
-          if (fbErrCode === 10) {
-            console.log(`[${clinic_name}] Messenger window closed for ${recipientMessengerId} — falling back to SMS.`);
+          // 10 = outside 24h window; 100/1893061 = deprecated tag / not allowed.
+          if (fbErrCode === 10 || fbErrCode === 100) {
+            console.log(`[${clinic_name}] Messenger not deliverable to ${recipientMessengerId} (out of window) — falling back to SMS.`);
           } else {
             console.error(`[${clinic_name}] Messenger error for appt ${appt.id}:`, err?.response?.data || err.message);
           }
         }
       }
 
+      // Fall back to SMS. Only mark as sent if an SMS actually went out — a
+      // clinic with no SMS provider (or a patient with no phone) must NOT be
+      // logged as "reminded", or dedup would block it forever. (false-sent bug)
       if (!sent && recipientPhone) {
         try {
-          await sendSMS(recipientPhone, reminderText, clinic);
-          sent = true;
+          const smsSent = await sendSMS(recipientPhone, reminderText, clinic);
+          if (smsSent) sent = true;
         } catch (err) {
           console.error(`[${clinic_name}] SMS error for appt ${appt.id}:`, err?.response?.data || err.message);
         }
       }
 
       if (!sent) {
-        console.log(`[${clinic_name}] Could not send reminder for appt ${appt.id} — no valid channel.`);
+        console.log(`[${clinic_name}] Could not send reminder for appt ${appt.id} — Messenger out of window and no SMS sent (check SMS provider / patient phone).`);
         continue;
       }
 
