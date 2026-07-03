@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import Odontogram from './odontogram/Odontogram';   // premium full-mouth chart (TS)
+import PatientProfile from './patients/PatientProfile'; // full-page profile: history, odontogram, files (TS)
 import './Patients.css';
 import './MainSection.css';
 
@@ -18,9 +18,7 @@ function Patients({ setModalContent, clinicId }) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
   const [hasAppointments, setHasAppointments] = useState(false);
-  const [historyModalOpen, setHistoryModalOpen] = useState(false);
-  const [historyPatient, setHistoryPatient] = useState(null);
-  const [profileTab, setProfileTab] = useState('history');   // ← NEW: 'history' | 'odontogram'
+  const [profilePatient, setProfilePatient] = useState(null); // full-page profile view when set
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -31,18 +29,13 @@ function Patients({ setModalContent, clinicId }) {
   }, [clinicId]);
 
   useEffect(() => {
-    if (modalOpen || addModalOpen || deleteModalOpen || historyModalOpen) {
+    if (modalOpen || addModalOpen || deleteModalOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
     return () => { document.body.style.overflow = ""; }
-  }, [modalOpen, addModalOpen, deleteModalOpen, historyModalOpen]);
-
-  // Reset tab to history when a new patient profile opens
-  useEffect(() => {
-    if (historyModalOpen) setProfileTab('history');
-  }, [historyPatient, historyModalOpen]);
+  }, [modalOpen, addModalOpen, deleteModalOpen]);
 
   useEffect(() => {
     if (addModalOpen) {
@@ -105,135 +98,11 @@ function Patients({ setModalContent, clinicId }) {
         </div>
       );
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // PATIENT PROFILE MODAL — with History + Odontogram tabs
-    // ─────────────────────────────────────────────────────────────────────────
-    } else if (historyModalOpen && historyPatient) {
-      setModalContent(
-        <div className="main-content-modal-bg" onClick={closeHistoryModal}>
-          {/*
-            Override modal width here so the odontogram has room.
-            Adjust max-width to fit your design system.
-          */}
-          <div
-            className="modal patients-modal"
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: 880, width: '95vw' }}
-          >
-            {/* ── Header ── */}
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>
-              <div>
-                <h3 style={{ margin: 0 }}>{historyPatient.name}</h3>
-                <div style={{ fontSize: 13, color: '#6b7280', marginTop: 3 }}>
-                  📞 {historyPatient.phone}
-                  {historyPatient.messenger_id && (
-                    <span style={{ marginLeft: 12 }}>💬 {historyPatient.messenger_id}</span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={closeHistoryModal}
-                style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9ca3af', lineHeight: 1 }}
-                title="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* ── Tab bar ── */}
-            <div style={{
-              display: 'flex', gap: 0, borderBottom: '1.5px solid #e5e7eb',
-              marginBottom: 16, marginTop: 12,
-            }}>
-              {[
-                { key: 'history',    label: '📋 Appointment History' },
-                { key: 'odontogram', label: '🦷 Odontogram'          },
-              ].map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setProfileTab(tab.key)}
-                  style={{
-                    padding: '8px 20px',
-                    border: 'none',
-                    borderBottom: profileTab === tab.key ? '2.5px solid #185abd' : '2.5px solid transparent',
-                    background: 'none',
-                    cursor: 'pointer',
-                    fontWeight: profileTab === tab.key ? 700 : 400,
-                    color: profileTab === tab.key ? '#185abd' : '#6b7280',
-                    fontSize: 13,
-                    marginBottom: -1,           // sits on top of border-bottom
-                    transition: 'all 0.12s',
-                  }}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {/* ── Tab: Appointment History ── */}
-            {profileTab === 'history' && (
-              <ul style={{ maxHeight: 340, overflow: 'auto', paddingLeft: 18, margin: 0 }}>
-                {appointments.filter(a => a.patient_id === historyPatient.id).length === 0 ? (
-                  <li style={{ color: '#9ca3af', listStyle: 'none', padding: '12px 0' }}>No appointments found.</li>
-                ) : (
-                  appointments
-                    .filter(a => a.patient_id === historyPatient.id)
-                    .sort((a, b) => new Date(b.appointment_time) - new Date(a.appointment_time))
-                    .map(a => (
-                      <li key={a.id} style={{ marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #f0f0f0' }}>
-                        <b>
-                          {new Date(a.appointment_time).toLocaleDateString()}{' '}
-                          {new Date(a.appointment_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </b>
-                        <br />
-                        Dentist: {getDentistName(a.dentist_id)}<br />
-                        Procedure: {a.reason}<br />
-                        Status:{' '}
-                        <span style={{
-                          fontWeight: 'bold', padding: '2px 10px', borderRadius: 10,
-                          background: statusColor(a.status), color: '#fff',
-                          marginLeft: 2, fontSize: '.98em', display: 'inline-block',
-                          minWidth: 87, textAlign: 'center',
-                        }}>
-                          {a.status || 'Unknown'}
-                        </span>
-                      </li>
-                    ))
-                )}
-              </ul>
-            )}
-
-            {/* ── Tab: Odontogram ── */}
-            {profileTab === 'odontogram' && (
-              <div style={{ maxHeight: '65vh', overflowY: 'auto', paddingRight: 4 }}>
-                <Odontogram
-                  patientId={historyPatient.id}
-                  clinicId={clinicId}
-                  patientName={historyPatient.name}
-                />
-              </div>
-            )}
-
-            {/* ── Footer ── */}
-            <div className="modal-actions" style={{ marginTop: 18 }}>
-              <button
-                type="button"
-                onClick={closeHistoryModal}
-                style={{ background: '#fff', color: '#185abd', border: '1.5px solid #185abd' }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      );
     } else {
       setModalContent(null);
     }
     // eslint-disable-next-line
-  }, [addModalOpen, modalOpen, deleteModalOpen, historyModalOpen, historyPatient,
-      profileTab,   // ← NEW dependency
-      error, editPatient, newPatient, hasAppointments]);
+  }, [addModalOpen, modalOpen, deleteModalOpen, error, editPatient, newPatient, hasAppointments]);
 
   // ── Supabase fetches (unchanged) ──────────────────────────────────────────
 
@@ -332,19 +201,8 @@ function Patients({ setModalContent, clinicId }) {
   };
   const cancelDelete = () => { setDeleteModalOpen(false); setPatientToDelete(null); };
 
-  const openHistoryModal  = (patient) => { setHistoryPatient(patient); setHistoryModalOpen(true); };
-  const closeHistoryModal = () => { setHistoryModalOpen(false); setHistoryPatient(null); };
-
-  const statusColor = status => {
-    switch ((status || '').toLowerCase()) {
-      case "confirmed": return "#22b87c";
-      case "completed": return "#185abd";
-      case "no show":   return "#ff9800";
-      case "cancelled": return "#e74c3c";
-      default:          return "#888";
-    }
-  };
-  const getDentistName = id => dentists.find(d => String(d.id) === String(id))?.name ?? id;
+  const openProfile  = (patient) => setProfilePatient(patient);
+  const closeProfile = () => { setProfilePatient(null); fetchPatients(); fetchAppointments(); };
 
   const filteredPatients = patients.filter(p =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -352,7 +210,23 @@ function Patients({ setModalContent, clinicId }) {
     (p.messenger_id || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  // ── Render (unchanged) ────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  // Full-page patient profile (replaces the old cramped profile modal).
+  // .dc-page = shared breathing gutters, same as the Billing System.
+  if (profilePatient) {
+    return (
+      <div className="dc-page">
+        <PatientProfile
+          patient={profilePatient}
+          clinicId={clinicId}
+          appointments={appointments}
+          dentists={dentists}
+          onBack={closeProfile}
+        />
+      </div>
+    );
+  }
 
   return (
     <section className="main-section patients-section-relative">
@@ -375,8 +249,8 @@ function Patients({ setModalContent, clinicId }) {
           Total number of patients: {patients.length}
         </div>
         <div className="patients-message-row">
-          {error   && !modalOpen && !deleteModalOpen && !addModalOpen && !historyModalOpen && <span className="patients-error">{error}</span>}
-          {success && !modalOpen && !deleteModalOpen && !addModalOpen && !historyModalOpen && <span className="patients-success">{success}</span>}
+          {error   && !modalOpen && !deleteModalOpen && !addModalOpen && <span className="patients-error">{error}</span>}
+          {success && !modalOpen && !deleteModalOpen && !addModalOpen && <span className="patients-success">{success}</span>}
         </div>
       </div>
       <div className="patients-table-scroll">
@@ -398,7 +272,7 @@ function Patients({ setModalContent, clinicId }) {
                 <td title={patient.name}>
                   <button
                     className="patients-name-link"
-                    onClick={() => openHistoryModal(patient)}
+                    onClick={() => openProfile(patient)}
                     title={`View profile for ${patient.name}`}
                     style={{ background: "none", border: "none", color: "#185abd", fontWeight: "600", textDecoration: "underline", cursor: "pointer", padding: 0 }}
                   >

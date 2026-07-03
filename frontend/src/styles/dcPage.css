@@ -1,0 +1,19 @@
+/* ==========================================================================
+   DC PAGE — SHARED FULL-PAGE LAYOUT (geometry only, no cosmetics)
+   --------------------------------------------------------------------------
+   The standard "breathing gap" for every full-page module, copied from the
+   Billing System (.bills-container): content centered at max 1600px, auto
+   side gutters on wide screens, on top of the Dashboard <main> 32px padding.
+
+   RULE (from now on): every full-page module/view wraps its themed root in
+   <div className="dc-page"> instead of hardcoding widths/margins. The module
+   root itself owns its surface (bg/border/radius via --dc-* tokens); this
+   class owns only its placement on the page. Loaded globally via index.js.
+   ========================================================================== */
+
+.dc-page {
+  width: 100%;
+  max-width: 1600px;
+  margin: 10px auto 36px;
+  box-sizing: border-box;
+}

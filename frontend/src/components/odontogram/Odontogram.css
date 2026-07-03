@@ -26,7 +26,16 @@
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
-  margin-bottom: 14px;
+  /* Sticks to the top of the profile page's scroll area (.pp-body), so the
+     condition chips stay reachable while the chart scrolls. Bleeds over
+     .odo-root's padding so scrolling content can't peek through. */
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--dc-bg, #0B1120);
+  margin: -18px -18px 14px;
+  padding: 18px 18px 10px;
+  border-radius: var(--dc-radius, 12px) var(--dc-radius, 12px) 0 0;
 }
 
 .odo-chip {
@@ -88,6 +97,9 @@
   border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
   border-radius: var(--dc-radius, 12px);
   overflow: hidden;
+  /* Keep the full-mouth chart comfortably sized on the full-page profile */
+  max-width: 1080px;
+  margin: 0 auto;
 }
 
 .odo-chart {

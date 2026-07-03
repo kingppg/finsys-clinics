@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 import SignUpPage from './components/SignUpPage';
@@ -119,6 +119,7 @@ function RootRedirect({ user }) {
 
 function App() {
   const [user, setUser] = useState(null);
+  const location = useLocation();
 
   function handleLogin(userInfo) {
     setUser(userInfo);
@@ -128,20 +129,27 @@ function App() {
     setUser(null);
   }
 
+  // The dashboard shell owns the full viewport (<main> is minHeight: 100vh);
+  // a footer below it forces a permanent outer scrollbar, so it only renders
+  // on the public pages (login, signup, reset, queue display).
+  const showFooter = !location.pathname.startsWith('/dashboard');
+
   return (
     <div className="App" style={{ padding: 0, margin: '0 auto', textAlign: 'left', width: '100%' }}>
       <AppRoutes user={user} handleLogin={handleLogin} handleLogout={handleLogout} />
-      <footer
-        style={{
-          textAlign: 'center',
-          padding: '1rem',
-          fontSize: '0.95em',
-          color: '#555',
-          marginTop: '2rem',
-        }}
-      >
-        © 2025 Finsys. All rights reserved.
-      </footer>
+      {showFooter && (
+        <footer
+          style={{
+            textAlign: 'center',
+            padding: '1rem',
+            fontSize: '0.95em',
+            color: '#555',
+            marginTop: '2rem',
+          }}
+        >
+          © 2025 Finsys. All rights reserved.
+        </footer>
+      )}
     </div>
   );
 }

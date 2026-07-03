@@ -1,0 +1,234 @@
+/* ==========================================================================
+   PATIENT PROFILE — LAYOUT ONLY
+   Full-page patient workstation. All cosmetics come from --dc-* theme
+   tokens; status tones are data, injected inline as --tone / --tone-soft.
+   ========================================================================== */
+
+.pp-root {
+  background: var(--dc-bg, #0B1120);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  padding: 18px 24px 24px;
+  color: var(--dc-text, #EDF2FA);
+  font-family: var(--dc-font, 'Inter', sans-serif);
+  /* Fixed-height workstation: header + tabs stay pinned, .pp-body scrolls.
+     62px = Dashboard <main> padding (8+8) + .dc-page margins (10+36), so the
+     page fits the viewport exactly — no outer scrollbar. */
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 62px);
+}
+
+.pp-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* ---------- Header ---------- */
+
+.pp-header {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+.pp-back {
+  align-self: flex-start;
+  padding: 7px 14px;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: var(--dc-radius, 12px);
+  background: transparent;
+  color: var(--dc-text-2, #A9B7CE);
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pp-back:hover {
+  border-color: var(--dc-accent, #2DD4BF);
+  color: var(--dc-text, #EDF2FA);
+}
+
+.pp-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.pp-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 800;
+  background: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+  color: var(--dc-accent, #2DD4BF);
+  border: 1px solid var(--dc-accent, #2DD4BF);
+}
+
+.pp-identity-text { min-width: 0; }
+
+.pp-name {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--dc-text, #EDF2FA);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 3px;
+  font-size: 0.83rem;
+  color: var(--dc-text-2, #A9B7CE);
+}
+
+.pp-contact-dim { color: var(--dc-text-3, #6E7E98); }
+
+/* ---------- Tab bar ---------- */
+
+.pp-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1.5px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  margin-bottom: 16px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.pp-tab {
+  padding: 9px 20px;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  background: none;
+  color: var(--dc-text-3, #6E7E98);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-bottom: -1.5px;
+  transition: all 0.12s;
+}
+
+.pp-tab:hover { color: var(--dc-text-2, #A9B7CE); }
+
+.pp-tab.active {
+  color: var(--dc-accent, #2DD4BF);
+  border-bottom-color: var(--dc-accent, #2DD4BF);
+  font-weight: 700;
+}
+
+/* ---------- Panels ---------- */
+
+.pp-panel {
+  background: var(--dc-surface, #131C2E);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  padding: 14px 16px;
+}
+
+/* Odontogram / PatientFiles bring their own themed card — no double frame */
+.pp-panel--flush {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.pp-empty {
+  padding: 34px 16px;
+  text-align: center;
+  color: var(--dc-text-3, #6E7E98);
+  font-size: 0.9rem;
+}
+
+/* ---------- Appointment history ---------- */
+
+.pp-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pp-history-item {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 6px;
+  border-bottom: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+}
+
+.pp-history-item:last-child { border-bottom: none; }
+
+.pp-history-when {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 168px;
+  flex-shrink: 0;
+}
+
+.pp-history-date {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--dc-text, #EDF2FA);
+}
+
+.pp-history-time {
+  font-size: 0.78rem;
+  color: var(--dc-text-3, #6E7E98);
+}
+
+.pp-history-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.pp-history-proc {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--dc-text, #EDF2FA);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pp-history-dentist {
+  font-size: 0.79rem;
+  color: var(--dc-text-2, #A9B7CE);
+  margin-top: 2px;
+}
+
+.pp-status {
+  flex-shrink: 0;
+  padding: 3px 13px;
+  border-radius: 9999px;
+  background: var(--tone-soft, var(--dc-surface-2, #1A2438));
+  color: var(--tone, var(--dc-text-2, #A9B7CE));
+  border: 1px solid var(--tone, var(--dc-border-strong, rgba(148, 163, 184, 0.32)));
+  font-size: 0.76rem;
+  font-weight: 700;
+  min-width: 88px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .pp-history-item { flex-wrap: wrap; gap: 8px; }
+  .pp-history-when { min-width: 0; }
+}

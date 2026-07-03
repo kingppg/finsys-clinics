@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import AppointmentsTable from './AppointmentsTable';
 import AppointmentForm from './AppointmentForm';
 import AppointmentReminderControl from './AppointmentReminderControl';
+import PatientFiles from './patients/PatientFiles'; // radiographs, photos, documents (TS)
 import { useClinic } from './ClinicContext'; // ✅ use context
 
 // Modal that utilizes full viewport width (less the dashboard side nav)
@@ -85,6 +86,7 @@ function AppointmentsModern({ jumpDate }) {
   const [editAppointment, setEditAppointment] = useState(null);
   const [reminderAppointmentId, setReminderAppointmentId] = useState(null);
   const [reminderPatientName, setReminderPatientName] = useState('');
+  const [filesTarget, setFilesTarget] = useState(null); // { appointmentId, patientId, patientName }
 
   // Handle Add/Edit Appointment
   const handleAddClick = () => {
@@ -113,6 +115,13 @@ function AppointmentsModern({ jumpDate }) {
     setReminderPatientName('');
   };
 
+  // Handle Images & Files Modal (uploads pre-linked to the appointment)
+  const handleFilesClick = (appointmentId, patientId, patientName) => {
+    setFilesTarget({ appointmentId, patientId, patientName: patientName || '' });
+  };
+
+  const handleFilesClose = () => setFilesTarget(null);
+
   return (
     <div>
       {view === 'table' && (
@@ -120,6 +129,7 @@ function AppointmentsModern({ jumpDate }) {
           onAdd={handleAddClick}
           onEdit={handleEditClick}
           onReminder={handleReminderClick}
+          onFiles={handleFilesClick}
           clinicId={clinicId}
           clinicTimeZone={clinicTimeZone}
           jumpDate={jumpDate}
@@ -144,6 +154,22 @@ function AppointmentsModern({ jumpDate }) {
             patientName={reminderPatientName}
             clinicId={clinicId}
           />
+        )}
+      </Modal>
+      {/* Images & Files modal — uploads default-linked to this appointment */}
+      <Modal open={!!filesTarget} onClose={handleFilesClose}>
+        {filesTarget && (
+          <div style={{ width: '100%', maxHeight: '76vh', overflowY: 'auto' }}>
+            <h3 style={{ margin: '0 0 14px' }}>
+              🩻 Images &amp; Files{filesTarget.patientName ? ` — ${filesTarget.patientName}` : ''}
+            </h3>
+            <PatientFiles
+              patientId={filesTarget.patientId}
+              clinicId={clinicId}
+              patientName={filesTarget.patientName}
+              defaultAppointmentId={filesTarget.appointmentId}
+            />
+          </div>
         )}
       </Modal>
     </div>

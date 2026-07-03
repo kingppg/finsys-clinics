@@ -78,7 +78,7 @@ function daysInMonth(year, month) {
   return new Date(year, month, 0).getDate();
 }
 
-function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
+function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpDate }) {
   const { clinicTimeZone } = useClinic();
 
   const [appointments, setAppointments] = useState([]);
@@ -643,6 +643,14 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
           onClick={() => handleDelete(appt.id)}
           style={{ cursor: "pointer", marginRight: 16 }}
         />
+        {onFiles && (
+          <i
+            className="fa fa-folder-open icon-action"
+            title="Images & Files (X-rays, photos, documents)"
+            onClick={() => onFiles(appt.id, appt.patient_id, patientName(appt.patient_id))}
+            style={{ cursor: "pointer", marginRight: 16 }}
+          />
+        )}
         {(() => {
           const hasMessengerId =
             patients.find(p => String(p.id) === String(appt.patient_id))?.messenger_id

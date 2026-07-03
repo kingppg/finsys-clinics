@@ -60,6 +60,7 @@ function Dashboard({ user, onLogout }) {
             flex: 1,
             background: '#f6f9fc',
             minHeight: '100vh',
+            boxSizing: 'border-box', // padding inside the 100vh — else main is 100vh+16px and the page always scrolls
             position: 'relative',
           }}
         >
