@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { authHeaders } from '../api/authHeaders';
 import Swal from 'sweetalert2';
 import withReactContent from 'sweetalert2-react-content';
 import './AppointmentReminderControl.css';
@@ -205,7 +206,7 @@ export default function AppointmentReminderControl({ appointmentId, patientName,
       // Use API_BASE to reach backend
       const res = await fetch(`${API_BASE}/appointments/${appointmentId}/send-reminder?clinic_id=${clinicId}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           days_ahead: daysAhead,
           message_override: manualSendMsg || undefined,

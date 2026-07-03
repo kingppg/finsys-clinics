@@ -1,5 +1,6 @@
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import { authHeaders } from '../api/authHeaders';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -33,7 +34,7 @@ export const StatusUpdateModal = {
 
         const res = await fetch(`${API_BASE}/status-notifications/${appointment.id}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await authHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({
             status: newStatus,
             message: "",
@@ -124,7 +125,7 @@ export const StatusUpdateModal = {
       // 2. Notify backend to send Messenger message
       const res = await fetch(`${API_BASE}/status-notifications/${appointment.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           status: newStatus,
           message: customMessage || "",

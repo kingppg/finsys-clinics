@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '../supabaseClient';
+import { authHeaders } from '../api/authHeaders';
 import StatusSelect from './StatusSelect';
 import { StatusUpdateModal } from './StatusUpdateModal';
 import './AppointmentsModern.css';
@@ -530,7 +531,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, clinicId, jumpDate }) {
         .eq('clinic_id', appointment?.clinic_id ?? clinicId);
       await fetch(`${API_BASE}/status-notifications/${id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           status: newStatus,
           message: "",

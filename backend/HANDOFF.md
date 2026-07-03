@@ -175,8 +175,9 @@ Note: with 0 credits, the briefly-exposed Semaphore key has no value to an attac
 
 **Shipped:** `userStates` no longer lives only in process memory. The webhook route hydrates each user's session from `messenger_sessions` before handling a message and persists it after (`helpers/sessionStore.js`); idle sessions delete their row, stale ones expire (12h TTL on read, 24h purge). Deploys/restarts no longer orphan mid-booking patients; also fixes the unbounded `userStates` memory growth. DB outage degrades gracefully to in-memory (old behavior). State machine untouched — offline harness still 25/25. **Requires `002_messenger_sessions.sql` run in Supabase** (code is safe either way; without the table it just logs and falls back to memory).
 
+**Auth on send endpoints (SHIPPED):** `middleware/requireAuth.js` verifies the staff Supabase Auth JWT (frontend sends it via `src/api/authHeaders.js`) and resolves the users-table profile by email; `sameClinic(...)` enforces the caller may only act on their own clinic (superadmin exempt). Protected: reminders router (`/appointments/*` settings + send), `/status-notifications/*`, and `/api/clinics/:id/sms` + `/sms/test` + `/sms/balance`. Webhook stays public by design (Facebook calls it, HMAC-verified). Still open: `/api/clinics/:id/facebook/*` (browser OAuth redirects can't carry a JWT header — needs a state-param design, see §5 item 10).
+
 **Audit findings still OPEN (2026-07-03 review, prioritized):**
-1. **No auth on send endpoints** — `POST /appointments/:id/send-reminder` and `POST /status-notifications/:id` accept any request (SMS credit burn / patient spam risk). Same as §5 item 3.
 2. **Phone numbers not E.164-normalized** — `09xx…` stored as-is works for Semaphore (PH) but every Twilio SMS will be rejected. No conversion in any of the 3 sendSMS copies.
 3. **Scheduler hot-reload misses fields** — job-refresh comparison omits `sms_api_secret` and `sms_sender`; rotating a Twilio secret keeps the OLD secret until process restart.
 4. **Send logic duplicated** — sendSMS ×3, Messenger sender ×4 across scheduler/routes/helpers; should be one `helpers/notify.js` (fix 2–3 there in one pass).

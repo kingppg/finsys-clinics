@@ -18,6 +18,7 @@ const remindersRouter = require('./routes/reminders');
 const statusNotificationsRouter = require('./routes/statusNotifications');
 const { router: webhookRouter } = require('./webhook');
 const billingRoutes = require('./routes/billing');
+const { requireAuth, sameClinic } = require('./middleware/requireAuth');
 
 require('./reminderScheduler');
 
@@ -198,7 +199,7 @@ app.post('/api/clinics/:id/facebook/select-page', async (req, res) => {
 });
 
 // --- SMS BALANCE ENDPOINT ---
-app.get('/api/clinics/:id/sms/balance', async (req, res) => {
+app.get('/api/clinics/:id/sms/balance', requireAuth, sameClinic(req => req.params.id), async (req, res) => {
   const clinicId = req.params.id;
   try {
     const { data: clinic, error } = await supabase
@@ -243,7 +244,7 @@ app.get('/api/clinics/:id/sms/balance', async (req, res) => {
 });
 
 // --- SMS TEST ENDPOINT ---
-app.post('/api/clinics/:id/sms/test', async (req, res) => {
+app.post('/api/clinics/:id/sms/test', requireAuth, sameClinic(req => req.params.id), async (req, res) => {
   const clinicId = req.params.id;
   const { phone } = req.body;
   if (!phone) return res.status(400).json({ error: 'Missing phone number.' });
@@ -291,7 +292,7 @@ app.post('/api/clinics/:id/sms/test', async (req, res) => {
 // Supabase (the anon key is public). This endpoint persists them server-side.
 // A blank api_key/secret means "leave the existing one unchanged", so the UI can
 // edit provider/sender without seeing or wiping the stored key.
-app.put('/api/clinics/:id/sms', async (req, res) => {
+app.put('/api/clinics/:id/sms', requireAuth, sameClinic(req => req.params.id), async (req, res) => {
   const clinicId = req.params.id;
   const { sms_provider, sms_api_key, sms_api_secret, sms_sender } = req.body || {};
 
@@ -352,8 +353,11 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use('/appointments', remindersRouter);
-app.use('/status-notifications', statusNotificationsRouter);
+// Reminder + status-notification routes are staff actions that SEND messages
+// (Messenger/SMS) — they require a valid staff login scoped to their clinic.
+// The webhook stays public by design (Facebook calls it; HMAC-verified).
+app.use('/appointments', requireAuth, sameClinic(req => req.query.clinic_id), remindersRouter);
+app.use('/status-notifications', requireAuth, sameClinic(req => req.body?.clinic_id), statusNotificationsRouter);
 app.use('/webhook', webhookRouter);
 app.use('/api/billing', billingRoutes);
 

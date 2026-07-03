@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Swal from 'sweetalert2';
 import { supabase } from '../supabaseClient';
+import { authHeaders } from '../api/authHeaders';
 import AdminUsersRoles from './AdminUsersRoles';
 import './ClinicConfig.css';
 
@@ -146,7 +147,9 @@ function ClinicConfig({ user, clinicId, onBack }) {
     ) return;
     setBalanceLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms/balance`);
+      const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms/balance`, {
+        headers: await authHeaders()
+      });
       const data = await res.json();
       setSmsBalance(data.credit_balance ?? null);
       setSmsBalanceCurrency(data.currency || 'credits');
@@ -236,7 +239,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
       // the existing one unchanged.
       const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           sms_provider: formData.sms_provider,
           sms_api_key: formData.sms_api_key,
@@ -278,7 +281,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
     try {
       const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms/test`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ phone: testNumber })
       });
       const data = await res.json();
