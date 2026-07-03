@@ -51,6 +51,13 @@ function BillsPayment() {
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [activeTab, setActiveTab] = useState('invoices'); // 'invoices' | 'aging' | 'collections'
 
+  // Invoices table: search / filter / sort / pagination
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all'); // 'all' | 'Unpaid' | 'Partial' | 'Overdue' | 'Paid' | 'Voided'
+  const [sortKey, setSortKey] = useState('id');
+  const [sortDir, setSortDir] = useState('desc');
+  const [invoicePage, setInvoicePage] = useState(1);
+
   // Invoice Management Modal
   const [showManageModal, setShowManageModal] = useState(false);
   const [managingInvoice, setManagingInvoice] = useState(null);
@@ -160,6 +167,129 @@ function BillsPayment() {
     map.set(p.invoice_id, (map.get(p.invoice_id) || 0) + parseFloat(p.amount || 0));
     return map;
   }, new Map());
+
+  // ------- Invoices table pipeline: enrich → filter → sort → paginate -------
+  const INVOICES_PAGE_SIZE = 20;
+  const nowForOverdue = new Date();
+
+  const enrichedInvoices = invoices.map(inv => {
+    const patient = getPatientById(inv.patient_id);
+    const patientName = patient ? patient.name : `ID: ${inv.patient_id}`;
+    const currentStatus = inv.status || 'Unpaid';
+    const isCancelled = currentStatus.toLowerCase() === 'cancelled';
+    const paidAmount = paidByInvoice.get(inv.id) || 0;
+    const balanceDue = Math.max(parseFloat(inv.total || 0) - paidAmount, 0);
+    const isOverdue = !isCancelled && inv.due_date && new Date(inv.due_date) < nowForOverdue && currentStatus !== 'Paid';
+    const displayStatus = isCancelled ? 'Voided' : (isOverdue ? 'Overdue' : currentStatus);
+    return { inv, patient, patientName, currentStatus, isCancelled, isOverdue, paidAmount, balanceDue, displayStatus };
+  });
+
+  const chipDefs = (() => {
+    const counts = { Unpaid: 0, Partial: 0, Overdue: 0, Paid: 0, Voided: 0 };
+    let active = 0;
+    for (const row of enrichedInvoices) {
+      if (counts[row.displayStatus] !== undefined) counts[row.displayStatus] += 1;
+      if (!row.isCancelled) active += 1;
+    }
+    return [
+      { key: 'all', label: 'All', count: active },
+      { key: 'Unpaid', label: 'Unpaid', count: counts.Unpaid },
+      { key: 'Partial', label: 'Partial', count: counts.Partial },
+      { key: 'Overdue', label: 'Overdue', count: counts.Overdue },
+      { key: 'Paid', label: 'Paid', count: counts.Paid },
+      { key: 'Voided', label: 'Voided', count: counts.Voided },
+    ];
+  })();
+
+  const searchQ = invoiceSearch.trim().toLowerCase().replace(/^#/, '');
+  const filteredRows = enrichedInvoices.filter(row => {
+    if (statusFilter === 'all') {
+      if (row.isCancelled) return false; // voided hidden by default
+    } else if (row.displayStatus !== statusFilter) {
+      return false;
+    }
+    if (searchQ) {
+      const matchesName = row.patientName.toLowerCase().includes(searchQ);
+      const matchesId = String(row.inv.id).includes(searchQ);
+      if (!matchesName && !matchesId) return false;
+    }
+    return true;
+  });
+
+  const sortValue = (row) => {
+    switch (sortKey) {
+      case 'patient': return row.patientName.toLowerCase();
+      case 'invoice_date': return row.inv.invoice_date || '';
+      case 'due_date': return row.inv.due_date || '';
+      case 'total': return parseFloat(row.inv.total || 0);
+      case 'paid': return row.paidAmount;
+      case 'balance': return row.balanceDue;
+      default: return row.inv.id;
+    }
+  };
+
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    const va = sortValue(a);
+    const vb = sortValue(b);
+    if (va < vb) return sortDir === 'asc' ? -1 : 1;
+    if (va > vb) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const invoiceTotals = filteredRows.reduce(
+    (t, r) => {
+      t.total += parseFloat(r.inv.total || 0);
+      t.paid += r.paidAmount;
+      t.balance += r.balanceDue;
+      return t;
+    },
+    { total: 0, paid: 0, balance: 0 }
+  );
+
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / INVOICES_PAGE_SIZE));
+  const safePage = Math.min(invoicePage, pageCount);
+  const pageRows = sortedRows.slice((safePage - 1) * INVOICES_PAGE_SIZE, safePage * INVOICES_PAGE_SIZE);
+
+  const handleSort = (key) => {
+    if (sortKey === key) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'patient' ? 'asc' : 'desc');
+    }
+    setInvoicePage(1);
+  };
+
+  const sortArrow = (key) =>
+    sortKey === key ? <span className="bills-sort-arrow">{sortDir === 'asc' ? '▲' : '▼'}</span> : null;
+
+  // Void = soft cancel. Record is kept for audit; analytics and default view
+  // exclude it. Only invoices with ZERO payments can be voided.
+  const handleVoidInvoice = async (row) => {
+    if (row.paidAmount > 0) return;
+    const { isConfirmed } = await Swal.fire({
+      ...swalConfig,
+      title: `Void Invoice #${row.inv.id}?`,
+      html: `This marks the invoice as <b>Cancelled</b>. It stays in the records for audit but is excluded from balances, aging, and collections.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, void it',
+    });
+    if (!isConfirmed) return;
+
+    const { error } = await supabase
+      .from('invoices')
+      .update({ status: 'Cancelled' })
+      .eq('id', row.inv.id)
+      .eq('clinic_id', clinicId);
+
+    if (error) {
+      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to void', text: error.message });
+    } else {
+      await refreshData();
+      Swal.fire({ ...swalConfig, icon: 'success', title: 'Invoice voided', timer: 1400, showConfirmButton: false });
+    }
+  };
 
   const handleShowAddInvoice = () => {
     setShowAddInvoice(true);
@@ -304,36 +434,61 @@ function BillsPayment() {
             <h3 className="bills-section-title">Active Invoices</h3>
           </div>
 
+          {/* Search + status filter toolbar */}
+          <div className="bills-toolbar">
+            <div className="bills-search">
+              <span className="bills-input-icon"><Icon d={I.search} size={14} /></span>
+              <input
+                type="text"
+                placeholder="Search patient or invoice #..."
+                value={invoiceSearch}
+                onChange={e => { setInvoiceSearch(e.target.value); setInvoicePage(1); }}
+              />
+            </div>
+            <div className="bills-chips">
+              {chipDefs.map(chip => (
+                (chip.key !== 'Voided' || chip.count > 0) && (
+                  <button
+                    key={chip.key}
+                    className={`bills-chip${statusFilter === chip.key ? ' active' : ''}`}
+                    onClick={() => { setStatusFilter(chip.key); setInvoicePage(1); }}
+                  >
+                    {chip.label} <span className="bills-chip-count">{chip.count}</span>
+                  </button>
+                )
+              ))}
+            </div>
+          </div>
+
           <table className="bills-table bills-invoices-table">
             <thead>
               <tr>
-                <th style={{ width: "70px" }}>ID</th>
-                <th>Patient Name</th>
-                <th>Invoice Date</th>
-                <th>Due Date</th>
-                <th style={{ textAlign: "right" }}>Total</th>
-                <th style={{ textAlign: "right" }}>Paid</th>
-                <th style={{ textAlign: "right" }}>Balance</th>
-                <th style={{ textAlign: "center", width: "110px" }}>Status</th>
-                <th style={{ textAlign: "right", width: "260px" }}>Actions</th>
+                <th className="bills-th-sort" style={{ width: "70px" }} onClick={() => handleSort('id')}>ID{sortArrow('id')}</th>
+                <th className="bills-th-sort" onClick={() => handleSort('patient')}>Patient Name{sortArrow('patient')}</th>
+                <th className="bills-th-sort" onClick={() => handleSort('invoice_date')}>Invoice Date{sortArrow('invoice_date')}</th>
+                <th className="bills-th-sort" onClick={() => handleSort('due_date')}>Due Date{sortArrow('due_date')}</th>
+                <th className="bills-th-sort" style={{ textAlign: "right" }} onClick={() => handleSort('total')}>Total{sortArrow('total')}</th>
+                <th className="bills-th-sort" style={{ textAlign: "right" }} onClick={() => handleSort('paid')}>Paid{sortArrow('paid')}</th>
+                <th className="bills-th-sort" style={{ textAlign: "right" }} onClick={() => handleSort('balance')}>Balance{sortArrow('balance')}</th>
+                <th style={{ textAlign: "center", width: "100px" }}>Status</th>
+                <th style={{ textAlign: "right", width: "300px" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {invoices.length === 0 ? (
+              {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="bills-no-data">No recorded clinic invoices discovered.</td>
+                  <td colSpan={9} className="bills-no-data">
+                    {invoices.length === 0
+                      ? 'No recorded clinic invoices discovered.'
+                      : 'No invoices match the current search or filter.'}
+                  </td>
                 </tr>
               ) : (
-                invoices.map(inv => {
-                  const patient = getPatientById(inv.patient_id);
-                  const currentStatus = inv.status || 'Unpaid';
-                  const isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && currentStatus !== 'Paid';
-                  const paidAmount = paidByInvoice.get(inv.id) || 0;
-                  const balanceDue = Math.max(parseFloat(inv.total || 0) - paidAmount, 0);
-                  const displayStatus = isOverdue ? 'Overdue' : currentStatus;
+                pageRows.map(row => {
+                  const { inv, patient, currentStatus, isCancelled, isOverdue, paidAmount, balanceDue, displayStatus } = row;
 
                   return (
-                    <tr key={inv.id}>
+                    <tr key={inv.id} className={isCancelled ? 'bills-row-voided' : ''}>
                       <td className="bills-td-id">#{inv.id}</td>
                       <td><span className="bills-patient-name">{patient ? patient.name : `ID: ${inv.patient_id}`}</span></td>
                       <td className="bills-td-date">
@@ -370,16 +525,62 @@ function BillsPayment() {
                         <button className="bills-table-btn bills-btn-secondary" onClick={() => { setActiveReceipt(inv); setShowReceiptModal(true); }}>
                           <Icon d={I.print} size={12} /> SOA
                         </button>
-                        <button className="bills-table-btn" onClick={() => handleAddPayment(inv)} disabled={currentStatus.toLowerCase() === 'paid'}>
+                        <button className="bills-table-btn" onClick={() => handleAddPayment(inv)} disabled={isCancelled || currentStatus.toLowerCase() === 'paid'}>
                           <Icon d={I.wallet} size={12} /> Pay
                         </button>
+                        {!isCancelled && (
+                          <button
+                            className="bills-table-btn bills-btn-void"
+                            onClick={() => handleVoidInvoice(row)}
+                            disabled={paidAmount > 0}
+                            title={paidAmount > 0 ? 'Cannot void — payments are recorded on this invoice' : 'Void this invoice'}
+                          >
+                            <Icon d={I.x} size={12} /> Void
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
                 })
               )}
             </tbody>
+            {filteredRows.length > 0 && (
+              <tfoot className="bills-tfoot">
+                <tr>
+                  <td colSpan={4}>
+                    Totals — {filteredRows.length} invoice{filteredRows.length === 1 ? '' : 's'}
+                    {(statusFilter !== 'all' || searchQ) ? ' (filtered)' : ''}
+                  </td>
+                  <td style={{ textAlign: "right" }} className="bills-td-price">{fmt(invoiceTotals.total)}</td>
+                  <td style={{ textAlign: "right" }} className="bills-td-price">
+                    <span style={{ color: 'var(--dc-success)' }}>{fmt(invoiceTotals.paid)}</span>
+                  </td>
+                  <td style={{ textAlign: "right" }} className="bills-td-price">
+                    <span style={{ color: invoiceTotals.balance > 0 ? 'var(--dc-danger)' : 'inherit' }}>{fmt(invoiceTotals.balance)}</span>
+                  </td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
+
+          {/* Pagination */}
+          {sortedRows.length > INVOICES_PAGE_SIZE && (
+            <div className="bills-pagination">
+              <span>
+                Showing {(safePage - 1) * INVOICES_PAGE_SIZE + 1}–{Math.min(safePage * INVOICES_PAGE_SIZE, sortedRows.length)} of {sortedRows.length}
+              </span>
+              <div className="bills-page-btns">
+                <button className="bills-page-btn" onClick={() => setInvoicePage(p => Math.max(1, p - 1))} disabled={safePage <= 1}>
+                  ← Prev
+                </button>
+                <span className="bills-page-indicator">Page {safePage} of {pageCount}</span>
+                <button className="bills-page-btn" onClick={() => setInvoicePage(p => Math.min(pageCount, p + 1))} disabled={safePage >= pageCount}>
+                  Next →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* PAYMENTS TABLE */}

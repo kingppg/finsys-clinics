@@ -19,7 +19,7 @@
   border-radius: 14px;
   box-shadow: var(--dc-shadow, 0 4px 20px rgba(0, 0, 0, 0.04));
   margin: 10px auto;
-  max-width: 1200px;
+  max-width: 1600px;
   font-family: var(--dc-font, "Inter", "Segoe UI", Arial, sans-serif);
   color: var(--dc-text, #0f2340);
   position: relative;
@@ -1418,6 +1418,188 @@
 .print-receipt-area .inv-or-num {
   background: #fef3c7;
   color: #92400e;
+}
+
+/* ==========================================================================
+   INVOICES TABLE TOOLBAR — search, status chips, sort, pagination, footer
+   ========================================================================== */
+.bills-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--dc-border, #e2e8f0);
+}
+
+.bills-search {
+  position: relative;
+  flex: 1 1 240px;
+  max-width: 320px;
+}
+
+.bills-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px 9px 34px;
+  border: 1px solid var(--dc-border-strong, #cbd5e1);
+  border-radius: 8px;
+  background: var(--dc-surface-2, #f8fafc);
+  color: var(--dc-text, #0f2340);
+  font-family: inherit;
+  font-size: 0.88rem;
+  transition: all 0.2s;
+}
+
+.bills-search input::placeholder {
+  color: var(--dc-text-3, #94a3b8);
+}
+
+.bills-search input:focus {
+  outline: none;
+  border-color: var(--dc-accent, #0f2340);
+  box-shadow: 0 0 0 3px var(--dc-accent-soft, rgba(15, 35, 64, 0.1));
+}
+
+.bills-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bills-chip {
+  border: 1px solid var(--dc-border-strong, #cbd5e1);
+  background: transparent;
+  color: var(--dc-text-2, #475569);
+  border-radius: 9999px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.bills-chip:hover {
+  border-color: var(--dc-accent, #0f2340);
+  color: var(--dc-text, #0f2340);
+}
+
+.bills-chip.active {
+  background: var(--dc-accent, #0f2340);
+  border-color: var(--dc-accent, #0f2340);
+  color: var(--dc-accent-contrast, #fff);
+}
+
+.bills-chip-count {
+  opacity: 0.75;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+/* Sortable column headers */
+.bills-th-sort {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.bills-th-sort:hover {
+  color: var(--dc-text, #0f2340);
+}
+
+.bills-sort-arrow {
+  font-size: 0.6rem;
+  margin-left: 4px;
+  color: var(--dc-accent, #0f2340);
+}
+
+/* Totals footer */
+.bills-tfoot td {
+  background: var(--dc-surface-2, #f8fafc);
+  border-top: 2px solid var(--dc-border-strong, #cbd5e1);
+  font-weight: 700;
+  color: var(--dc-text, #0f2340);
+  font-size: 0.88rem;
+}
+
+/* Pagination bar */
+.bills-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 20px;
+  border-top: 1px solid var(--dc-border, #e2e8f0);
+  color: var(--dc-text-3, #64748b);
+  font-size: 0.85rem;
+}
+
+.bills-page-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bills-page-indicator {
+  color: var(--dc-text-2, #475569);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.bills-page-btn {
+  border: 1px solid var(--dc-border-strong, #cbd5e1);
+  background: transparent;
+  color: var(--dc-text-2, #475569);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.bills-page-btn:hover:not(:disabled) {
+  background: var(--dc-surface-2, #f1f5f9);
+  color: var(--dc-text, #0f2340);
+}
+
+.bills-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Voided rows & badge */
+.bills-row-voided td {
+  opacity: 0.5;
+}
+
+.bills-status--voided {
+  background: var(--dc-surface-2, #f1f5f9);
+  color: var(--dc-text-3, #64748b);
+  border: 1px solid var(--dc-border-strong, #cbd5e1);
+}
+
+.bills-btn-void {
+  background: transparent;
+  color: var(--dc-text-3, #64748b);
+  border: 1px solid var(--dc-border-strong, #cbd5e1);
+}
+
+.bills-btn-void:hover:not(:disabled) {
+  background: var(--dc-danger-soft, #fef2f2);
+  color: var(--dc-danger, #dc2626);
+  border-color: var(--dc-danger, #dc2626);
+}
+
+.bills-btn-void:disabled {
+  background: transparent;
+  color: var(--dc-text-3, #94a3b8);
+  border-color: var(--dc-border, #e2e8f0);
 }
 
 /* ==========================================================================
