@@ -200,9 +200,16 @@ router.post('/:id/send-reminder', async (req, res) => {
     timeZone: clinicTZ
   });
 
+  // ✅ Fix #14 & #17: Support template variables and ensure patient name exists
   let reminderText = req.body.message_override ||
     appt.reminder_message ||
-    `Hello ${appt.patient?.name}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+    `Hello ${appt.patient?.name || 'there'}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+
+  // Support template variables for customization
+  reminderText = reminderText
+    .replace(/\[PATIENT_NAME\]/g, appt.patient?.name || 'there')
+    .replace(/\[DATE\]/g, dateStr)
+    .replace(/\[TIME\]/g, timeStr);
 
   // ✅ Try Messenger first, fall back to SMS
   let sent = false;
@@ -243,7 +250,8 @@ router.post('/:id/send-reminder', async (req, res) => {
     });
   }
 
-  // Log sent reminder
+  // ✅ Fix #16: Log sent reminder, but don't fail response if logging fails
+  // (Message was already sent successfully; logging is best-effort audit trail)
   const sent_on_date = new Date().toISOString().slice(0, 10);
   const logId = messenger_id || phone;
   try {
@@ -259,9 +267,10 @@ router.post('/:id/send-reminder', async (req, res) => {
     });
   } catch (err) {
     if (err.code === '23505') {
-      return res.status(409).json({ error: 'Reminder already sent for this recipient/appointment/day.' });
+      console.log('[reminders.js] Duplicate reminder log detected (already sent):', appointmentId);
+    } else {
+      console.error('[reminders.js] Error logging reminder (non-fatal):', err.message);
     }
-    throw err;
   }
 
   res.json({ success: true, channel: channelUsed });

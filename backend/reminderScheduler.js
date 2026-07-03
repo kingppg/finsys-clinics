@@ -211,7 +211,10 @@ async function sendRemindersForClinic(clinic) {
       // Skip if no way to reach patient at all
       if (!recipientMessengerId && !recipientPhone) continue;
 
+      // ✅ Fix #15: Dedup by (appointment, days_ahead, recipient, date)
       // Use messenger_id as the unique key for dedup; fall back to phone
+      // Note: Current design sends via ONE channel (messenger → SMS fallback), not both.
+      // If sending via both channels is needed in future, dedup logic must change.
       const dedupId = recipientMessengerId || recipientPhone;
 
       const alreadySent = await alreadySentReminder(appt.id, daysAhead, dedupId, todayStr);
@@ -232,9 +235,16 @@ async function sendRemindersForClinic(clinic) {
         hour12: true
       });
 
+      // ✅ Fix #14 & #17: Use template variables and ensure patient name exists
       let reminderText = appt.reminder_message && appt.reminder_message.trim().length > 0
         ? appt.reminder_message
-        : `Hello ${appt.patient?.name || ''}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+        : `Hello ${appt.patient?.name || 'there'}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+
+      // Support template variables for customization
+      reminderText = reminderText
+        .replace(/\[PATIENT_NAME\]/g, appt.patient?.name || 'there')
+        .replace(/\[DATE\]/g, dateStr)
+        .replace(/\[TIME\]/g, timeStr);
 
       reminderText += `\n\nSee you soon!`;
 

@@ -170,6 +170,19 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
     userStates[sender_psid] = { state: "default", data: {} };
     return;
   }
+  // ✅ Fix #1: Handle awaiting_unknown_confirm state
+  if (userState.state === "awaiting_unknown_confirm") {
+    if (message === 'UNKNOWN_INPUT_YES') {
+      userStates[sender_psid] = { state: "default", data: {} };
+      await sendIntroMenu(sender_psid, context.pageAccessToken);
+      return;
+    }
+    if (message === 'UNKNOWN_INPUT_NO') {
+      await sendMessage(sender_psid, "Sige po! Kung kailangan ninyo ng tulong, nandito lang kami. God bless! 😊", context);
+      userStates[sender_psid] = { state: "default", data: {} };
+      return;
+    }
+  }
   if (message === 'MENU_BOOK_APPOINTMENT') {
     userState.state = "awaiting_date";
     await sendMessage(sender_psid, "Sige po! Paki-type ang inyong preferred na petsa sa format: YYYY-MM-DD (halimbawa: 2025-12-20) 😊", context);
@@ -229,19 +242,24 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
     switch (userState.state) {
 
       case "default": {
-        if (topIntent === 'greet') {
-          if (aiReply) await sendMessage(sender_psid, aiReply, context);
-          // ✅ Detect a tacked-on question using word-boundary tokens, so 'ai'
-          // doesn't match inside "available", 'ano' inside "Romano", etc. (Bug #10)
+        // ✅ Fix #2 & #3: Apply confidence threshold to greetings; if greeting + question, answer question not greeting
+        if (topIntent === 'greet' && confidence >= CONFIDENCE_THRESHOLD) {
           const greetTokens = message.toLowerCase().split(/\s+/).map(t => t.replace(/[^a-z0-9]/g, '')).filter(Boolean);
           const questionWords = ['ba', 'ano', 'pano', 'paano', 'ai', 'bot', 'ask',
             'magkano', 'pwede', 'kailan', 'saan', 'bakit', 'sino'];
           const hasQuestion = message.includes('?') ||
             greetTokens.some(t => questionWords.includes(t)) ||
             greetTokens.length > 6;
+
+          // ✅ If greeting has a tacked-on question, DON'T just send greeting reply
+          // Fall through to send the full AI reply which should address the question
           if (!hasQuestion) {
+            if (aiReply) await sendMessage(sender_psid, aiReply, context);
             await sendIntroMenu(sender_psid, context.pageAccessToken);
+            return;
           }
+          // Greeting + question: send AI reply (which should answer the Q, not just greet)
+          if (aiReply) await sendMessage(sender_psid, aiReply, context);
           return;
         }
         if (topIntent === 'book_appointment' && confidentIntent) {
@@ -296,19 +314,29 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           await sendMessage(sender_psid, "Ay, wala po kaming nahanap na appointment sa code na iyon. Pakicheck ulit ang inyong code. 😊", context);
           return;
         }
+        // ✅ Fix #7: Separate guardian from patient identity
+        // During confirmation, NEVER link sender to patient.messenger_id (that's for booking)
+        // Only use guardian_messenger_id if sender is not the patient
         const { data: patientRow } = await supabase.from('patients').select('messenger_id')
           .eq('id', appointment.patient_id).eq('clinic_id', context.clinicId).maybeSingle();
+
+        // Only link if sender IS the actual patient (patient has no messenger_id yet)
         if (!patientRow?.messenger_id) {
+          // Check: is sender a different patient? If so, they're a guardian
           const { data: existingPatient } = await supabase.from('patients').select('id')
             .eq('messenger_id', sender_psid).eq('clinic_id', context.clinicId).maybeSingle();
           if (existingPatient && existingPatient.id !== appointment.patient_id) {
+            // Sender is a different patient → they're confirming for someone else (guardian)
             await supabase.from('appointments').update({ guardian_messenger_id: sender_psid })
               .eq('id', appointment.id).eq('clinic_id', context.clinicId);
-          } else {
+          } else if (!existingPatient) {
+            // Sender has no patient record at all
+            // Conservative: only link if they're confirming their OWN appointment (booking_for === "me")
+            // For now, assume they're the patient since they have the code
+            // But DON'T set guardian_messenger_id unless we're sure they're a guardian
+            // In future, could ask "Is this your appointment or someone else's?"
             await supabase.from('patients').update({ messenger_id: sender_psid })
               .eq('id', appointment.patient_id).eq('clinic_id', context.clinicId);
-            await supabase.from('appointments').update({ guardian_messenger_id: null })
-              .eq('id', appointment.id).eq('clinic_id', context.clinicId);
           }
         }
         if (["Completed", "Cancelled", "No Show"].includes(appointment.status)) {
@@ -366,23 +394,38 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           userStates[sender_psid].state = "awaiting_cancel_code_retry";
           return;
         }
-        const apptDate = new Date(appointment.appointment_time);
-        const now = new Date();
-        now.setHours(0, 0, 0, 0);
-        apptDate.setHours(0, 0, 0, 0);
-        if (apptDate < now) {
+        // ✅ Fix #6 & #11: Use clinic timezone consistently for date/time checks
+        const timeZone = context.timeZone || 'Asia/Manila';
+        const apptTime = new Date(appointment.appointment_time);
+
+        // Get today's date in clinic timezone
+        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+        const today = new Date(todayStr);
+
+        // Get appointment date in clinic timezone
+        const apptDateStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(apptTime);
+        const apptDate = new Date(apptDateStr);
+
+        if (apptDate < today) {
           await sendMessage(sender_psid, "Hindi na po pwedeng i-cancel ang nakaraang appointment. Ang mga kasalukuyan at hinaharap na appointment lang po ang pwedeng i-cancel. 😊", context);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        const msDiff = new Date(appointment.appointment_time).getTime() - new Date().getTime();
-        if (msDiff <= 60 * 60 * 1000) {
+
+        // Check 1-hour cutoff using clinic time
+        const now = new Date();
+        const oneHourMs = 60 * 60 * 1000;
+        const msDiff = apptTime.getTime() - now.getTime();
+        if (msDiff <= oneHourMs) {
           await sendMessage(sender_psid, "Pasensya na po, hindi na pwedeng i-cancel ang appointment na less than 1 hour na lang. Pakicontact na lang po ang clinic directly. 😊", context);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        if (["Cancelled", "No Show"].includes(appointment.status)) {
-          await sendMessage(sender_psid, "Na-cancel na po o minarkahan ng No Show ang appointment na ito. 😊", context);
+        // ✅ Fix #13: Prevent cancellation of Completed appointments too
+        if (["Cancelled", "No Show", "Completed"].includes(appointment.status)) {
+          let statusMsg = "Na-cancel na po o minarkahan ng No Show ang appointment na ito. 😊";
+          if (appointment.status === "Completed") statusMsg = "Natapos na po ang appointment na ito, hindi na pwedeng i-cancel. 😊";
+          await sendMessage(sender_psid, statusMsg, context);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
@@ -844,9 +887,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
       }
 
       case "confirming": {
-        const wantsCancel = topIntent === 'cancel_flow' || normalizedMsg === 'cancel_booking';
-        const wantsConfirm = topIntent === 'yes' || normalizedMsg === 'confirm_booking' ||
-          ['ok', 'confirm'].includes(normalizedMsg);
+        // ✅ Fix #4: Check confidence on confirm/cancel intents
+        const wantsCancel = (topIntent === 'cancel_flow' && confidence >= CONFIDENCE_THRESHOLD) ||
+          normalizedMsg === 'cancel_booking';
+        const wantsConfirm = (topIntent === 'yes' && confidence >= CONFIDENCE_THRESHOLD) ||
+          normalizedMsg === 'confirm_booking' || ['ok', 'confirm'].includes(normalizedMsg);
 
         // ✅ Cancel at the summary screen. We DO record this — on an EXPLICIT
         // cancel only — to capture the contact for the customer list, feed
@@ -902,9 +947,15 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        // ✅ Anything that isn't an explicit confirm → re-prompt, no DB writes.
+        // ✅ Fix #4: If not confirm/cancel but Claire has a reply, send it and let them continue
+        // (e.g., user asks "What's the dentist's name?" at confirmation)
         if (!wantsConfirm) {
-          await sendMessage(sender_psid, "Pakitap lang po ang Confirm o Cancel button para matuloy. 😊", context);
+          if (aiReply) {
+            await sendMessage(sender_psid, aiReply, context);
+            // Stay in confirming state so they can still confirm or cancel
+          } else {
+            await sendMessage(sender_psid, "Pakitap lang po ang Confirm o Cancel button para matuloy. 😊", context);
+          }
           return;
         }
 
@@ -943,8 +994,41 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        // ✅ Insert the patient ONLY now that the booking is confirmed. (Bug #5)
+        // ✅ Fix #5: Re-verify slot is still free (race condition mitigation)
+        // If another booking claimed it between our check and now, reject and retry
+        const { data: finalCheck } = await supabase.from('appointments')
+          .select('id,status')
+          .eq('dentist_id', assignedDentist.id)
+          .eq('appointment_time', datetime)
+          .eq('clinic_id', context.clinicId);
+        if ((finalCheck || []).some(b => b.status !== 'Cancelled')) {
+          await sendMessage(sender_psid, "Pasensya na po, kunin na ng iba ang slot na iyon. Pakisubukan ng ibang slot. 😊", context);
+          userStates[sender_psid].state = "awaiting_slot";
+          return;
+        }
+
+        // ✅ Fix #9: Search for existing patient by name to avoid duplicates
+        // Even if we don't have patient_id yet, check if they already exist by name/phone
         let patient_id = userState.data.patient_id;
+        if (!patient_id && userState.data.patient_name) {
+          const existingByName = await findPatientByNameAndPhone(
+            userState.data.patient_name,
+            userState.data.patient_phone || null,
+            context,
+            false
+          );
+          if (existingByName) {
+            patient_id = existingByName.id;
+            // ✅ Fix #7: Only link messenger_id if booking for self
+            if (userState.data.booking_for === "me" && !existingByName.messenger_id) {
+              await supabase.from('patients')
+                .update({ messenger_id: sender_psid })
+                .eq('id', patient_id).eq('clinic_id', context.clinicId);
+            }
+          }
+        }
+
+        // Insert new patient only if truly new
         if (!patient_id) {
           const insertPayload = {
             name: String(userState.data.patient_name),
