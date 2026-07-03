@@ -134,7 +134,7 @@ Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder set
 
 **Payment modal (post-deploy addition):** `AddPaymentForm.js` is now POS-style — giant amount readout, on-screen numpad, big method buttons, "Exact" tender button (fills balance due, passed from parent via `balanceDue` prop), live remaining/overpayment readout. Insert payload unchanged.
 
-### h) Patient Files Phase 1 — imaging & document storage (**BUILT, NOT YET COMMITTED — awaiting owner local test**)
+### h) Patient Files Phase 1 — imaging & document storage + full-page patient profile — `0e0d5dd` (**DEPLOYED 2026-07-03**, owner-tested locally)
 Adds storage for dental radiographs (bitewing, periapical, panoramic/OPG, CBCT, occlusal, cephalometric), clinical photos (intraoral, extraoral, smile), and documents (treatment plan, prescription, lab result, referral, consent, other) per patient. Digital files AND phone photos of physical films both supported (plain file input accepts camera captures).
 
 - **Migration `backend/db/migrations/003_patient_files.sql`** (⚠️ **must be run in Supabase before testing**): `patient_files` table (uuid PK, clinic_id, patient_id FK cascade, optional appointment_id FK, category CHECK, FDI tooth_number CHECK, title/notes/taken_date, file_path/file_name/mime_type/file_size, uploaded_by, soft `deleted`, timestamps) + RLS (authenticated allowed / anon denied, same convention as `users`) + **private** Storage bucket `patient-files` (25 MB cap, images+PDF only) + storage policies (authenticated only). Files are served exclusively via 1-hour signed URLs; bucket never public. Idempotent — safe to re-run.
@@ -248,6 +248,7 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `9ab473c` | FB: support Facebook Login for Business `config_id` flow |
 | `4a7297b` | Security: RLS on `users` table (secure-users-table.sql) |
 | `9dc7072` | Fix: strengthen Claire's intent handling & booking logic (14 fixes: state handling, confidence gating, timezone, guardian/patient identity, race conditions, reminders) |
+| `0e0d5dd` | Patient Files Phase 1 (private storage, gallery, appointment linking) + full-page patient profile + `.dc-page` layout rule + outer-scrollbar fixes |
 | `5e217b2` | BILLING first attempt: schema migration + REST API + BillsPaymentEnhanced UI (**UI later rolled back** — replaced owner's working component) |
 | `9105307` | BILLING first-attempt integration (routes + Enhanced component into dashboard) — **UI portion rolled back** |
 | `c9b76d1` | Revert dashboard to the original BillsPayment component |
