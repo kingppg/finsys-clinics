@@ -1,6 +1,6 @@
 # Dental Clinic System — Webhook & Reminders Handoff
 
-**Last updated:** 2026-06-13
+**Last updated:** 2026-07-03
 **Scope:** Messenger webhook hardening (Ate Claire AI), booking flow fixes, reminder/notification delivery fixes, Supabase data-exposure lockdown, and the Facebook Login for Business (`config_id`) connect flow.
 **Repo:** github.com/kingppg/finsys-clinics (branch `main`)
 **Backend host:** Render — https://finsys-clinics.onrender.com (auto-deploys on push to `main`)
@@ -71,6 +71,33 @@ Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder set
 - OAuth `redirect_uri` now uses the `BACKEND_URL` env (was hardcoded `http://localhost:5000`, which broke the connect flow in production).
 - The connect endpoint now uses **`config_id`** (`FB_LOGIN_CONFIG_ID` env) when set — required by "Facebook Login for Business" apps — and falls back to the classic `scope=` flow otherwise. **Verified** the live endpoint emits `&config_id=1735537977881310`.
 - **Current blocker (Meta-side, not code):** "Reconnect Facebook Page" returns *"Feature Unavailable… updating additional details for this app."* This is because the app's **App Review for the use-case permissions is incomplete — Meta asked the owner to resubmit the use-case demo videos.** Until that review passes, Facebook Login stays gated. The existing Palodentcare connection still works (uses its already-issued token); only *new* connections / going public are blocked. Nothing in our code needs to change — reconnect will work once Meta approves.
+
+### f) Claire's intent handling & booking logic hardened (14 fixes) — `9dc7072`
+**Goal:** Make Claire smarter to catch off-topic messages within task flow, eliminate loopholes in booking/confirm/cancel, separate guardian/patient identity, and fix timezone + dedup bugs.
+
+**Critical state-machine fixes:**
+- **Fix #1:** Handle orphaned `awaiting_unknown_confirm` state (was set but never handled → messages fell to default case)
+- **Fix #2:** Apply confidence threshold to ALL intents, including greetings (low-conf greet no longer forces menu)
+- **Fix #3:** Greeting + question detected → answer the question, don't just send greeting + menu
+- **Fix #4:** At confirmation, let Claire answer off-topic questions (e.g., "What's the dentist's name?") without forcing re-prompt
+- **Fix #4b:** Add confidence threshold to confirm/cancel intents at summary screen (prevent accidental confirmations on low-conf input)
+
+**Race conditions & data integrity:**
+- **Fix #5:** Re-verify slot is free immediately before insert (two concurrent bookings claimed same slot → now both checked)
+- **Fix #9:** Search for existing patient by name before creating duplicate (e.g., patient booked via clinic app, later books via Messenger)
+- **Fix #10:** Transaction-like safeguard for patient+appointment insert (already correct; affirmed)
+
+**Identity & timezone:**
+- **Fix #6 & #11:** Use clinic timezone consistently in cancellation date checks (was mixing local `Date()` with UTC `appointment_time` → off by ±24 hours depending on user's local time)
+- **Fix #7:** **Separate guardian from patient identity:** never link sender's messenger_id to patient record during confirmation; only link self-bookings. During confirmation, if sender is a different patient, mark as `guardian_messenger_id`, not `patient.messenger_id`. Prevents conflating parent/child identities.
+
+**Terminal states:**
+- **Fix #13:** Prevent canceling Completed appointments (only Cancelled/No Show were checked)
+
+**Reminder system improvements:**
+- **Fix #14 & #17:** Template variables for reminder messages (`[PATIENT_NAME]`, `[DATE]`, `[TIME]`) + default name to "there" instead of empty string
+- **Fix #15:** Document dedup logic (single-channel design acknowledged; multi-channel would require dedup key redesign)
+- **Fix #16:** Make reminder logging non-fatal (message sent = success, even if audit log fails; prevents false 500 errors)
 
 ---
 
@@ -156,5 +183,6 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `05848c9` | Security: lock clinic secrets (backend SMS-save endpoint, env OAuth redirect, frontend reads safe columns, secure-clinics-columns.sql) |
 | `9ab473c` | FB: support Facebook Login for Business `config_id` flow |
 | `4a7297b` | Security: RLS on `users` table (secure-users-table.sql) |
+| `9dc7072` | Fix: strengthen Claire's intent handling & booking logic (14 fixes: state handling, confidence gating, timezone, guardian/patient identity, race conditions, reminders) |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
