@@ -263,6 +263,18 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
         if (topIntent === 'book_appointment' && confidentIntent) {
+          // ✅ Fix #3b: If message is greeting + question, don't force booking flow
+          // E.g., "Hi, do you have slots tomorrow?" should answer, not transition
+          const greetingWords = ['hi', 'hello', 'magandang', 'kumusta', 'kamusta', 'good morning', 'good afternoon'];
+          const hasGreeting = greetingWords.some(w => message.toLowerCase().includes(w));
+          const hasQuestion = message.includes('?');
+
+          if (hasGreeting && hasQuestion) {
+            // Answer the question but stay in default state
+            if (aiReply) await sendMessage(sender_psid, aiReply, context);
+            return;
+          }
+
           userState.state = "awaiting_date";
           if (aiReply) await sendMessage(sender_psid, aiReply, context);
           return;
