@@ -43,6 +43,9 @@ const {
   proceedToSlotSelection
 } = require('./helpers/bookingHelpers');
 
+// ✅ Persistent conversation state (survives deploys/restarts; multi-instance safe)
+const { loadSession, saveSession } = require('./helpers/sessionStore');
+
 const router = express.Router();
 
 const VERIFY_TOKEN = process.env.FB_VERIFY_TOKEN || "palodentcare_secret_token";
@@ -92,6 +95,12 @@ const supabase = createClient(
 const CONFIDENCE_THRESHOLD = 0.6;
 
 // --- Conversation state ---
+// In-memory working copy for the CURRENT message only. The source of truth is
+// the messenger_sessions table: the route hydrates this object before each
+// message and persists (then evicts) it afterwards, so conversations survive
+// deploys/restarts and memory never grows unbounded. The offline test harness
+// (test-webhook.js) drives handleMessage directly and keeps using this object
+// purely in memory — unchanged behavior there.
 let userStates = {};
 
 // --- WEBHOOK VERIFY ---
@@ -130,15 +139,23 @@ router.post("/", async (req, res) => {
 
         const context = buildContext(clinic);
 
+        const incomingText = webhook_event.message?.text?.trim() || webhook_event.postback?.payload || null;
+        if (!incomingText || !sender_psid) continue;
+
+        // Hydrate this user's conversation state from the DB (fresh read every
+        // message → correct even across restarts or multiple instances).
+        userStates[sender_psid] = await loadSession(sender_psid, context.clinicId);
+
         try {
-          if (webhook_event.message?.text) {
-            await handleMessage(sender_psid, webhook_event.message.text.trim(), webhook_event, req, context);
-          } else if (webhook_event.postback?.payload) {
-            await handleMessage(sender_psid, webhook_event.postback.payload, webhook_event, req, context);
-          }
+          await handleMessage(sender_psid, incomingText, webhook_event, req, context);
         } catch (err) {
           console.error('❌ Error in webhook handler:', err);
           await sendMessage(sender_psid, "Sorry po, may nangyari. Pakisubukan ulit. 😊", context);
+        } finally {
+          // Persist whatever state the machine left behind, then evict the
+          // working copy — the DB row is the source of truth between messages.
+          await saveSession(sender_psid, context.clinicId, userStates[sender_psid]);
+          delete userStates[sender_psid];
         }
       }
     }

@@ -37,6 +37,8 @@ Key backend files (Appointments & Reminders):
 | `backend/routes/statusNotifications.js` | Status-change messages (Confirmed/Checked-In/etc.) |
 | `backend/index.js` | Express app, socket.io, OAuth (`config_id`), SMS test/balance/save |
 | `backend/test-webhook.js` | Offline test harness (no FB/DB/LLM needed) |
+| `backend/helpers/sessionStore.js` | **Persistent conversation state** (messenger_sessions table; in-memory fallback on DB outage) |
+| `backend/db/migrations/002_messenger_sessions.sql` | Sessions table + RLS lockdown (**run in Supabase before/with deploy**) |
 | `backend/db/secure-clinics-columns.sql` | Column-level grants locking clinic secrets (run in Supabase) |
 | `backend/db/secure-users-table.sql` | RLS locking the users table (run in Supabase) |
 
@@ -166,6 +168,21 @@ Steps (clinic owner):
 After credits are loaded, both automatic and manual reminders reach anyone with a phone number, regardless of the 24h window. (Messenger is still tried first for free delivery to recently-active patients.)
 
 Note: with 0 credits, the briefly-exposed Semaphore key has no value to an attacker, so rotation isn't urgent — but **rotate it (via Semaphore support) before loading credits for launch.** SMS save runs through the backend now, so the key never touches the public anon client.
+
+---
+
+## 4b. Persistent Messenger sessions (shipped) + webhook/reminder audit backlog
+
+**Shipped:** `userStates` no longer lives only in process memory. The webhook route hydrates each user's session from `messenger_sessions` before handling a message and persists it after (`helpers/sessionStore.js`); idle sessions delete their row, stale ones expire (12h TTL on read, 24h purge). Deploys/restarts no longer orphan mid-booking patients; also fixes the unbounded `userStates` memory growth. DB outage degrades gracefully to in-memory (old behavior). State machine untouched — offline harness still 25/25. **Requires `002_messenger_sessions.sql` run in Supabase** (code is safe either way; without the table it just logs and falls back to memory).
+
+**Audit findings still OPEN (2026-07-03 review, prioritized):**
+1. **No auth on send endpoints** — `POST /appointments/:id/send-reminder` and `POST /status-notifications/:id` accept any request (SMS credit burn / patient spam risk). Same as §5 item 3.
+2. **Phone numbers not E.164-normalized** — `09xx…` stored as-is works for Semaphore (PH) but every Twilio SMS will be rejected. No conversion in any of the 3 sendSMS copies.
+3. **Scheduler hot-reload misses fields** — job-refresh comparison omits `sms_api_secret` and `sms_sender`; rotating a Twilio secret keeps the OLD secret until process restart.
+4. **Send logic duplicated** — sendSMS ×3, Messenger sender ×4 across scheduler/routes/helpers; should be one `helpers/notify.js` (fix 2–3 there in one pass).
+5. **No webhook event dedup** — FB redeliveries can double-process (slot re-check mitigates double-booking, but duplicate patient inserts/messages possible).
+6. **Hardcoded clinic hours** — 09:00–18:00, 20-min slots, 12:00–12:40 lunch, closed Sundays are hardcoded in bookingHelpers + Claire's prompt; per-clinic hours impossible.
+7. Minor: manual reminder logs `sent_on_date` in UTC while scheduler uses clinic TZ; dead `awaiting_unknown_confirm` inner branch + unused `proceedToSlotSelection`; Graph API v17.0 pinned in ~5 places.
 
 ---
 
