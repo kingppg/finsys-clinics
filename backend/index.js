@@ -17,6 +17,7 @@ const supabase = createClient(
 const remindersRouter = require('./routes/reminders');
 const statusNotificationsRouter = require('./routes/statusNotifications');
 const { router: webhookRouter } = require('./webhook');
+const billingRoutes = require('./routes/billing');
 
 require('./reminderScheduler');
 
@@ -354,6 +355,7 @@ app.use((req, res, next) => {
 app.use('/appointments', remindersRouter);
 app.use('/status-notifications', statusNotificationsRouter);
 app.use('/webhook', webhookRouter);
+app.use('/api/billing', billingRoutes);
 
 server.listen(PORT, () => {
   console.log(`Server started on http://localhost:${PORT}`);

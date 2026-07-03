@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
-import './BillsPayment.css';
+import './BillsPaymentEnhanced.css';
 
 const Icon = ({ d, size = 15 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"

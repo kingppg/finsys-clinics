@@ -3,7 +3,7 @@ import Sidebar from './Sidebar';
 import Patients from './Patients';
 import Dentists from './Dentists';
 import AppointmentsModern from './AppointmentsModern';
-import BillsPayment from './BillsPayment';
+import BillsPaymentEnhanced from './BillsPaymentEnhanced';
 import ClinicConfig from './ClinicConfig';
 import ClinicProcedureManager from './ClinicProcedureManager';
 import AdminUsersRoles from './AdminUsersRoles';
@@ -83,7 +83,7 @@ function Dashboard({ user, onLogout }) {
               jumpDate={calendarJumpDate}
             />
           )}
-          {activeTab === 'bills' && <BillsPayment clinicId={user.clinic_id} />}
+          {activeTab === 'bills' && <BillsPaymentEnhanced />}
           {activeTab === 'queue' && <QueueMonitor clinicId={user.clinic_id} />}
           {activeTab === 'clinicconfig' &&
             (user.role === 'superadmin' || user.role === 'admin') && (
