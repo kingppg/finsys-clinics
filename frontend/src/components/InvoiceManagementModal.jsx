@@ -463,12 +463,12 @@ function InvoiceManagementModal({
                 </div>
                 <div className="inv-totals-row inv-totals-paid">
                   <span>Total Paid</span>
-                  <span style={{ color: '#16a34a' }}>- {fmt(totalPaid)}</span>
+                  <span style={{ color: 'var(--dc-success, #16a34a)' }}>- {fmt(totalPaid)}</span>
                 </div>
                 <hr className="inv-totals-hr" />
                 <div className="inv-totals-row inv-totals-balance">
                   <span>Balance Due</span>
-                  <span style={{ color: balanceDue > 0 ? '#dc2626' : '#16a34a' }}>{fmt(balanceDue)}</span>
+                  <span style={{ color: balanceDue > 0 ? 'var(--dc-danger, #dc2626)' : 'var(--dc-success, #16a34a)' }}>{fmt(balanceDue)}</span>
                 </div>
               </div>
             </>

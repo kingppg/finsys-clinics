@@ -105,65 +105,26 @@ Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder set
 - **Fix #15:** Document dedup logic (single-channel design acknowledged; multi-channel would require dedup key redesign)
 - **Fix #16:** Make reminder logging non-fatal (message sent = success, even if audit log fails; prevents false 500 errors)
 
-### g) Phase 1 Billing System MVP — `5e217b2`, `9105307`
-**Goal:** Ultra-premium SaaS billing for manual GCash payments, invoice management, and financial reporting.
+### g) Billing System: premium upgrade of the ORIGINAL BillsPayment (final state)
+**History:** a first attempt (`5e217b2`, `9105307`) replaced the owner's existing `BillsPayment.js` with a new `BillsPaymentEnhanced.jsx` — this stripped working features (Invoice Management modal, SOA printing, payments audit) and was **rolled back** (`c9b76d1`, Enhanced files deleted). The final approach ENHANCES the original component instead of replacing it.
 
-**Database (Supabase migration `001_billing_schema.sql`):**
-- `invoice_items` — line-level breakdown with automatic subtotal, discount, and tax calculation (generated columns)
-- `payment_plans` — scaffolding for Phase 2 installments (not active yet)
-- `payment_plan_installments` — individual due dates and installment tracking (Phase 2)
-- `tax_rates` — clinic-specific VAT configuration (defaults: 12% VAT + 0% VAT-exempt)
-- `audit_log` — financial transaction history for compliance
-- Enhanced `invoices` table: invoice_number (auto-generated format `INV-{YEAR}-{count}`), due_date, status (draft/sent/partial/paid), tax_amount
-- Enhanced `payments` table: or_number, payment_date, gcash_reference, reconciled_at
+**What the billing module is now (frontend):**
+- `frontend/src/components/BillsPayment.js` — the original ledger, untouched in behavior, now with **subtabs**: *Invoices* (original invoice + payments-audit tables, Add Invoice, Manage, SOA, Pay) | *Aging Analysis* | *Collections*.
+- `frontend/src/components/billing/billingAnalytics.ts` — pure, read-only analytics (TypeScript). Computes aging buckets and collections KPIs **client-side from the rows the ledger already loads** (no backend calls, no prod-URL coupling). Conventions mirror the SOA exactly: `balance = invoice.total − paid`; statuses compared case-insensitively; missing due_date falls back to invoice_date (never falsely "90+ overdue").
+- `frontend/src/components/billing/AgingAnalysis.tsx` — bucket cards (amount + count, click-to-filter), proportional distribution bar, scrollable outstanding-invoices table with days-overdue chips.
+- `frontend/src/components/billing/CollectionsOverview.tsx` — KPI cards (Billed / Collected / Outstanding / Collection Rate), collection-rate progress, 6-month billed-vs-collected bars, payment-method donut (hand-rolled SVG — no chart lib).
+- `frontend/src/components/AddPaymentForm.js` — restyled to the module's modal system; added **OR # field** and method-aware reference label (GCash Reference No. when GCash selected). Insert payload otherwise unchanged (DB triggers own totals/status).
 
-**Backend API (`backend/routes/billing.js`**, 25+ endpoints**)**
-- **Invoices:** POST/GET/PUT for create, list, detail, update status
-- **Invoice Items:** POST/DELETE for add/remove line items with tax calculation
-- **Payments:** POST to record manual payment (GCash/Cash/Bank/Card); GET to list all payments
-- **Reports:** `/reports/aging` (overdue buckets: current/1-30/31-60/61-90/90+), `/reports/collections` (total billed, collected, outstanding, collections %)
-- **Tax:** GET/POST for tax rate management (clinic-specific)
-- **Auto-reconciliation:** when payment recorded, invoice status auto-updates (draft → partial → paid) based on accumulated payments
-- **Clinic isolation:** all queries filtered by `clinic_id` + indexed for performance
-- **Audit logging:** every invoice/payment action logged to `audit_log` for compliance
+**Theme architecture (`frontend/src/themes/`):**
+- `types.ts` / `darkExecutive.ts` / `index.ts` / `DcThemeProvider.tsx`. One theme object → CSS variables (`--dc-*`) set on a **scoped** wrapper; layout lives in component CSS, cosmetics in theme tokens. Registry + `useDcTheme()` are ready for the future Clinic Config theme picker (selection persists in localStorage `dc-theme-id`). Currently scoped to the Billing module only; rest of app unaffected. The SOA receipt is deliberately NOT themed (paper document — stays white on screen and in print).
+- TypeScript enabled: `typescript@5.5` (pinned; TS 6 breaks react-scripts 5 peer deps — install with `--legacy-peer-deps`), `tsconfig.json`, `@fontsource/inter`.
 
-**Frontend (`BillsPaymentEnhanced.jsx` + `BillsPaymentEnhanced.css`)**
-- **Tabbed interface:** Invoices | Aging Analysis | Collections
-- **Invoices tab:** table with status badges (draft/sent/partial/paid/overdue), due-date highlighting, record payment button
-- **Aging Analysis:** visual bucketing of overdue invoices (current/1-30/31-60/61-90/90+ days)
-- **Collections:** KPI dashboard (Total Billed, Total Collected, Outstanding, Collections Rate %)
-- **Payment Modal:** staff records manual payment with fields for method, amount, GCash reference, OR#, notes
-- **Auto-update:** real-time invoice status sync after payment recorded
-- **Responsive design:** mobile-friendly with CSS Grid + Flexbox
+**Database notes (important):**
+- `invoices` / `invoice_items` / `payments` **pre-existed** with their own schema; totals & item totals are computed by **DB triggers** (client inserts qty/unit_price only). Statuses are capitalized: `Unpaid` / `Partial` / `Paid`.
+- Migration `backend/db/migrations/001_billing_schema.sql` was run in Supabase: it added columns to `invoices` (invoice_number, subtotal, tax_amount, adjusted_amount, gcash_reference…) and `payments` (or_number, payment_date, gcash_reference, reconciled_at), and created `payment_plans`, `payment_plan_installments`, `tax_rates`, `audit_log` (all currently unused scaffolding). Its `CREATE TABLE IF NOT EXISTS invoice_items` was skipped (table existed).
+- `backend/routes/billing.js` REST API is mounted at `/api/billing` but **the UI does not depend on it** (frontend reads Supabase directly, same as the rest of the app). Fixed there anyway: case-sensitive status filters (`.neq('status','paid')` never matched `'Paid'`) and null due_date being bucketed as 90+ days overdue.
 
-**What works now (Phase 1):**
-✅ Staff create invoices (auto-numbered, optional line items)  
-✅ Staff record manual GCash payments (+ Cash/Bank/Card)  
-✅ Invoices auto-reconcile on payment (status updates draft → partial → paid)  
-✅ Aging analysis shows overdue buckets  
-✅ Collections KPI dashboard  
-✅ Tax rates configurable per clinic  
-✅ Complete audit trail for compliance  
-
-**Integration steps (completed):**
-- Database migration run in Supabase (`001_billing_schema.sql`)
-- Billing routes wired into `backend/index.js` (`app.use('/api/billing', billingRoutes)`)
-- `BillsPaymentEnhanced` component imported in `Dashboard.js` and wired to 'bills' tab
-- Sidebar already had 'bills' nav item pointing to billing system
-
-**What's NOT in Phase 1 (Phase 2, weeks 5-8):**
-- Payment plans & installment scheduling
-- Automated reminders (email/SMS/Messenger)
-- Advanced dashboards (charts, trends, export)
-- Customer portal (patient self-service payment)
-- Payment gateway integration (Stripe, GCash API)
-
-**Testing:**
-- Create invoice: `POST /api/billing/invoices`
-- Record payment: `POST /api/billing/payments`
-- Check aging: `GET /api/billing/reports/aging?clinic_id={id}`
-- Check collections: `GET /api/billing/reports/collections?clinic_id={id}`
-- Frontend: navigate to **Billing System** tab in dashboard
+**Deferred / future:** theme picker in Clinic Config; additional themes; prune unused deps (highcharts — commercial license, shadcn-ui npm package, recharts, tailwind); Playwright E2E.
 
 ---
 
@@ -250,7 +211,8 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `9ab473c` | FB: support Facebook Login for Business `config_id` flow |
 | `4a7297b` | Security: RLS on `users` table (secure-users-table.sql) |
 | `9dc7072` | Fix: strengthen Claire's intent handling & booking logic (14 fixes: state handling, confidence gating, timezone, guardian/patient identity, race conditions, reminders) |
-| `5e217b2` | **BILLING Phase 1 MVP:** Database schema (invoices, invoice_items, payment_plans, tax_rates, audit_log), REST API (25+ endpoints), React UI (manual GCash, invoices, aging, collections), auto-reconciliation |
-| `9105307` | **BILLING integration:** Wire billing routes into backend, integrate BillsPaymentEnhanced into dashboard, fix CSS import |
+| `5e217b2` | BILLING first attempt: schema migration + REST API + BillsPaymentEnhanced UI (**UI later rolled back** — replaced owner's working component) |
+| `9105307` | BILLING first-attempt integration (routes + Enhanced component into dashboard) — **UI portion rolled back** |
+| `c9b76d1` | Revert dashboard to the original BillsPayment component |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*

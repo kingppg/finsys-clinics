@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AddPaymentForm from './AddPaymentForm';
 import InvoiceManagementModal from './InvoiceManagementModal';
+import { DcThemeProvider } from '../themes/DcThemeProvider';
+import { AgingAnalysis } from './billing/AgingAnalysis';
+import { CollectionsOverview } from './billing/CollectionsOverview';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
@@ -46,6 +49,7 @@ function BillsPayment() {
   const [dentists, setDentists] = useState([]);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showAddPayment, setShowAddPayment] = useState(false);
+  const [activeTab, setActiveTab] = useState('invoices'); // 'invoices' | 'aging' | 'collections'
 
   // Invoice Management Modal
   const [showManageModal, setShowManageModal] = useState(false);
@@ -150,6 +154,13 @@ function BillsPayment() {
   .sort((a, b) => a.id - b.id);
   const getPatientById = (id) => patients.find(p => p.id === id);
 
+  // Total paid per invoice, built once per render from the loaded payments —
+  // powers the Paid / Balance columns without any extra queries.
+  const paidByInvoice = payments.reduce((map, p) => {
+    map.set(p.invoice_id, (map.get(p.invoice_id) || 0) + parseFloat(p.amount || 0));
+    return map;
+  }, new Map());
+
   const handleShowAddInvoice = () => {
     setShowAddInvoice(true);
     setAddInvoicePatientSearch('');
@@ -215,7 +226,11 @@ function BillsPayment() {
   const fmt = (n) => `${currencySymbol}${Number(n).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}`;
 
   if (contextLoading) {
-    return <div className="bills-loading"><span className="bills-spinner" /> Loading currency and clinic environments...</div>;
+    return (
+      <DcThemeProvider>
+        <div className="bills-loading"><span className="bills-spinner" /> Loading currency and clinic environments...</div>
+      </DcThemeProvider>
+    );
   }
 
   const handleDownloadPDF = () => {
@@ -232,6 +247,7 @@ function BillsPayment() {
   };
 
   return (
+    <DcThemeProvider>
     <div className="bills-container">
       {/* Header */}
       <div className="bills-sticky-header no-print">
@@ -244,16 +260,43 @@ function BillsPayment() {
               <span className="bills-stat">{payments.length} <em>processed payments</em></span>
             </div>
           </div>
-          <button className="bills-action-btn" onClick={handleShowAddInvoice}>
-            <Icon d={I.plus} /> Add Invoice
+          {activeTab === 'invoices' && (
+            <button className="bills-action-btn" onClick={handleShowAddInvoice}>
+              <Icon d={I.plus} /> Add Invoice
+            </button>
+          )}
+        </div>
+
+        {/* Tabs Navigation */}
+        <div className="bills-tabs-container">
+          <button
+            className={`bills-tab ${activeTab === 'invoices' ? 'active' : ''}`}
+            onClick={() => setActiveTab('invoices')}
+          >
+            Invoices
+          </button>
+          <button
+            className={`bills-tab ${activeTab === 'aging' ? 'active' : ''}`}
+            onClick={() => setActiveTab('aging')}
+          >
+            Aging Analysis
+          </button>
+          <button
+            className={`bills-tab ${activeTab === 'collections' ? 'active' : ''}`}
+            onClick={() => setActiveTab('collections')}
+          >
+            Collections
           </button>
         </div>
       </div>
 
       {/* Main Body */}
       <div className="bills-body no-print">
-        {tableLoading && <div className="bills-table-loading"><span className="bills-spinner" /> Syncing ledgers...</div>}
+        {tableLoading && activeTab === 'invoices' && <div className="bills-table-loading"><span className="bills-spinner" /> Syncing ledgers...</div>}
 
+        {/* INVOICES TAB */}
+        {activeTab === 'invoices' && (
+        <>
         {/* INVOICES TABLE */}
         <div className="bills-section-card">
           <div className="bills-section-header">
@@ -264,25 +307,30 @@ function BillsPayment() {
           <table className="bills-table bills-invoices-table">
             <thead>
               <tr>
-                <th style={{ width: "80px" }}>ID</th>
+                <th style={{ width: "70px" }}>ID</th>
                 <th>Patient Name</th>
                 <th>Invoice Date</th>
                 <th>Due Date</th>
-                <th style={{ textAlign: "right" }}>Total Bill</th>
-                <th style={{ textAlign: "center", width: "120px" }}>Status</th>
+                <th style={{ textAlign: "right" }}>Total</th>
+                <th style={{ textAlign: "right" }}>Paid</th>
+                <th style={{ textAlign: "right" }}>Balance</th>
+                <th style={{ textAlign: "center", width: "110px" }}>Status</th>
                 <th style={{ textAlign: "right", width: "260px" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="bills-no-data">No recorded clinic invoices discovered.</td>
+                  <td colSpan={9} className="bills-no-data">No recorded clinic invoices discovered.</td>
                 </tr>
               ) : (
                 invoices.map(inv => {
                   const patient = getPatientById(inv.patient_id);
                   const currentStatus = inv.status || 'Unpaid';
                   const isOverdue = inv.due_date && new Date(inv.due_date) < new Date() && currentStatus !== 'Paid';
+                  const paidAmount = paidByInvoice.get(inv.id) || 0;
+                  const balanceDue = Math.max(parseFloat(inv.total || 0) - paidAmount, 0);
+                  const displayStatus = isOverdue ? 'Overdue' : currentStatus;
 
                   return (
                     <tr key={inv.id}>
@@ -293,7 +341,7 @@ function BillsPayment() {
                       </td>
                       <td className="bills-td-date">
                         {inv.due_date ? (
-                          <span style={{ color: isOverdue ? '#dc2626' : 'inherit', fontWeight: isOverdue ? 600 : 400 }}>
+                          <span style={{ color: isOverdue ? 'var(--dc-danger)' : 'inherit', fontWeight: isOverdue ? 600 : 400 }}>
                             {new Date(inv.due_date).toLocaleDateString(currencyLocale, { month: 'short', day: 'numeric', year: 'numeric' })}
                             {isOverdue && ' ⚠'}
                           </span>
@@ -302,8 +350,18 @@ function BillsPayment() {
                       <td style={{ textAlign: "right" }} className="bills-td-price">
                         {fmt(inv.total || 0)}
                       </td>
+                      <td style={{ textAlign: "right" }} className="bills-td-price">
+                        {paidAmount > 0
+                          ? <span style={{ color: 'var(--dc-success)' }}>{fmt(paidAmount)}</span>
+                          : <span style={{ color: 'var(--dc-text-3)', fontWeight: 400 }}>—</span>}
+                      </td>
+                      <td style={{ textAlign: "right" }} className="bills-td-price">
+                        <span style={{ color: balanceDue > 0 ? (isOverdue ? 'var(--dc-danger)' : 'inherit') : 'var(--dc-text-3)' }}>
+                          {fmt(balanceDue)}
+                        </span>
+                      </td>
                       <td style={{ textAlign: "center" }}>
-                        <span className={`bills-status-badge bills-status--${currentStatus.toLowerCase()}`}>{currentStatus}</span>
+                        <span className={`bills-status-badge bills-status--${displayStatus.toLowerCase()}`}>{displayStatus}</span>
                       </td>
                       <td style={{ textAlign: "right" }} className="bills-actions-cell">
                         <button className="bills-table-btn bills-btn-manage" onClick={() => handleManageInvoice(inv)}>
@@ -369,6 +427,30 @@ function BillsPayment() {
             </tbody>
           </table>
         </div>
+        </>
+        )}
+
+        {/* AGING ANALYSIS TAB — computed from the same ledger data above */}
+        {activeTab === 'aging' && (
+          <AgingAnalysis
+            invoices={invoices}
+            payments={payments}
+            patients={patients}
+            fmt={fmt}
+            locale={currencyLocale}
+          />
+        )}
+
+        {/* COLLECTIONS OVERVIEW TAB — computed from the same ledger data above */}
+        {activeTab === 'collections' && (
+          <CollectionsOverview
+            invoices={invoices}
+            payments={payments}
+            fmt={fmt}
+            currencySymbol={currencySymbol}
+            locale={currencyLocale}
+          />
+        )}
       </div>
 
       {/* INVOICE MANAGEMENT MODAL */}
@@ -559,6 +641,7 @@ function BillsPayment() {
         );
       })()}
     </div>
+    </DcThemeProvider>
   );
 }
 

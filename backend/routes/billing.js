@@ -56,12 +56,18 @@ router.get('/invoices', async (req, res) => {
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // Calculate totals for each invoice
+    // Use existing total column, or calculate from items if needed
     const invoicesWithTotals = (data || []).map(inv => {
-      const subtotal = (inv.items || []).reduce((sum, item) => sum + parseFloat(item.line_total || 0), 0);
-      const taxAmount = (inv.items || []).reduce((sum, item) => sum + parseFloat(item.tax_amount || 0), 0);
-      const total = subtotal + taxAmount + parseFloat(inv.adjusted_amount || 0);
-      return { ...inv, subtotal, tax_amount: taxAmount, total };
+      // If invoice.total exists (from existing schema), use it
+      if (inv.total && parseFloat(inv.total) > 0) {
+        return inv;
+      }
+      // Otherwise, calculate from line items (for new invoices)
+      const itemsTotal = (inv.items || []).reduce((sum, item) => sum + parseFloat(item.total || 0), 0);
+      const taxAmount = parseFloat(inv.tax_amount || 0);
+      const adjustedAmount = parseFloat(inv.adjusted_amount || 0);
+      const calculatedTotal = itemsTotal + taxAmount + adjustedAmount;
+      return { ...inv, total: calculatedTotal > 0 ? calculatedTotal : inv.total };
     });
 
     res.json(invoicesWithTotals);
@@ -363,13 +369,18 @@ router.get('/reports/aging', async (req, res) => {
 
     const today = new Date();
 
-    // Get unpaid invoices
-    const { data: invoices } = await supabase
+    // Get unpaid invoices (status filtering happens in JS because stored
+    // statuses are capitalized — 'Paid'/'Unpaid' — and .neq is case-sensitive)
+    const { data: allInvoices } = await supabase
       .from('invoices')
-      .select('id, total, due_date, invoice_number')
+      .select('id, total, due_date, invoice_date, invoice_number, status')
       .eq('clinic_id', clinicId)
-      .neq('status', 'paid')
       .order('due_date');
+
+    const invoices = (allInvoices || []).filter(inv => {
+      const status = String(inv.status || '').toLowerCase();
+      return status !== 'paid' && status !== 'cancelled';
+    });
 
     // Get payments for each invoice
     const { data: payments } = await supabase
@@ -394,7 +405,11 @@ router.get('/reports/aging', async (req, res) => {
       const balanceDue = parseFloat(inv.total) - totalPaid;
       if (balanceDue <= 0) continue;
 
-      const dueDate = new Date(inv.due_date);
+      // Reference date: due date if set, else invoice date. Invoices with no
+      // dates at all are treated as current (never falsely bucketed as 90+).
+      const refDateStr = inv.due_date || inv.invoice_date;
+      if (!refDateStr) { aging.current.push(inv); continue; }
+      const dueDate = new Date(refDateStr);
       const daysPast = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));
 
       if (daysPast <= 0) aging.current.push(inv);
@@ -416,12 +431,15 @@ router.get('/reports/collections', async (req, res) => {
     const clinicId = req.query.clinic_id;
     if (!clinicId) return res.status(400).json({ error: 'Missing clinic_id' });
 
-    // Total invoices
-    const { data: invoices } = await supabase
+    // Total invoices (cancelled filtered in JS — statuses are capitalized)
+    const { data: allInvoices } = await supabase
       .from('invoices')
-      .select('id, total')
-      .eq('clinic_id', clinicId)
-      .neq('status', 'cancelled');
+      .select('id, total, status')
+      .eq('clinic_id', clinicId);
+
+    const invoices = (allInvoices || []).filter(
+      inv => String(inv.status || '').toLowerCase() !== 'cancelled'
+    );
 
     // Total payments
     const { data: payments } = await supabase

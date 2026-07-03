@@ -1,0 +1,466 @@
+/* ==========================================================================
+   BILLING ANALYTICS PANELS — LAYOUT ONLY
+   All cosmetics come from --dc-* theme tokens; this file never hardcodes
+   a color, so every current and future theme restyles these panels for free.
+   ========================================================================== */
+
+.dcb-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dcb-card {
+  background: var(--dc-surface);
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius);
+  overflow: hidden;
+}
+
+.dcb-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--dc-surface-2);
+  border-bottom: 1px solid var(--dc-border);
+  color: var(--dc-text);
+}
+
+.dcb-card-title {
+  margin: 0;
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: var(--dc-text);
+}
+
+.dcb-card-sub {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--dc-text-3);
+}
+
+.dcb-card-body {
+  padding: 20px;
+}
+
+/* ---------- KPI cards ---------- */
+
+.dcb-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.dcb-kpi {
+  background: var(--dc-surface);
+  border: 1px solid var(--dc-border);
+  border-left: 3px solid var(--tone, var(--dc-accent));
+  border-radius: var(--dc-radius);
+  padding: 16px 18px;
+}
+
+.dcb-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dcb-kpi-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--dc-text-3);
+}
+
+.dcb-kpi-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--tone-soft, var(--dc-accent-soft));
+  color: var(--tone, var(--dc-accent));
+}
+
+.dcb-kpi-value {
+  margin-top: 10px;
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--dc-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.3px;
+  word-break: break-word;
+}
+
+.dcb-kpi-sub {
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: var(--dc-text-3);
+}
+
+/* ---------- Aging buckets ---------- */
+
+.dcb-buckets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dcb-bucket {
+  text-align: left;
+  cursor: pointer;
+  background: var(--dc-surface);
+  border: 1px solid var(--dc-border);
+  border-left: 3px solid var(--tone, var(--dc-accent));
+  border-radius: var(--dc-radius);
+  padding: 13px 14px;
+  font-family: inherit;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.dcb-bucket:hover {
+  transform: translateY(-2px);
+  border-color: var(--dc-border-strong);
+  border-left-color: var(--tone, var(--dc-accent));
+}
+
+.dcb-bucket.selected {
+  background: var(--tone-soft, var(--dc-accent-soft));
+  border-color: var(--tone, var(--dc-accent));
+}
+
+.dcb-bucket-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--tone, var(--dc-text-2));
+}
+
+.dcb-bucket-amount {
+  margin-top: 8px;
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: var(--dc-text);
+  font-variant-numeric: tabular-nums;
+  word-break: break-word;
+}
+
+.dcb-bucket-count {
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--dc-text-3);
+}
+
+/* ---------- Proportional stacked bar ---------- */
+
+.dcb-stackbar {
+  display: flex;
+  height: 10px;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: var(--dc-surface-2);
+  margin: 18px 0 6px 0;
+}
+
+.dcb-stackbar-seg {
+  height: 100%;
+  min-width: 0;
+  transition: width 0.4s ease;
+}
+
+/* ---------- Detail table helpers (reuses .bills-table) ---------- */
+
+.dcb-table-scroll {
+  max-height: 430px;
+  overflow: auto;
+}
+
+/* Headers stay visible while scrolling the outstanding-invoices list */
+.dcb-table-scroll .bills-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dcb-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  background: var(--tone-soft, var(--dc-surface-2));
+  color: var(--tone, var(--dc-text-2));
+  white-space: nowrap;
+}
+
+.dcb-filter-note {
+  font-size: 0.78rem;
+  color: var(--dc-text-3);
+}
+
+.dcb-link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--dc-accent);
+  cursor: pointer;
+}
+
+.dcb-link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Monthly bars ---------- */
+
+.dcb-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  height: 200px;
+  padding-top: 20px;
+}
+
+.dcb-bar-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.dcb-bar-pair {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  border-bottom: 1px solid var(--dc-border);
+  padding-bottom: 0;
+}
+
+.dcb-bar {
+  width: 20px;
+  max-width: 34%;
+  min-height: 2px;
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  transition: height 0.45s ease;
+}
+
+.dcb-bar-val {
+  position: absolute;
+  top: -17px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.62rem;
+  color: var(--dc-text-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.dcb-bar-month {
+  font-size: 0.74rem;
+  color: var(--dc-text-3);
+}
+
+.dcb-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.dcb-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--dc-text-2);
+}
+
+.dcb-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ---------- Donut ---------- */
+
+.dcb-donut-row {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.dcb-donut-figure {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  flex-shrink: 0;
+}
+
+.dcb-donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+
+.dcb-donut-center-value {
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--dc-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dcb-donut-center-label {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dc-text-3);
+}
+
+.dcb-donut-legend {
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dcb-donut-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--dc-text-2);
+}
+
+.dcb-donut-legend-amount {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--dc-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dcb-donut-legend-pct {
+  width: 48px;
+  text-align: right;
+  color: var(--dc-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Collection rate progress ---------- */
+
+.dcb-progress-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.dcb-progress-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--dc-text-2);
+}
+
+.dcb-progress-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--dc-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.dcb-progress {
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--dc-surface-2);
+  overflow: hidden;
+}
+
+.dcb-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--dc-accent), var(--dc-info));
+  transition: width 0.5s ease;
+}
+
+.dcb-progress-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 0.78rem;
+  color: var(--dc-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Two-column layout ---------- */
+
+.dcb-two-col {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 20px;
+}
+
+/* ---------- Empty state ---------- */
+
+.dcb-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--dc-text-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.dcb-empty-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--dc-text-2);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 980px) {
+  .dcb-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dcb-buckets {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .dcb-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .dcb-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .dcb-buckets {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dcb-bars {
+    gap: 8px;
+  }
+}
