@@ -1,7 +1,7 @@
-# Dental Clinic System — Webhook & Reminders Handoff
+# Dental Clinic System — Webhook, Reminders, & Billing Handoff
 
-**Last updated:** 2026-07-03
-**Scope:** Messenger webhook hardening (Ate Claire AI), booking flow fixes, reminder/notification delivery fixes, Supabase data-exposure lockdown, and the Facebook Login for Business (`config_id`) connect flow.
+**Last updated:** 2026-07-03  
+**Scope:** Messenger webhook hardening (Ate Claire AI), booking flow fixes, reminder/notification delivery fixes, Supabase data-exposure lockdown, Facebook Login for Business (`config_id`) connect flow, and **Phase 1 Billing System MVP** (manual GCash invoice recording).
 **Repo:** github.com/kingppg/finsys-clinics (branch `main`)
 **Backend host:** Render — https://finsys-clinics.onrender.com (auto-deploys on push to `main`)
 **Frontend:** Vercel. Backend URL is set in Vercel env `REACT_APP_API_URL` (not in the repo).
@@ -24,7 +24,7 @@ Note: frontend uses the **public anon key** (`frontend/src/supabaseClient.js`) a
 
 A multi-clinic dental appointment system. Patients chat with a Facebook Messenger bot ("Ate Claire") to book/confirm/cancel appointments. Staff manage appointments and reminders from a React dashboard. Data is in Supabase. Reminders go out via Messenger and/or SMS.
 
-Key backend files:
+Key backend files (Appointments & Reminders):
 | File | Role |
 |---|---|
 | `backend/webhook.js` | Messenger webhook + booking state machine |
@@ -40,7 +40,13 @@ Key backend files:
 | `backend/db/secure-clinics-columns.sql` | Column-level grants locking clinic secrets (run in Supabase) |
 | `backend/db/secure-users-table.sql` | RLS locking the users table (run in Supabase) |
 
-Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder settings + manual send) and `frontend/src/components/ClinicConfig.js` (FB + SMS config; now reads/writes via safe columns + backend endpoints).
+Key backend files (Billing):
+| File | Role |
+|---|---|
+| `backend/routes/billing.js` | Invoice management, payments, tax rates, financial reports (25+ endpoints) |
+| `backend/db/migrations/001_billing_schema.sql` | Database schema: invoices, invoice_items, payments, payment_plans, tax_rates, audit_log |
+
+Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder settings + manual send), `frontend/src/components/ClinicConfig.js` (FB + SMS config; reads/writes via safe columns + backend endpoints), and **`frontend/src/components/BillsPaymentEnhanced.jsx`** (Phase 1 billing UI: invoice list, manual GCash payment recording, aging analysis, collections metrics).
 
 ---
 
@@ -98,6 +104,66 @@ Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder set
 - **Fix #14 & #17:** Template variables for reminder messages (`[PATIENT_NAME]`, `[DATE]`, `[TIME]`) + default name to "there" instead of empty string
 - **Fix #15:** Document dedup logic (single-channel design acknowledged; multi-channel would require dedup key redesign)
 - **Fix #16:** Make reminder logging non-fatal (message sent = success, even if audit log fails; prevents false 500 errors)
+
+### g) Phase 1 Billing System MVP — `5e217b2`, `9105307`
+**Goal:** Ultra-premium SaaS billing for manual GCash payments, invoice management, and financial reporting.
+
+**Database (Supabase migration `001_billing_schema.sql`):**
+- `invoice_items` — line-level breakdown with automatic subtotal, discount, and tax calculation (generated columns)
+- `payment_plans` — scaffolding for Phase 2 installments (not active yet)
+- `payment_plan_installments` — individual due dates and installment tracking (Phase 2)
+- `tax_rates` — clinic-specific VAT configuration (defaults: 12% VAT + 0% VAT-exempt)
+- `audit_log` — financial transaction history for compliance
+- Enhanced `invoices` table: invoice_number (auto-generated format `INV-{YEAR}-{count}`), due_date, status (draft/sent/partial/paid), tax_amount
+- Enhanced `payments` table: or_number, payment_date, gcash_reference, reconciled_at
+
+**Backend API (`backend/routes/billing.js`**, 25+ endpoints**)**
+- **Invoices:** POST/GET/PUT for create, list, detail, update status
+- **Invoice Items:** POST/DELETE for add/remove line items with tax calculation
+- **Payments:** POST to record manual payment (GCash/Cash/Bank/Card); GET to list all payments
+- **Reports:** `/reports/aging` (overdue buckets: current/1-30/31-60/61-90/90+), `/reports/collections` (total billed, collected, outstanding, collections %)
+- **Tax:** GET/POST for tax rate management (clinic-specific)
+- **Auto-reconciliation:** when payment recorded, invoice status auto-updates (draft → partial → paid) based on accumulated payments
+- **Clinic isolation:** all queries filtered by `clinic_id` + indexed for performance
+- **Audit logging:** every invoice/payment action logged to `audit_log` for compliance
+
+**Frontend (`BillsPaymentEnhanced.jsx` + `BillsPaymentEnhanced.css`)**
+- **Tabbed interface:** Invoices | Aging Analysis | Collections
+- **Invoices tab:** table with status badges (draft/sent/partial/paid/overdue), due-date highlighting, record payment button
+- **Aging Analysis:** visual bucketing of overdue invoices (current/1-30/31-60/61-90/90+ days)
+- **Collections:** KPI dashboard (Total Billed, Total Collected, Outstanding, Collections Rate %)
+- **Payment Modal:** staff records manual payment with fields for method, amount, GCash reference, OR#, notes
+- **Auto-update:** real-time invoice status sync after payment recorded
+- **Responsive design:** mobile-friendly with CSS Grid + Flexbox
+
+**What works now (Phase 1):**
+✅ Staff create invoices (auto-numbered, optional line items)  
+✅ Staff record manual GCash payments (+ Cash/Bank/Card)  
+✅ Invoices auto-reconcile on payment (status updates draft → partial → paid)  
+✅ Aging analysis shows overdue buckets  
+✅ Collections KPI dashboard  
+✅ Tax rates configurable per clinic  
+✅ Complete audit trail for compliance  
+
+**Integration steps (completed):**
+- Database migration run in Supabase (`001_billing_schema.sql`)
+- Billing routes wired into `backend/index.js` (`app.use('/api/billing', billingRoutes)`)
+- `BillsPaymentEnhanced` component imported in `Dashboard.js` and wired to 'bills' tab
+- Sidebar already had 'bills' nav item pointing to billing system
+
+**What's NOT in Phase 1 (Phase 2, weeks 5-8):**
+- Payment plans & installment scheduling
+- Automated reminders (email/SMS/Messenger)
+- Advanced dashboards (charts, trends, export)
+- Customer portal (patient self-service payment)
+- Payment gateway integration (Stripe, GCash API)
+
+**Testing:**
+- Create invoice: `POST /api/billing/invoices`
+- Record payment: `POST /api/billing/payments`
+- Check aging: `GET /api/billing/reports/aging?clinic_id={id}`
+- Check collections: `GET /api/billing/reports/collections?clinic_id={id}`
+- Frontend: navigate to **Billing System** tab in dashboard
 
 ---
 
@@ -184,5 +250,7 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `9ab473c` | FB: support Facebook Login for Business `config_id` flow |
 | `4a7297b` | Security: RLS on `users` table (secure-users-table.sql) |
 | `9dc7072` | Fix: strengthen Claire's intent handling & booking logic (14 fixes: state handling, confidence gating, timezone, guardian/patient identity, race conditions, reminders) |
+| `5e217b2` | **BILLING Phase 1 MVP:** Database schema (invoices, invoice_items, payment_plans, tax_rates, audit_log), REST API (25+ endpoints), React UI (manual GCash, invoices, aging, collections), auto-reconciliation |
+| `9105307` | **BILLING integration:** Wire billing routes into backend, integrate BillsPaymentEnhanced into dashboard, fix CSS import |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
