@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
-import Odontogram from './Odontogram';   // ← NEW
+import Odontogram from './odontogram/Odontogram';   // premium full-mouth chart (TS)
 import './Patients.css';
 import './MainSection.css';
 
@@ -118,7 +118,7 @@ function Patients({ setModalContent, clinicId }) {
           <div
             className="modal patients-modal"
             onClick={e => e.stopPropagation()}
-            style={{ maxWidth: 720, width: '95vw' }}
+            style={{ maxWidth: 880, width: '95vw' }}
           >
             {/* ── Header ── */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 4 }}>

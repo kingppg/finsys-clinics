@@ -1,0 +1,466 @@
+/* ==========================================================================
+   ODONTOGRAM — LAYOUT ONLY
+   All cosmetics come from --dc-* theme tokens (Dark Executive today; any
+   future theme restyles this chart for free). No hardcoded colors except
+   via tokens/fallbacks — condition colors are data, injected inline.
+   ========================================================================== */
+
+.odo-root {
+  background: var(--dc-bg, #0B1120);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  padding: 18px;
+  color: var(--dc-text, #EDF2FA);
+  font-family: var(--dc-font, 'Inter', sans-serif);
+}
+
+.odo-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--dc-text-3, #6E7E98);
+}
+
+/* ---------- Condition palette ---------- */
+
+.odo-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.odo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  background: transparent;
+  color: var(--dc-text-2, #A9B7CE);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.odo-chip:hover {
+  border-color: var(--tone);
+  color: var(--dc-text, #EDF2FA);
+}
+
+.odo-chip.active {
+  background: var(--tone-soft);
+  border-color: var(--tone);
+  color: var(--dc-text, #EDF2FA);
+  box-shadow: 0 0 10px var(--tone-soft);
+}
+
+.odo-chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tone);
+  flex-shrink: 0;
+}
+
+.odo-chip-count {
+  background: var(--tone);
+  color: var(--dc-bg, #0B1120);
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0 5px;
+}
+
+/* ---------- Chart ---------- */
+
+.odo-chart-wrap {
+  position: relative;
+  background:
+    radial-gradient(ellipse at center, var(--dc-surface, #131C2E) 0%, var(--dc-bg, #0B1120) 78%);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  overflow: hidden;
+}
+
+.odo-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.odo-tooth {
+  cursor: pointer;
+}
+
+.odo-silhouette {
+  fill: var(--dc-surface-2, #1A2438);
+  stroke: var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  stroke-width: 1;
+  transition: fill 0.15s, stroke 0.15s;
+}
+
+.odo-tooth--hover .odo-silhouette {
+  stroke: var(--dc-accent, #2DD4BF);
+  stroke-width: 1.6;
+}
+
+.odo-sector {
+  fill: rgba(148, 163, 184, 0.06);
+  stroke: var(--dc-border, rgba(148, 163, 184, 0.16));
+  stroke-width: 0.8;
+  cursor: pointer;
+  transition: fill 0.12s;
+}
+
+.odo-sector:hover {
+  fill: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+  stroke: var(--dc-accent, #2DD4BF);
+}
+
+.odo-tooth-num {
+  fill: var(--dc-text-3, #6E7E98);
+  font-size: 11px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+  font-family: var(--dc-font, 'Inter', sans-serif);
+}
+
+.odo-tooth-num--dim {
+  opacity: 0.5;
+}
+
+.odo-tooth--hover .odo-tooth-num {
+  fill: var(--dc-accent, #2DD4BF);
+}
+
+.odo-missing-ghost {
+  fill: rgba(100, 116, 139, 0.08);
+  stroke: var(--dc-text-3, #6E7E98);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.odo-missing-x {
+  stroke: var(--dc-text-3, #6E7E98);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.odo-mark {
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.odo-mark--thin {
+  stroke-width: 1.6;
+}
+
+.odo-mark-ring {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-dasharray: 4 3;
+  pointer-events: none;
+}
+
+/* ---------- Center live panel ---------- */
+
+.odo-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 42%;
+  max-width: 300px;
+  text-align: center;
+  pointer-events: none;
+  padding: 12px;
+}
+
+.odo-center-num {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--dc-accent, #2DD4BF);
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.odo-center-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--dc-text, #EDF2FA);
+  margin-top: 2px;
+}
+
+.odo-center-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--dc-text-2, #A9B7CE);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.odo-center-clear {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--dc-success, #4ADE80);
+}
+
+.odo-center-stat {
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--dc-text-2, #A9B7CE);
+}
+
+.odo-center-stat strong {
+  color: var(--dc-accent, #2DD4BF);
+  font-size: 1.1rem;
+}
+
+.odo-center-stat--dim {
+  color: var(--dc-text-3, #6E7E98);
+  font-size: 0.78rem;
+}
+
+.odo-center-hint {
+  margin-top: 10px;
+  font-size: 0.68rem;
+  color: var(--dc-text-3, #6E7E98);
+  line-height: 1.5;
+}
+
+/* ---------- Quadrant labels ---------- */
+
+.odo-quad {
+  position: absolute;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--dc-text-3, #6E7E98);
+  opacity: 0.7;
+}
+
+.odo-quad--tl { top: 10px; left: 14px; }
+.odo-quad--tr { top: 10px; right: 14px; }
+.odo-quad--bl { bottom: 10px; left: 14px; }
+.odo-quad--br { bottom: 10px; right: 14px; }
+
+/* ---------- Surface key ---------- */
+
+.odo-surface-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 9px 14px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: 8px;
+  background: var(--dc-surface, #131C2E);
+  font-size: 0.75rem;
+  color: var(--dc-text-3, #6E7E98);
+}
+
+.odo-surface-key strong {
+  color: var(--dc-text-2, #A9B7CE);
+}
+
+.odo-surface-note {
+  margin-left: auto;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+/* ---------- Notes ---------- */
+
+.odo-notes {
+  margin-top: 12px;
+}
+
+.odo-notes label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--dc-text-2, #A9B7CE);
+  margin-bottom: 5px;
+}
+
+.odo-notes textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--dc-surface-2, #1A2438);
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: 8px;
+  color: var(--dc-text, #EDF2FA);
+  font-family: inherit;
+  font-size: 0.85rem;
+  padding: 9px 12px;
+  resize: vertical;
+}
+
+.odo-notes textarea::placeholder {
+  color: var(--dc-text-3, #6E7E98);
+}
+
+.odo-notes textarea:focus {
+  outline: none;
+  border-color: var(--dc-accent, #2DD4BF);
+  box-shadow: 0 0 0 3px var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+}
+
+/* ---------- Actions ---------- */
+
+.odo-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.odo-btn-save {
+  background: var(--dc-accent, #2DD4BF);
+  color: var(--dc-accent-contrast, #06201C);
+  border: none;
+  border-radius: 8px;
+  padding: 9px 22px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.odo-btn-save:hover:not(:disabled) {
+  background: var(--dc-accent-hover, #14B8A6);
+}
+
+.odo-btn-save:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.odo-btn-ghost {
+  background: transparent;
+  color: var(--dc-text-2, #A9B7CE);
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.odo-btn-ghost:hover:not(:disabled) {
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text, #EDF2FA);
+}
+
+.odo-btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.odo-btn-danger {
+  background: transparent;
+  color: var(--dc-danger, #F87171);
+  border: 1px solid var(--dc-danger, #F87171);
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.odo-btn-danger:hover {
+  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14));
+}
+
+.odo-btn-danger--solid {
+  background: var(--dc-danger, #F87171);
+  color: var(--dc-bg, #0B1120);
+}
+
+.odo-status {
+  font-size: 0.78rem;
+  color: var(--dc-text-3, #6E7E98);
+  margin-left: auto;
+}
+
+.odo-status--ok { color: var(--dc-success, #4ADE80); font-weight: 600; }
+.odo-status--err { color: var(--dc-danger, #F87171); font-weight: 600; }
+.odo-status--warn { color: var(--dc-warning, #FBBF24); font-weight: 600; }
+
+/* ---------- Clear-confirm modal ---------- */
+
+.odo-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(2, 8, 20, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.odo-modal {
+  background: var(--dc-surface, #131C2E);
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: 14px;
+  padding: 26px 28px;
+  max-width: 400px;
+  width: 90%;
+  color: var(--dc-text, #EDF2FA);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.odo-modal h3 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.odo-modal p {
+  margin: 0 0 20px;
+  font-size: 0.85rem;
+  color: var(--dc-text-2, #A9B7CE);
+  line-height: 1.6;
+}
+
+.odo-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 640px) {
+  .odo-root {
+    padding: 12px;
+  }
+  .odo-center-hint {
+    display: none;
+  }
+  .odo-surface-note {
+    display: none;
+  }
+}
