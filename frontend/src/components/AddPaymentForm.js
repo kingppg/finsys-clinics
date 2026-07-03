@@ -2,24 +2,37 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import Swal from 'sweetalert2';
 
-// Payment methods offered by the clinic. GCash and Cash are the day-to-day
-// channels; the reference field adapts its label to the selected method.
+// POS-style payment entry: giant amount readout, on-screen numpad, big
+// tender buttons. Optimized for fast, error-free front-desk use — the
+// insert payload is unchanged (DB triggers own totals/status).
+
 const METHOD_OPTIONS = [
   { value: 'cash', label: 'Cash' },
   { value: 'gcash', label: 'GCash' },
-  { value: 'bank', label: 'Bank Transfer' },
+  { value: 'bank', label: 'Bank' },
   { value: 'card', label: 'Card' },
-  { value: 'e-wallet', label: 'E-Wallet (Other)' },
+  { value: 'e-wallet', label: 'E-Wallet' },
 ];
 
 const REFERENCE_LABELS = {
-  gcash: 'GCash Reference No.',
-  bank: 'Bank Reference No.',
-  card: 'Card Transaction Ref.',
-  'e-wallet': 'Wallet Reference No.',
+  gcash: 'GCash Ref No.',
+  bank: 'Bank Ref No.',
+  card: 'Card Txn Ref.',
+  'e-wallet': 'Wallet Ref No.',
 };
 
-function AddPaymentForm({ invoice, clinicId, currencySymbol = '₱', currencyLocale = 'en-PH', onClose, onPaymentAdded }) {
+const NUMPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
+
+function AddPaymentForm({
+  invoice,
+  clinicId,
+  currencySymbol = '₱',
+  currencyLocale = 'en-PH',
+  balanceDue,
+  patientName,
+  onClose,
+  onPaymentAdded,
+}) {
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('cash');
   const [orNumber, setOrNumber] = useState('');
@@ -29,11 +42,44 @@ function AddPaymentForm({ invoice, clinicId, currencySymbol = '₱', currencyLoc
 
   const fmt = (n) => `${currencySymbol}${Number(n).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}`;
   const referenceLabel = REFERENCE_LABELS[method] || 'Reference # (optional)';
+  const methodLabel = (METHOD_OPTIONS.find(m => m.value === method) || METHOD_OPTIONS[0]).label;
 
-  const handleSubmit = async e => {
+  const amountNum = parseFloat(amount) || 0;
+  const hasBalance = typeof balanceDue === 'number' && isFinite(balanceDue);
+  const remaining = hasBalance ? Math.max(balanceDue - amountNum, 0) : null;
+  const overpay = hasBalance && balanceDue > 0 && amountNum > balanceDue + 0.004;
+
+  // Numpad key press — keeps the value a clean money string (max 2 decimals)
+  const pressKey = (key) => {
+    setAmount(prev => {
+      if (key === '⌫') return prev.slice(0, -1);
+      if (key === '.') {
+        if (prev.includes('.')) return prev;
+        return prev === '' ? '0.' : prev + '.';
+      }
+      const next = prev + key;
+      const decimals = next.split('.')[1];
+      if (decimals && decimals.length > 2) return prev;
+      if (next.replace('.', '').length > 9) return prev;
+      return next.replace(/^0+(?=\d)/, '');
+    });
+  };
+
+  // Direct keyboard typing — sanitize to digits + one dot, 2 decimals
+  const handleAmountChange = (e) => {
+    let val = e.target.value.replace(/[^\d.]/g, '');
+    const firstDot = val.indexOf('.');
+    if (firstDot !== -1) {
+      val = val.slice(0, firstDot + 1) + val.slice(firstDot + 1).replace(/\./g, '');
+      const [whole, dec] = val.split('.');
+      val = whole + '.' + (dec || '').slice(0, 2);
+    }
+    setAmount(val);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const numericAmount = parseFloat(amount);
-    if (!numericAmount || numericAmount <= 0) {
+    if (!amountNum || amountNum <= 0) {
       Swal.fire({ title: 'Invalid amount', text: 'Please enter a valid payment amount.', icon: 'warning' });
       return;
     }
@@ -42,12 +88,12 @@ function AddPaymentForm({ invoice, clinicId, currencySymbol = '₱', currencyLoc
     const payment = {
       patient_id: invoice.patient_id,
       invoice_id: invoice.id,
-      amount: numericAmount,
+      amount: amountNum,
       method,
       or_number: orNumber.trim() || null,
       reference_number: referenceNumber.trim() || null,
       notes: notes.trim() || null,
-      clinic_id: clinicId
+      clinic_id: clinicId,
     };
 
     const { data, error } = await supabase
@@ -66,80 +112,125 @@ function AddPaymentForm({ invoice, clinicId, currencySymbol = '₱', currencyLoc
 
   return (
     <div className="bills-modal-overlay no-print" onClick={onClose}>
-      <form className="bills-modal-form" autoComplete="off" onSubmit={handleSubmit} onClick={e => e.stopPropagation()}>
-        <div className="bills-modal-header">
-          <h3>Record Payment</h3>
-        </div>
-        <p className="bills-modal-sub">
-          Invoice #{invoice.id} · Total {fmt(invoice.total || 0)}
-        </p>
+      <form className="pos-modal" autoComplete="off" onSubmit={handleSubmit} onClick={e => e.stopPropagation()}>
 
-        <div className="bills-modal-row">
-          <label>Payment Method</label>
-          <select
-            className="bills-modal-input"
-            value={method}
-            onChange={e => setMethod(e.target.value)}
-          >
-            {METHOD_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </select>
+        {/* Header: who & what, with balance due as the anchor number */}
+        <div className="pos-header">
+          <div>
+            <h3 className="pos-title">Record Payment</h3>
+            <p className="pos-sub">
+              Invoice #{invoice.id}{patientName ? ` · ${patientName}` : ''}
+            </p>
+          </div>
+          {hasBalance && (
+            <div className="pos-balance">
+              <span className="pos-balance-label">Balance Due</span>
+              <span className="pos-balance-value">{fmt(balanceDue)}</span>
+            </div>
+          )}
         </div>
 
-        <div className="bills-modal-row">
-          <label>Amount ({currencySymbol})</label>
+        {/* Giant amount readout */}
+        <div className="pos-amount-wrap">
+          <span className="pos-amount-symbol">{currencySymbol}</span>
           <input
-            className="bills-modal-input"
-            type="number"
-            step="0.01"
-            min="0"
+            className="pos-amount-input"
+            type="text"
+            inputMode="decimal"
             placeholder="0.00"
             value={amount}
-            onChange={e => setAmount(e.target.value)}
-            onFocus={e => e.target.select()}
-            required
+            onChange={handleAmountChange}
             autoFocus
           />
         </div>
-
-        <div className="bills-modal-row">
-          <label>Official Receipt (OR) #</label>
-          <input
-            className="bills-modal-input"
-            type="text"
-            placeholder="e.g., OR-2026-0001 (optional)"
-            value={orNumber}
-            onChange={e => setOrNumber(e.target.value)}
-          />
+        <div className="pos-amount-meta">
+          {overpay ? (
+            <span className="pos-warn">Overpayment: {fmt(amountNum - balanceDue)} above balance</span>
+          ) : remaining !== null ? (
+            <span>Remaining after payment: <strong>{fmt(remaining)}</strong></span>
+          ) : null}
         </div>
 
-        <div className="bills-modal-row">
-          <label>{referenceLabel}</label>
-          <input
-            className="bills-modal-input"
-            type="text"
-            placeholder={method === 'gcash' ? 'e.g., 1234 567 890123' : 'Optional'}
-            value={referenceNumber}
-            onChange={e => setReferenceNumber(e.target.value)}
-          />
+        {/* Quick tender */}
+        <div className="pos-quick-row">
+          {hasBalance && balanceDue > 0 && (
+            <button type="button" className="pos-quick-btn" onClick={() => setAmount(balanceDue.toFixed(2))}>
+              Exact · {fmt(balanceDue)}
+            </button>
+          )}
+          <button type="button" className="pos-quick-btn pos-quick-clear" onClick={() => setAmount('')}>
+            Clear
+          </button>
         </div>
 
-        <div className="bills-modal-row">
-          <label>Notes</label>
-          <textarea
-            className="bills-modal-input"
-            rows={2}
-            placeholder="Optional notes..."
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-          />
+        {/* Numpad + payment method */}
+        <div className="pos-grid">
+          <div className="pos-numpad">
+            {NUMPAD_KEYS.map(key => (
+              <button type="button" key={key} className="pos-key" onClick={() => pressKey(key)}>
+                {key}
+              </button>
+            ))}
+          </div>
+          <div className="pos-methods">
+            {METHOD_OPTIONS.map(m => (
+              <button
+                type="button"
+                key={m.value}
+                className={`pos-method${method === m.value ? ' active' : ''}`}
+                onClick={() => setMethod(m.value)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="bills-modal-footer">
-          <button type="button" className="bills-btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" className="bills-btn-confirm" disabled={loading}>
-            {loading ? <span className="bills-spinner-small" /> : 'Record Payment'}
+        {/* Compact detail fields */}
+        <div className="pos-fields">
+          <div className="pos-field">
+            <label>Official Receipt (OR) #</label>
+            <input
+              className="bills-modal-input"
+              type="text"
+              placeholder="Optional"
+              value={orNumber}
+              onChange={e => setOrNumber(e.target.value)}
+            />
+          </div>
+          <div className="pos-field">
+            <label>{referenceLabel}</label>
+            <input
+              className="bills-modal-input"
+              type="text"
+              placeholder={method === 'gcash' ? 'e.g., 1234 567 890123' : 'Optional'}
+              value={referenceNumber}
+              onChange={e => setReferenceNumber(e.target.value)}
+            />
+          </div>
+          <div className="pos-field pos-field-full">
+            <label>Notes</label>
+            <input
+              className="bills-modal-input"
+              type="text"
+              placeholder="Optional notes..."
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Big confirm */}
+        <div className="pos-footer">
+          <button type="button" className="bills-btn-ghost pos-cancel" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="pos-confirm" disabled={loading || amountNum <= 0}>
+            {loading
+              ? <span className="bills-spinner-small" />
+              : amountNum > 0
+                ? `Record ${fmt(amountNum)} · ${methodLabel}`
+                : 'Record Payment'}
           </button>
         </div>
       </form>

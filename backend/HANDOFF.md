@@ -124,7 +124,9 @@ Frontend: `frontend/src/components/AppointmentReminderControl.jsx` (reminder set
 - Migration `backend/db/migrations/001_billing_schema.sql` was run in Supabase: it added columns to `invoices` (invoice_number, subtotal, tax_amount, adjusted_amount, gcash_reference…) and `payments` (or_number, payment_date, gcash_reference, reconciled_at), and created `payment_plans`, `payment_plan_installments`, `tax_rates`, `audit_log` (all currently unused scaffolding). Its `CREATE TABLE IF NOT EXISTS invoice_items` was skipped (table existed).
 - `backend/routes/billing.js` REST API is mounted at `/api/billing` but **the UI does not depend on it** (frontend reads Supabase directly, same as the rest of the app). Fixed there anyway: case-sensitive status filters (`.neq('status','paid')` never matched `'Paid'`) and null due_date being bucketed as 90+ days overdue.
 
-**Deferred / future:** theme picker in Clinic Config; additional themes; prune unused deps (highcharts — commercial license, shadcn-ui npm package, recharts, tailwind); Playwright E2E.
+**Deferred / future:** invoices table search + status filters + sortable columns + pagination + totals footer (**agreed next iteration** — significant at scale); void/cancel invoice action (₱0.00 junk rows exist: #139/#132/#127); theme picker in Clinic Config; additional themes; prune unused deps (highcharts — commercial license, shadcn-ui npm package, recharts, tailwind); Playwright E2E.
+
+**Payment modal (post-deploy addition):** `AddPaymentForm.js` is now POS-style — giant amount readout, on-screen numpad, big method buttons, "Exact" tender button (fills balance due, passed from parent via `balanceDue` prop), live remaining/overpayment readout. Insert payload unchanged.
 
 ---
 

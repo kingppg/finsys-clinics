@@ -470,13 +470,15 @@ function BillsPayment() {
         />
       )}
 
-      {/* ADD PAYMENT FORM */}
-      {showAddPayment && (
+      {/* ADD PAYMENT FORM (POS-style) */}
+      {showAddPayment && selectedInvoice && (
         <AddPaymentForm
           invoice={selectedInvoice}
           clinicId={clinicId}
           currencySymbol={currencySymbol}
           currencyLocale={currencyLocale}
+          balanceDue={Math.max(parseFloat(selectedInvoice.total || 0) - (paidByInvoice.get(selectedInvoice.id) || 0), 0)}
+          patientName={getPatientById(selectedInvoice.patient_id)?.name || `Patient #${selectedInvoice.patient_id}`}
           onClose={() => setShowAddPayment(false)}
           onPaymentAdded={handlePaymentAdded}
         />
