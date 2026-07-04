@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Patients from './Patients';
 import Dentists from './Dentists';
@@ -17,6 +17,19 @@ function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [modalContent, setModalContent] = useState(null);
   const [calendarJumpDate, setCalendarJumpDate] = useState(null);
+  // Collapsible sidebar — remembers the user's choice; defaults collapsed on
+  // tablet/narrow widths the first time.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('dc-sidebar-collapsed');
+      if (saved !== null) return saved === '1';
+      return window.innerWidth < 1024;
+    } catch { return false; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem('dc-sidebar-collapsed', collapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [collapsed]);
+  const SIDEBAR_W = collapsed ? '74px' : '240px';
 
   const allowedTabs = ['dashboard', 'patients', 'appointments', 'bills', 'chat', 'queue'];
 
@@ -46,7 +59,7 @@ function Dashboard({ user, onLogout }) {
   return (
     <DcThemeRoot>
     <ClinicProvider clinicId={user.clinic_id}>
-      <div style={{ display: 'flex', height: '100vh' }}>
+      <div style={{ display: 'flex', height: '100vh', '--dc-sidebar-w': SIDEBAR_W }}>
         <Sidebar
           active={activeTab}
           onSelect={handleTabSelect}
@@ -54,16 +67,19 @@ function Dashboard({ user, onLogout }) {
           user={user}
           onLogout={onLogout}
           clinicName={clinicName}
+          collapsed={collapsed}
+          onToggle={() => setCollapsed(c => !c)}
         />
         <main
           className="dc-viewport"
           style={{
-            marginLeft: 240,
+            marginLeft: 'var(--dc-sidebar-w, 240px)',
             padding: '8px 32px',
             flex: 1,
             minHeight: '100vh',
             boxSizing: 'border-box', // padding inside the 100vh — else main is 100vh+16px and the page always scrolls
             position: 'relative',
+            transition: 'margin-left 0.2s ease',
           }}
         >
           {activeTab === 'dashboard' && (

@@ -21,20 +21,16 @@ const Modal = ({ open, onClose, children }) => {
   return (
     <div style={{
       position: 'fixed',
-      top: 0, left: 0, right: 0, bottom: 0,
+      top: 0, left: 'var(--dc-sidebar-w, 240px)', right: 0, bottom: 0,
       background: 'rgba(2, 6, 17, 0.6)',
       zIndex: 9999,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      paddingLeft: '80px', // adjust this to match the width of your dashboard side nav
-      paddingRight: '18px',
-      paddingTop: '32px',
-      paddingBottom: '32px',
+      padding: '32px 24px', // centered within the content area (right of the sidebar)
       boxSizing: 'border-box',
-      width: '100vw',
-      minHeight: '100vh',
-      overflow: 'hidden' // <-- Remove scroll on modal
+      overflow: 'hidden',
+      transition: 'left 0.2s ease'
     }}>
       <div
         style={{
@@ -45,7 +41,7 @@ const Modal = ({ open, onClose, children }) => {
           padding: '38px 40px 36px 40px',
           width: '100%',
           maxWidth: '1700px',
-          minWidth: '900px',
+          minWidth: 0,
           boxShadow: 'var(--dc-shadow, 0 8px 32px #0002)',
           position: 'relative',
           maxHeight: '86vh',

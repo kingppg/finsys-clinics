@@ -7,7 +7,7 @@
    ========================================================================== */
 
 .sidebar {
-  width: 240px;
+  width: var(--dc-sidebar-w, 240px);
   background: linear-gradient(180deg, var(--dc-nav-from, #0d253f) 0%, var(--dc-nav-to, #24406e) 100%);
   color: var(--dc-text, #fff);
   min-height: 100vh;
@@ -18,11 +18,12 @@
   left: 0;
   top: 0;
   z-index: 100;
-  transition: width 0.2s;
+  transition: width 0.2s ease;
   box-shadow: 4px 0 24px rgba(2, 6, 17, 0.18);
+  overflow: hidden;
 }
 
-/* ---------- Brand ---------- */
+/* ---------- Brand (doubles as collapse toggle) ---------- */
 
 .sidebar-brand {
   display: flex;
@@ -31,7 +32,19 @@
   padding: 4px 18px 20px 18px;
   margin-bottom: 8px;
   border-bottom: 1px solid var(--dc-nav-border, #1e3457);
+  /* button reset */
+  width: 100%;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.14s;
 }
+.sidebar-brand:hover { background: var(--dc-nav-hover-bg, rgba(255, 255, 255, 0.06)); }
 
 .sidebar-logo {
   height: 38px;
@@ -212,28 +225,25 @@
 
 .sidebar-logout-icon { font-size: 1.05rem; }
 
-/* ---------- Responsive: collapse on small screens ---------- */
+/* ---------- Collapsed (icon rail) — toggled by clicking the brand ---------- */
 
-@media (max-width: 700px) {
-  .sidebar {
-    width: 62px;
-    min-width: 62px;
-  }
-  .sidebar-brand {
-    justify-content: center;
-    padding: 4px 8px 16px 8px;
-  }
-  .sidebar-name { display: none; }
-  .sidebar-clinic { display: none; }
-  .sidebar-nav { padding: 8px 8px; }
-  .sidebar-nav-item {
-    justify-content: center;
-    padding: 11px 0;
-  }
-  .sidebar-nav-item.active::before { display: none; }
-  .sidebar-label { display: none; }
-  .sidebar-bottom { padding: 12px 8px 26px 8px; align-items: center; }
-  .sidebar-user-text { display: none; }
-  .sidebar-logout-btn { padding: 9px 0; }
-  .sidebar-logout-btn span { display: none; }
+.sidebar.collapsed .sidebar-brand {
+  justify-content: center;
+  gap: 0;
+  padding: 4px 8px 16px 8px;
 }
+.sidebar.collapsed .sidebar-name { display: none; }
+.sidebar.collapsed .sidebar-clinic { display: none; }
+.sidebar.collapsed .sidebar-nav { padding: 8px 10px; }
+.sidebar.collapsed .sidebar-nav-item {
+  justify-content: center;
+  gap: 0;
+  padding: 11px 0;
+}
+.sidebar.collapsed .sidebar-nav-item.active::before { display: none; }
+.sidebar.collapsed .sidebar-label { display: none; }
+.sidebar.collapsed .sidebar-bottom { padding: 12px 8px 28px 8px; align-items: center; }
+.sidebar.collapsed .sidebar-user { justify-content: center; }
+.sidebar.collapsed .sidebar-user-text { display: none; }
+.sidebar.collapsed .sidebar-logout-btn { justify-content: center; padding: 9px 0; }
+.sidebar.collapsed .sidebar-logout-btn span { display: none; }

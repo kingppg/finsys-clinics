@@ -24,17 +24,23 @@ function initialOf(name) {
   return (name || '?').trim().charAt(0).toUpperCase();
 }
 
-function Sidebar({ active, onSelect, user, onLogout, allowedTabs, clinicName }) {
+function Sidebar({ active, onSelect, user, onLogout, allowedTabs, clinicName, collapsed, onToggle }) {
   return (
-    <nav className="sidebar">
-      {/* Brand: product logo + name only */}
-      <div className="sidebar-brand">
+    <nav className={`sidebar${collapsed ? ' collapsed' : ''}`}>
+      {/* Brand doubles as the collapse/expand toggle */}
+      <button
+        type="button"
+        className="sidebar-brand"
+        onClick={onToggle}
+        title={collapsed ? 'Expand menu' : 'Collapse menu'}
+        aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
+      >
         <img className="sidebar-logo" src={finsysLogo} alt="FinSys" />
         <span className="sidebar-name">FinSys</span>
-      </div>
+      </button>
 
       {/* Clinic (workspace) header above the tabs */}
-      <div className="sidebar-clinic">{clinicName || 'Clinic'}</div>
+      <div className="sidebar-clinic" title={clinicName || 'Clinic'}>{clinicName || 'Clinic'}</div>
 
       {/* Nav */}
       <ul className="sidebar-nav">
@@ -46,6 +52,7 @@ function Sidebar({ active, onSelect, user, onLogout, allowedTabs, clinicName }) 
               className={`sidebar-nav-item${active === item.key ? ' active' : ''}`}
               onClick={() => onSelect(item.key)}
               tabIndex={0}
+              title={item.label}
             >
               <span className="sidebar-icon">{item.icon}</span>
               <span className="sidebar-label">{item.label}</span>
