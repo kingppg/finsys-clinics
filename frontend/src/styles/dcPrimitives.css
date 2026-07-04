@@ -375,3 +375,81 @@
   border-bottom-color: var(--dc-accent, #2DD4BF);
   font-weight: 700;
 }
+
+/* ---------- Tables (shared standard) ----------
+   One look for every data table. Wrap a <table class="dc-table"> in
+   <div class="dc-table-wrap"> for the rounded, scrollable, sticky-header frame. */
+.dc-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-surface, #fff);
+}
+.dc-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9rem;
+  color: var(--dc-text, #263240);
+}
+.dc-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--dc-surface-2, #f6f9fc);
+  color: var(--dc-text-2, #64748b);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--dc-border, #e2e8f0);
+  white-space: nowrap;
+}
+.dc-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--dc-border, #e3e9f3);
+  vertical-align: middle;
+  color: var(--dc-text, #2c3e50);
+}
+.dc-table tbody tr:last-child td { border-bottom: none; }
+.dc-table tbody tr { transition: background 0.13s; }
+.dc-table tbody tr:hover td { background: var(--dc-accent-soft, #f0f7ff); }
+.dc-table-actions { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+/* ---------- Icon buttons (table row actions, toolbars) ---------- */
+.dc-icon-btn {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.18));
+  background: var(--dc-surface-2, #1A2438);
+  border-radius: 9px;
+  color: var(--dc-text-2, #A9B7CE);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.dc-icon-btn svg { width: 18px; height: 18px; }
+.dc-icon-btn:hover {
+  transform: translateY(-1px);
+  color: var(--dc-text, #EDF2FA);
+  border-color: var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+}
+.dc-icon-btn--accent:hover {
+  background: var(--dc-accent-soft, #e8f7fc);
+  border-color: var(--dc-accent, #2DD4BF);
+  color: var(--dc-accent, #2DD4BF);
+}
+.dc-icon-btn--danger:hover {
+  background: var(--dc-danger-soft, #ffeaea);
+  border-color: var(--dc-danger, #e74c3c);
+  color: var(--dc-danger, #e74c3c);
+}
+.dc-icon-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }

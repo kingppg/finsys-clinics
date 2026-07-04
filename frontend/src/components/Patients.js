@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import PatientProfile from './patients/PatientProfile'; // full-page profile: history, odontogram, files (TS)
+import { LuSquarePen, LuTrash2, LuSearch, LuUserPlus } from 'react-icons/lu';
 import './Patients.css';
-import './MainSection.css';
 
 function Patients({ setModalContent, clinicId }) {
   const [patients, setPatients] = useState([]);
@@ -40,18 +40,24 @@ function Patients({ setModalContent, clinicId }) {
   useEffect(() => {
     if (addModalOpen) {
       setModalContent(
-        <div className="main-content-modal-bg" onClick={closeAddModal}>
-          <div className="modal patients-modal" onClick={e => e.stopPropagation()}>
-            <h3>Add Patient</h3>
+        <div className="dc-overlay" onClick={closeAddModal}>
+          <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">Add Patient</h3>
             <form onSubmit={handleSubmit}>
-              <label>Name:</label>
-              <input type="text" name="name" value={newPatient.name} onChange={handleChange} className="patients-table-edit-input" autoFocus />
-              <label>Phone:</label>
-              <input type="tel" name="phone" value={newPatient.phone} onChange={handleChange} className="patients-table-edit-input" />
-              {error && <div className="modal-error">{error}</div>}
-              <div className="modal-actions" style={{marginTop: 18}}>
-                <button type="button" onClick={closeAddModal} style={{ background: "#fff", color: "#185abd", border: "1.5px solid #185abd" }}>Cancel</button>
-                <button type="submit" style={{ background: "#185abd", color: "#fff" }}>Add</button>
+              <div className="pt-form">
+                <label className="dc-field">
+                  <span>Name</span>
+                  <input type="text" name="name" value={newPatient.name} onChange={handleChange} autoFocus />
+                </label>
+                <label className="dc-field">
+                  <span>Phone</span>
+                  <input type="tel" name="phone" value={newPatient.phone} onChange={handleChange} />
+                </label>
+              </div>
+              {error && <div className="dc-banner dc-banner--err">{error}</div>}
+              <div className="dc-modal-actions">
+                <button type="button" className="dc-btn dc-btn--ghost" onClick={closeAddModal}>Cancel</button>
+                <button type="submit" className="dc-btn dc-btn--primary">Add Patient</button>
               </div>
             </form>
           </div>
@@ -59,18 +65,24 @@ function Patients({ setModalContent, clinicId }) {
       );
     } else if (modalOpen) {
       setModalContent(
-        <div className="main-content-modal-bg" onClick={closeModal}>
-          <div className="modal patients-modal" onClick={e => e.stopPropagation()}>
-            <h3>Edit Patient</h3>
+        <div className="dc-overlay" onClick={closeModal}>
+          <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">Edit Patient</h3>
             <form onSubmit={e => { e.preventDefault(); saveEdit(editPatientId); }}>
-              <label>Name:</label>
-              <input type="text" name="name" value={editPatient.name} onChange={handleEditChange} className="patients-table-edit-input" autoFocus />
-              <label>Phone:</label>
-              <input type="tel" name="phone" value={editPatient.phone} onChange={handleEditChange} className="patients-table-edit-input" />
-              {error && <div className="modal-error">{error}</div>}
-              <div className="modal-actions" style={{marginTop: 18}}>
-                <button type="button" onClick={closeModal} style={{ background: "#fff", color: "#185abd", border: "1.5px solid #185abd" }}>Cancel</button>
-                <button type="submit" style={{ background: "#185abd", color: "#fff" }}>Save</button>
+              <div className="pt-form">
+                <label className="dc-field">
+                  <span>Name</span>
+                  <input type="text" name="name" value={editPatient.name} onChange={handleEditChange} autoFocus />
+                </label>
+                <label className="dc-field">
+                  <span>Phone</span>
+                  <input type="tel" name="phone" value={editPatient.phone} onChange={handleEditChange} />
+                </label>
+              </div>
+              {error && <div className="dc-banner dc-banner--err">{error}</div>}
+              <div className="dc-modal-actions">
+                <button type="button" className="dc-btn dc-btn--ghost" onClick={closeModal}>Cancel</button>
+                <button type="submit" className="dc-btn dc-btn--primary">Save Changes</button>
               </div>
             </form>
           </div>
@@ -78,21 +90,19 @@ function Patients({ setModalContent, clinicId }) {
       );
     } else if (deleteModalOpen) {
       setModalContent(
-        <div className="main-content-modal-bg" onClick={cancelDelete}>
-          <div className="modal patients-modal" onClick={e => e.stopPropagation()}>
-            <h3>Confirm Delete</h3>
+        <div className="dc-overlay" onClick={cancelDelete}>
+          <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">Delete patient?</h3>
             {hasAppointments ? (
-              <div className="modal-warning">
-                <strong>Warning:</strong> This profile has one or more appointments.<br />
-                Deleting will also remove all related appointments.<br />
-                Are you sure you want to continue?
+              <div className="dc-banner dc-banner--err">
+                <strong>Warning:</strong> This profile has one or more appointments. Deleting will also remove all related appointments.
               </div>
             ) : (
-              <div>Are you sure you want to delete this profile?</div>
+              <p>Are you sure you want to delete this profile? This can’t be undone.</p>
             )}
-            <div className="modal-actions" style={{marginTop: 16}}>
-              <button type="button" onClick={cancelDelete} style={{ background: "#fff", color: "#185abd", border: "1.5px solid #185abd" }}>Cancel</button>
-              <button type="button" onClick={confirmDelete} style={{ background: "#e74c3c", color: "#fff" }}>Delete</button>
+            <div className="dc-modal-actions">
+              <button type="button" className="dc-btn dc-btn--ghost" onClick={cancelDelete}>Cancel</button>
+              <button type="button" className="dc-btn dc-btn--danger dc-btn--danger-solid" onClick={confirmDelete}>Delete</button>
             </div>
           </div>
         </div>
@@ -229,37 +239,43 @@ function Patients({ setModalContent, clinicId }) {
   }
 
   return (
-    <section className="main-section patients-section-relative">
-      <div className="patients-sticky-header">
-        <div className="patients-header-row">
-          <h2 className="patients-title">Patients</h2>
-          <input
-            type="text" className="patients-search"
-            placeholder="Search patients…" value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <button
-            onClick={openAddModal}
-            style={{ fontWeight: 'bold', background: '#185abd', color: '#fff', padding: '8px 20px', border: 'none', borderRadius: 4, minWidth: 120 }}
-          >
-            Add Patient
+    <div className="dc-page">
+      <header className="dc-page-header">
+        <div className="dc-page-titlewrap">
+          <div className="dc-page-eyebrow">Records</div>
+          <h1 className="dc-page-title">Patients</h1>
+          <div className="dc-page-subtitle">{patients.length} total</div>
+        </div>
+        <div className="dc-page-header-actions">
+          <div className="pt-search">
+            <LuSearch className="pt-search-icon" />
+            <input
+              type="text"
+              placeholder="Search patients…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+          <button className="dc-btn dc-btn--primary" onClick={openAddModal}>
+            <LuUserPlus /> Add Patient
           </button>
         </div>
-        <div style={{ fontWeight: 500, color: '#444', fontSize: '1.05em' }}>
-          Total number of patients: {patients.length}
+      </header>
+
+      {((error || success) && !modalOpen && !deleteModalOpen && !addModalOpen) && (
+        <div className="pt-msg-row">
+          {error && <div className="dc-banner dc-banner--err">{error}</div>}
+          {success && <div className="dc-banner dc-banner--ok">{success}</div>}
         </div>
-        <div className="patients-message-row">
-          {error   && !modalOpen && !deleteModalOpen && !addModalOpen && <span className="patients-error">{error}</span>}
-          {success && !modalOpen && !deleteModalOpen && !addModalOpen && <span className="patients-success">{success}</span>}
-        </div>
-      </div>
-      <div className="patients-table-scroll">
-        <table className="patients-table-fixed" border="1" cellPadding="8">
+      )}
+
+      <div className="dc-table-wrap">
+        <table className="dc-table pt-table">
           <colgroup>
-            <col style={{ width: '32%' }} />
-            <col style={{ width: '28%' }} />
-            <col style={{ width: '20%' }} />
-            <col style={{ width: '20%' }} />
+            <col style={{ width: '34%' }} />
+            <col style={{ width: '24%' }} />
+            <col style={{ width: '24%' }} />
+            <col style={{ width: '18%' }} />
           </colgroup>
           <thead>
             <tr>
@@ -271,26 +287,38 @@ function Patients({ setModalContent, clinicId }) {
               <tr key={patient.id}>
                 <td title={patient.name}>
                   <button
-                    className="patients-name-link"
+                    className="pt-name-link"
                     onClick={() => openProfile(patient)}
                     title={`View profile for ${patient.name}`}
-                    style={{ background: "none", border: "none", color: "#185abd", fontWeight: "600", textDecoration: "underline", cursor: "pointer", padding: 0 }}
                   >
                     {patient.name}
                   </button>
                 </td>
                 <td title={patient.phone}>{patient.phone}</td>
-                <td title={patient.messenger_id}>{patient.messenger_id || ''}</td>
-                <td className="patients-actions-cell">
-                  <button onClick={() => startEdit(patient)} style={{ marginRight: 8, fontWeight: 'bold', color: 'white', background: '#2bc1ff', minWidth: 70 }}>Edit</button>
-                  <button onClick={() => onDeleteClick(patient)} style={{ fontWeight: 'bold', color: 'white', background: '#e74c3c', minWidth: 70 }}>Delete</button>
+                <td title={patient.messenger_id}>{patient.messenger_id || '—'}</td>
+                <td>
+                  <div className="dc-table-actions">
+                    <button className="dc-icon-btn dc-icon-btn--accent" title="Edit" aria-label="Edit patient" onClick={() => startEdit(patient)}>
+                      <LuSquarePen />
+                    </button>
+                    <button className="dc-icon-btn dc-icon-btn--danger" title="Delete" aria-label="Delete patient" onClick={() => onDeleteClick(patient)}>
+                      <LuTrash2 />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
+            {filteredPatients.length === 0 && (
+              <tr>
+                <td colSpan={4} className="pt-empty">
+                  {search ? 'No patients match your search.' : 'No patients yet.'}
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
   );
 }
 
