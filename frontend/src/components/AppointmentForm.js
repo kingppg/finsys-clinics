@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import Calendar from 'react-calendar';
+import { LuUtensils, LuBan, LuBookMarked, LuClock, LuCheck, LuCalendarClock, LuClipboardList } from 'react-icons/lu';
 import { supabase } from '../supabaseClient';
 import './AppointmentsModern.css';
 import './MainSection.css';
@@ -349,7 +350,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
         .map(appt => ({
           time: new Date(appt.appointment_time).toTimeString().slice(0, 5),
           id: appt.id,
-          patientName: appt.patient_name || '',
+          patientId: appt.patient_id,
           reason: appt.reason || '',
         }));
       if (appointment) slotsList = slotsList.filter(s => s.id !== appointment.id);
@@ -522,6 +523,14 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     return h * 60 + m >= LUNCH_START && h * 60 + m < LUNCH_END;
   }
 
+  // Live booking summary values
+  const summaryPatient = patients.find(p => String(p.id) === String(selectedPatient))?.name;
+  const summaryDentist = dentists.find(d => String(d.id) === String(selectedDentist))?.name;
+  const summaryProc = procedures.find(p => String(p.id) === String(selectedProcedure));
+  const summaryPrice = summaryProc?.price;
+  const canBook = !!(selectedDentist && selectedPatient && selectedSlot && selectedCategory &&
+    selectedProcedure && isClinicOpen(selectedDate) && !isSlotInPast(selectedSlot));
+
   return (
     <section className="main-section appointment-modern">
       <h2>{appointment ? 'Edit Appointment' : 'Add Appointment'}</h2>
@@ -529,6 +538,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
       <form onSubmit={handleSubmit} noValidate>
         <div className="appointment-grid">
           <div>
+            <div className="af-section-head"><LuCalendarClock /><span>Who &amp; When</span></div>
             <label>Dentist:</label>
             <select
               value={selectedDentist}
@@ -583,55 +593,51 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
           </div>
 
           <div>
-            <h3>
+            <div className="af-section-head"><LuClock /><span>Time</span></div>
+            <div className="af-slots-sub">
               {selectedDentist && selectedDate && isClinicOpen(selectedDate)
-                ? `Available Slots for ${dentists.find(d => String(d.id) === String(selectedDentist))?.name || ''} on ${selectedDate.toLocaleDateString()}`
-                : 'Select a dentist and date'}
-            </h3>
+                ? `${dentists.find(d => String(d.id) === String(selectedDentist))?.name || ''} · ${selectedDate.toLocaleDateString()}`
+                : 'Select a dentist and date to see available slots'}
+            </div>
             <div className="slots-list">
               {slots.map(time => {
                 const bookedSlotObj = bookedSlots.find(s => s.time === time);
+                const lunch = isLunchSlot(time);
+                const blocked = blockedSlots.includes(time) && !lunch;
+                const past = isSlotInPast(time);
                 const disabled =
-                  blockedSlots.includes(time) || !!bookedSlotObj ||
-                  !selectedDentist || !isClinicOpen(selectedDate) || isSlotInPast(time);
+                  lunch || blocked || !!bookedSlotObj ||
+                  !selectedDentist || !isClinicOpen(selectedDate) || past;
+                const isSelected = !disabled && selectedSlot === time;
 
-                let slotIcon = null, ariaLabel, title;
-                if (isLunchSlot(time))               { slotIcon = "🍽️"; ariaLabel = "Lunch Break"; title = "Lunch Break (12:00-1:00 PM)"; }
-                else if (blockedSlots.includes(time)) { slotIcon = "🚫"; ariaLabel = "Blocked";     title = "Dentist Blocked"; }
-                else if (bookedSlotObj)               { slotIcon = "📒"; ariaLabel = "Booked";      title = `Booked: ${bookedSlotObj.patientName || 'Unknown'}\nProcedure: ${bookedSlotObj.reason || ''}`; }
-                else if (isSlotInPast(time))          { slotIcon = "⏰"; ariaLabel = "Past";        title = "Past"; }
+                let stateClass = 'available', icon = null, title = 'Available';
+                if (lunch)              { stateClass = 'lunch';   icon = <LuUtensils />;  title = 'Lunch Break (12:00–1:00 PM)'; }
+                else if (blocked)       { stateClass = 'blocked'; icon = <LuBan />;       title = 'Dentist Blocked'; }
+                else if (bookedSlotObj) { stateClass = 'booked';  icon = <LuBookMarked />; title = `Booked: ${patients.find(p => String(p.id) === String(bookedSlotObj.patientId))?.name || 'Unknown'}${bookedSlotObj.reason ? '\nProcedure: ' + bookedSlotObj.reason : ''}`; }
+                else if (past)          { stateClass = 'past';    icon = <LuClock />;     title = 'Past'; }
+                else if (isSelected)    { stateClass = 'selected'; icon = <LuCheck />;    title = 'Selected'; }
 
                 return (
                   <button type="button" key={time}
-                    className={
-                      disabled
-                        ? isLunchSlot(time) ? "slot-btn lunch"
-                          : blockedSlots.includes(time) ? "slot-btn blocked"
-                          : !!bookedSlotObj ? "slot-btn booked"
-                          : isSlotInPast(time) ? "slot-btn past"
-                          : "slot-btn disabled"
-                        : selectedSlot === time ? "slot-btn selected" : "slot-btn available"
-                    }
+                    className={`slot-btn ${isSelected ? 'selected' : stateClass}`}
                     disabled={disabled}
                     onClick={() => setSelectedSlot(time)}
-                    title={title || "Available"}
+                    title={title}
                   >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: '1em' }}>
-                      <span>{to12HourFormat(time)}</span>
-                      <span
-                        className={isLunchSlot(time) ? "lunch-icon" : blockedSlots.includes(time) ? "blocked-icon" : !!bookedSlotObj ? "booked-icon" : isSlotInPast(time) ? "past-icon" : "icon-placeholder"}
-                        aria-label={ariaLabel} title={title}
-                        style={{ width: '2em', minWidth: '2em', height: '1em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: '4px', fontSize: '1.15em' }}
-                      >
-                        {slotIcon}
-                      </span>
-                    </span>
+                    <span className="slot-time">{to12HourFormat(time)}</span>
+                    {icon && <span className="slot-icon">{icon}</span>}
                   </button>
                 );
               })}
             </div>
+            <div className="slot-legend">
+              <span className="lg-lunch"><LuUtensils /> Lunch</span>
+              <span className="lg-blocked"><LuBan /> Blocked</span>
+              <span className="lg-booked"><LuBookMarked /> Booked</span>
+            </div>
             {validationErrors.selectedSlot && <div className="field-error">{validationErrors.selectedSlot}</div>}
 
+            <div className="af-section-head"><LuClipboardList /><span>Procedure</span></div>
             <label>Procedure Category:</label>
             <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} required className={validationErrors.selectedCategory ? 'input-error' : ''}>
               <option value="">Select Category</option>
@@ -656,14 +662,43 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
 
             <label>Additional Notes (optional):</label>
             <input type="text" value={otherNotes} onChange={e => setOtherNotes(e.target.value)} placeholder="Add notes or details" />
+          </div>
+        </div>
 
-            {error && <div className="modal-error">{error}</div>}
-            <div className="modal-actions" style={{ marginTop: 22 }}>
-              <button type="button" onClick={onClose}>Cancel</button>
-              <button type="submit"
-                disabled={!selectedDentist || !selectedPatient || !selectedSlot || !selectedCategory || !selectedProcedure || !isClinicOpen(selectedDate) || isSlotInPast(selectedSlot)}
-              >
-                {appointment ? 'Save' : 'Book'}
+        {/* ── Live booking summary + actions ── */}
+        {error && <div className="modal-error af-error">{error}</div>}
+        <div className="af-summary">
+          <div className="af-summary-items">
+            <div className="af-summary-item">
+              <span className="af-summary-label">Patient</span>
+              <span className="af-summary-value">{summaryPatient || '—'}</span>
+            </div>
+            <div className="af-summary-item">
+              <span className="af-summary-label">Dentist</span>
+              <span className="af-summary-value">{summaryDentist || '—'}</span>
+            </div>
+            <div className="af-summary-item">
+              <span className="af-summary-label">Date</span>
+              <span className="af-summary-value">{selectedDate ? selectedDate.toLocaleDateString() : '—'}</span>
+            </div>
+            <div className="af-summary-item">
+              <span className="af-summary-label">Time</span>
+              <span className="af-summary-value">{selectedSlot ? to12HourFormat(selectedSlot) : '—'}</span>
+            </div>
+            <div className="af-summary-item">
+              <span className="af-summary-label">Procedure</span>
+              <span className="af-summary-value">{summaryProc?.name || '—'}</span>
+            </div>
+          </div>
+          <div className="af-summary-right">
+            <div className="af-summary-total">
+              <span>Total</span>
+              <strong>₱{summaryPrice || '0.00'}</strong>
+            </div>
+            <div className="af-summary-actions">
+              <button type="button" className="dc-btn dc-btn--ghost" onClick={onClose}>Cancel</button>
+              <button type="submit" className="dc-btn dc-btn--primary" disabled={!canBook}>
+                {appointment ? 'Save Changes' : 'Book Appointment'}
               </button>
             </div>
           </div>
