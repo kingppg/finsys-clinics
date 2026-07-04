@@ -6,7 +6,10 @@
    ========================================================================== */
 
 .cal-root {
-  padding: 12px;
+  /* No inner padding — content sits flush at the .dc-page edge, matching
+     Appointments so the header eyebrow/title Y-position and left/right gutters
+     line up exactly across modules. */
+  padding: 0;
   font-family: var(--dc-font, 'Inter', sans-serif);
 
   /* Status palette — now sourced from the shared app-wide --dc-status-* tokens

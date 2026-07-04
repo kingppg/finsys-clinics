@@ -45,6 +45,12 @@ function ClinicDashboard({ clinicId, user, onDateClick }) {
 
   return (
     <div className="cal-root dc-page">
+      <header className="dc-page-header">
+        <div className="dc-page-titlewrap">
+          <div className="dc-page-eyebrow">Schedule</div>
+          <h1 className="dc-page-title">Calendar</h1>
+        </div>
+      </header>
       <CalendarForCalendarView
         appointments={appointments}
         month={date.month}

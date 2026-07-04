@@ -16,39 +16,13 @@
   color: var(--dc-text, #263240);
 }
 
-.appointments-sticky-layout {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: calc(100vh - 16px);
-}
-
-.appointment-modern h2 {
-  font-size: 1.7rem;
-  color: var(--dc-text, #24406e);
-  font-weight: 750;
-  letter-spacing: -0.01em;
-  margin: 0;
-}
-
-/* Cap strip that hides scrolled rows above the sticky header */
-.appt-topcap {
-  position: fixed;
-  top: 0;
-  left: 240px; /* = sidebar width */
-  right: 0;
-  height: 40px;
-  background: var(--dc-bg, #f6f9fc);
-  z-index: 940;
-  pointer-events: none;
-}
-
+/* Filters/summary stick to the top of the page while the table scrolls. */
 .appointments-sticky-header {
   position: sticky;
-  top: 40px;
+  top: 0;
   z-index: 30;
   background: var(--dc-bg, #f6f9fc);
-  padding: 4px 0 12px;
+  padding: 8px 0 12px;
   border-bottom: 1px solid var(--dc-border, #e2e8f0);
 }
 
@@ -189,20 +163,9 @@
 /* ---------- Scroll area ---------- */
 
 .appointments-scroll-area {
-  flex: 1;
-  overflow-y: auto;
-  padding-top: 10px;
-  padding-bottom: 32px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--dc-border-strong, #b8c7d6) transparent;
+  padding-top: 14px;
+  padding-bottom: 8px;
 }
-.appointments-scroll-area::-webkit-scrollbar { width: 10px; }
-.appointments-scroll-area::-webkit-scrollbar-track { background: transparent; border-radius: 8px; }
-.appointments-scroll-area::-webkit-scrollbar-thumb {
-  background: var(--dc-border-strong, #b8c7d6);
-  border-radius: 8px;
-}
-.appointments-scroll-area::-webkit-scrollbar-thumb:hover { background: var(--dc-text-3, #92a6ba); }
 
 .appt-loading {
   display: flex;

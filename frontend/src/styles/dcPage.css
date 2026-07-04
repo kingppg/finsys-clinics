@@ -40,6 +40,62 @@ body {
   box-sizing: border-box;
 }
 
+/* ==========================================================================
+   STANDARD MODULE PAGE HEADER
+   Every full-page module opens with this: an accent EYEBROW at the same top
+   position, then the module TITLE in one consistent type/size, and optional
+   right-aligned actions. Use it verbatim so every screen's header lines up.
+   <header class="dc-page-header">
+     <div class="dc-page-titlewrap">
+       <div class="dc-page-eyebrow">Schedule</div>
+       <h1 class="dc-page-title">Appointments</h1>
+       <div class="dc-page-subtitle">optional</div>
+     </div>
+     <div class="dc-page-header-actions">…</div>
+   </header>
+   ========================================================================== */
+.dc-page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  /* Font is centralized by the theme (--dc-font) so every module's header
+     matches regardless of the surrounding component's context. */
+  font-family: var(--dc-font, 'Inter', 'Segoe UI', sans-serif);
+}
+.dc-page-titlewrap { min-width: 0; }
+.dc-page-eyebrow {
+  font-family: var(--dc-font, 'Inter', 'Segoe UI', sans-serif);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--dc-accent, #2DD4BF);
+  margin-bottom: 5px;
+}
+.dc-page-title {
+  margin: 0;
+  font-family: var(--dc-font, 'Inter', 'Segoe UI', sans-serif);
+  font-size: 1.7rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  color: var(--dc-text, #EDF2FA);
+}
+.dc-page-subtitle {
+  margin-top: 4px;
+  font-size: 0.9rem;
+  color: var(--dc-text-3, #94a3b8);
+}
+.dc-page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 /* Centralized table/grid gutter. Give any table's scroll wrapper (or a
    full-width grid like the calendar) this class and it gets consistent
    left/right breathing room from the module edges — one value, one place. */

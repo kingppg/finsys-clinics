@@ -803,29 +803,32 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
   };
 
   return (
-    <section className="appointment-modern appointments-sticky-layout">
-      <div className="appt-topcap" />
-      {/* STICKY HEADER BLOCK */}
-      <div className="appointments-sticky-header">
-        <div className="appt-header-row">
-          <h2 className="appt-title">Appointments</h2>
-          <div className="appt-header-actions">
-            {unreadUpdates.length > 0 && (
-              <div className="appt-updates-group">
-                <div className="new-updates-pill" title="New/updated appointments in this view">
-                  {unreadUpdates.length} new update{unreadUpdates.length > 1 ? 's' : ''}
-                </div>
-                <button className="appt-ack-btn" onClick={acknowledgeAll} title="Clear highlight of updated rows">
-                  Acknowledge All
-                </button>
-              </div>
-            )}
-            <button className="dc-btn dc-btn--primary appt-add-btn" onClick={onAdd}>
-              + Add Appointment
-            </button>
-          </div>
+    <div className="dc-page appt-page">
+      <header className="dc-page-header">
+        <div className="dc-page-titlewrap">
+          <div className="dc-page-eyebrow">Schedule</div>
+          <h1 className="dc-page-title">Appointments</h1>
         </div>
+        <div className="dc-page-header-actions">
+          {unreadUpdates.length > 0 && (
+            <div className="appt-updates-group">
+              <div className="new-updates-pill" title="New/updated appointments in this view">
+                {unreadUpdates.length} new update{unreadUpdates.length > 1 ? 's' : ''}
+              </div>
+              <button className="appt-ack-btn" onClick={acknowledgeAll} title="Clear highlight of updated rows">
+                Acknowledge All
+              </button>
+            </div>
+          )}
+          <button className="dc-btn dc-btn--primary appt-add-btn" onClick={onAdd}>
+            + Add Appointment
+          </button>
+        </div>
+      </header>
 
+      <div className="appointment-modern">
+        {/* STICKY FILTER BLOCK */}
+        <div className="appointments-sticky-header">
         <div className={`appointments-summary-bar ${summaryPulse ? 'pulse' : ''}`}>
           <i className="fa fa-database" aria-hidden="true" />
           {totalLabel}
@@ -964,7 +967,8 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
       >
         {flashRow ? `Appointment ${flashRow.id} ${flashRow.status}` : ''}
       </div>
-    </section>
+      </div>
+    </div>
   );
 }
 
