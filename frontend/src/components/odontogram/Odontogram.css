@@ -14,13 +14,7 @@
   font-family: var(--dc-font, 'Inter', sans-serif);
 }
 
-.odo-loading {
-  padding: 40px;
-  text-align: center;
-  color: var(--dc-text-3, #6E7E98);
-}
-
-/* ---------- Condition palette ---------- */
+/* ---------- Condition palette (chips = .dc-chip primitive) ---------- */
 
 .odo-palette {
   display: flex;
@@ -36,56 +30,6 @@
   margin: -18px -18px 14px;
   padding: 18px 18px 10px;
   border-radius: var(--dc-radius, 12px) var(--dc-radius, 12px) 0 0;
-}
-
-.odo-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 12px;
-  border-radius: 9999px;
-  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  background: transparent;
-  color: var(--dc-text-2, #A9B7CE);
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.odo-chip:hover {
-  border-color: var(--tone);
-  color: var(--dc-text, #EDF2FA);
-}
-
-.odo-chip.active {
-  background: var(--tone-soft);
-  border-color: var(--tone);
-  color: var(--dc-text, #EDF2FA);
-  box-shadow: 0 0 10px var(--tone-soft);
-}
-
-.odo-chip-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--tone);
-  flex-shrink: 0;
-}
-
-.odo-chip-count {
-  background: var(--tone);
-  color: var(--dc-bg, #0B1120);
-  border-radius: 9999px;
-  min-width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 0 5px;
 }
 
 /* ---------- Chart ---------- */
@@ -343,73 +287,6 @@
   flex-wrap: wrap;
 }
 
-.odo-btn-save {
-  background: var(--dc-accent, #2DD4BF);
-  color: var(--dc-accent-contrast, #06201C);
-  border: none;
-  border-radius: 8px;
-  padding: 9px 22px;
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.odo-btn-save:hover:not(:disabled) {
-  background: var(--dc-accent-hover, #14B8A6);
-}
-
-.odo-btn-save:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.odo-btn-ghost {
-  background: transparent;
-  color: var(--dc-text-2, #A9B7CE);
-  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  border-radius: 8px;
-  padding: 9px 14px;
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.odo-btn-ghost:hover:not(:disabled) {
-  background: var(--dc-surface-2, #1A2438);
-  color: var(--dc-text, #EDF2FA);
-}
-
-.odo-btn-ghost:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.odo-btn-danger {
-  background: transparent;
-  color: var(--dc-danger, #F87171);
-  border: 1px solid var(--dc-danger, #F87171);
-  border-radius: 8px;
-  padding: 9px 14px;
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.odo-btn-danger:hover {
-  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14));
-}
-
-.odo-btn-danger--solid {
-  background: var(--dc-danger, #F87171);
-  color: var(--dc-bg, #0B1120);
-}
-
 .odo-status {
   font-size: 0.78rem;
   color: var(--dc-text-3, #6E7E98);
@@ -419,49 +296,6 @@
 .odo-status--ok { color: var(--dc-success, #4ADE80); font-weight: 600; }
 .odo-status--err { color: var(--dc-danger, #F87171); font-weight: 600; }
 .odo-status--warn { color: var(--dc-warning, #FBBF24); font-weight: 600; }
-
-/* ---------- Clear-confirm modal ---------- */
-
-.odo-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: rgba(2, 8, 20, 0.65);
-  backdrop-filter: blur(2px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.odo-modal {
-  background: var(--dc-surface, #131C2E);
-  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  border-radius: 14px;
-  padding: 26px 28px;
-  max-width: 400px;
-  width: 90%;
-  color: var(--dc-text, #EDF2FA);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-}
-
-.odo-modal h3 {
-  margin: 0 0 8px;
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.odo-modal p {
-  margin: 0 0 20px;
-  font-size: 0.85rem;
-  color: var(--dc-text-2, #A9B7CE);
-  line-height: 1.6;
-}
-
-.odo-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
 
 /* ---------- Responsive ---------- */
 

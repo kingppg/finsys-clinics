@@ -100,38 +100,10 @@
 
 .pp-contact-dim { color: var(--dc-text-3, #6E7E98); }
 
-/* ---------- Tab bar ---------- */
+/* ---------- Tab bar (base = .dc-tabs primitive; this only pins it) ---------- */
 
 .pp-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1.5px solid var(--dc-border, rgba(148, 163, 184, 0.16));
-  margin-bottom: 16px;
-  overflow-x: auto;
   flex-shrink: 0;
-}
-
-.pp-tab {
-  padding: 9px 20px;
-  border: none;
-  border-bottom: 2.5px solid transparent;
-  background: none;
-  color: var(--dc-text-3, #6E7E98);
-  font-family: inherit;
-  font-size: 0.86rem;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  margin-bottom: -1.5px;
-  transition: all 0.12s;
-}
-
-.pp-tab:hover { color: var(--dc-text-2, #A9B7CE); }
-
-.pp-tab.active {
-  color: var(--dc-accent, #2DD4BF);
-  border-bottom-color: var(--dc-accent, #2DD4BF);
-  font-weight: 700;
 }
 
 /* ---------- Panels ---------- */
@@ -148,13 +120,6 @@
   background: none;
   border: none;
   padding: 0;
-}
-
-.pp-empty {
-  padding: 34px 16px;
-  text-align: center;
-  color: var(--dc-text-3, #6E7E98);
-  font-size: 0.9rem;
 }
 
 /* ---------- Appointment history ---------- */

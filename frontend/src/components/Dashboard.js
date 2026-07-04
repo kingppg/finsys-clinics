@@ -11,6 +11,7 @@ import ChatBox from './chats/ChatBox';
 import ClinicDashboard from './CalendarView';
 import QueueMonitor from './QueueMonitor';
 import { ClinicProvider } from './ClinicContext';
+import { DcThemeRoot } from '../themes/DcThemeProvider';
 
 function Dashboard({ user, onLogout }) {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -43,6 +44,7 @@ function Dashboard({ user, onLogout }) {
   }
 
   return (
+    <DcThemeRoot>
     <ClinicProvider clinicId={user.clinic_id}>
       <div style={{ display: 'flex', height: '100vh' }}>
         <Sidebar
@@ -54,11 +56,11 @@ function Dashboard({ user, onLogout }) {
           clinicName={clinicName}
         />
         <main
+          className="dc-viewport"
           style={{
-            marginLeft: 220,
+            marginLeft: 240,
             padding: '8px 32px',
             flex: 1,
-            background: '#f6f9fc',
             minHeight: '100vh',
             boxSizing: 'border-box', // padding inside the 100vh — else main is 100vh+16px and the page always scrolls
             position: 'relative',
@@ -103,6 +105,7 @@ function Dashboard({ user, onLogout }) {
         </main>
       </div>
     </ClinicProvider>
+    </DcThemeRoot>
   );
 }
 

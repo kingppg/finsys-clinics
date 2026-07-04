@@ -1,8 +1,10 @@
 /* ==========================================================================
-   PATIENT FILES — LAYOUT ONLY
-   All cosmetics come from --dc-* theme tokens (Dark Executive today; any
-   future theme restyles this module for free). Group tones are data,
-   injected inline as --tone / --tone-soft.
+   PATIENT FILES — COMPONENT-UNIQUE LAYOUT ONLY
+   Repeatable patterns (buttons, chips, pills, modals, fields, banners, empty
+   states) live in styles/dcPrimitives.css. This file holds only geometry
+   unique to the files module: the sticky toolbar, gallery grid + cards,
+   dropzone, selected-file list, form grid, and viewer split layout.
+   All cosmetics come from --dc-* theme tokens.
    ========================================================================== */
 
 .pf-root {
@@ -14,14 +16,7 @@
   font-family: var(--dc-font, 'Inter', sans-serif);
 }
 
-.pf-loading {
-  padding: 40px;
-  text-align: center;
-  color: var(--dc-text-3, #6E7E98);
-  font-family: var(--dc-font, 'Inter', sans-serif);
-}
-
-/* ---------- Toolbar ---------- */
+/* ---------- Sticky toolbar ---------- */
 
 .pf-toolbar {
   display: flex;
@@ -45,149 +40,6 @@
   flex-wrap: wrap;
   gap: 7px;
 }
-
-.pf-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 9999px;
-  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  background: transparent;
-  color: var(--dc-text-2, #A9B7CE);
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.pf-chip:hover {
-  border-color: var(--tone, var(--dc-accent, #2DD4BF));
-  color: var(--dc-text, #EDF2FA);
-}
-
-.pf-chip.active {
-  background: var(--tone-soft, var(--dc-accent-soft, rgba(45, 212, 191, 0.13)));
-  border-color: var(--tone, var(--dc-accent, #2DD4BF));
-  color: var(--dc-text, #EDF2FA);
-}
-
-.pf-chip-count {
-  background: var(--dc-surface-2, #1A2438);
-  border-radius: 9999px;
-  min-width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 0 5px;
-  color: var(--dc-text-2, #A9B7CE);
-}
-
-/* ---------- Buttons ---------- */
-
-.pf-btn-primary {
-  padding: 8px 18px;
-  border: none;
-  border-radius: var(--dc-radius, 12px);
-  background: var(--dc-accent, #2DD4BF);
-  color: var(--dc-accent-contrast, #06201C);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-
-.pf-btn-primary:hover { background: var(--dc-accent-hover, #14B8A6); }
-.pf-btn-primary:disabled { opacity: 0.55; cursor: default; }
-
-.pf-btn-ghost {
-  padding: 8px 14px;
-  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  border-radius: var(--dc-radius, 12px);
-  background: transparent;
-  color: var(--dc-text-2, #A9B7CE);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.pf-btn-ghost:hover {
-  border-color: var(--dc-accent, #2DD4BF);
-  color: var(--dc-text, #EDF2FA);
-}
-.pf-btn-ghost:disabled { opacity: 0.55; cursor: default; }
-
-.pf-btn-danger {
-  padding: 8px 14px;
-  border: 1px solid var(--dc-danger, #F87171);
-  border-radius: var(--dc-radius, 12px);
-  background: transparent;
-  color: var(--dc-danger, #F87171);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.pf-btn-danger:hover { background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14)); }
-
-.pf-btn-danger--solid {
-  background: var(--dc-danger, #F87171);
-  color: var(--dc-bg, #0B1120);
-}
-.pf-btn-danger--solid:hover { background: var(--dc-danger, #F87171); opacity: 0.9; }
-
-/* ---------- Banner ---------- */
-
-.pf-banner {
-  padding: 8px 14px;
-  border-radius: var(--dc-radius, 12px);
-  font-size: 0.83rem;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.pf-banner--ok {
-  background: var(--dc-success-soft, rgba(74, 222, 128, 0.13));
-  color: var(--dc-success, #4ADE80);
-  border: 1px solid var(--dc-success, #4ADE80);
-}
-
-.pf-banner--err {
-  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14));
-  color: var(--dc-danger, #F87171);
-  border: 1px solid var(--dc-danger, #F87171);
-}
-
-/* ---------- Empty state ---------- */
-
-.pf-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 46px 16px;
-  border: 1.5px dashed var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  border-radius: var(--dc-radius, 12px);
-  text-align: center;
-}
-
-.pf-empty-icon { font-size: 2rem; }
-.pf-empty-title { font-weight: 700; font-size: 0.95rem; }
-.pf-empty-hint { color: var(--dc-text-3, #6E7E98); font-size: 0.83rem; }
 
 /* ---------- Gallery grid ---------- */
 
@@ -271,80 +123,11 @@
   gap: 6px;
 }
 
-.pf-cat-badge {
-  display: inline-block;
-  padding: 2px 9px;
-  border-radius: 9999px;
-  background: var(--tone-soft, var(--dc-accent-soft, rgba(45, 212, 191, 0.13)));
-  color: var(--tone, var(--dc-accent, #2DD4BF));
-  font-size: 0.68rem;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .pf-card-date {
   color: var(--dc-text-3, #6E7E98);
   font-size: 0.7rem;
   white-space: nowrap;
 }
-
-/* ---------- Modals ---------- */
-
-.pf-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(2, 6, 17, 0.72);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1200;
-  padding: 18px;
-}
-
-.pf-modal {
-  background: var(--dc-surface, #131C2E);
-  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  border-radius: var(--dc-radius, 12px);
-  box-shadow: var(--dc-shadow, 0 16px 40px rgba(2, 6, 17, 0.5));
-  padding: 20px;
-  width: 100%;
-  max-width: 520px;
-  max-height: 92vh;
-  overflow-y: auto;
-  color: var(--dc-text, #EDF2FA);
-  font-family: var(--dc-font, 'Inter', sans-serif);
-}
-
-.pf-modal--viewer { max-width: 860px; }
-
-.pf-modal-title {
-  margin: 0 0 14px;
-  font-size: 1.02rem;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pf-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.pf-close {
-  background: none;
-  border: none;
-  font-size: 1.3rem;
-  line-height: 1;
-  color: var(--dc-text-3, #6E7E98);
-  cursor: pointer;
-  padding: 2px 6px;
-}
-
-.pf-close:hover { color: var(--dc-text, #EDF2FA); }
 
 /* ---------- Dropzone ---------- */
 
@@ -422,7 +205,7 @@
 
 .pf-file-remove:hover { color: var(--dc-danger, #F87171); }
 
-/* ---------- Form ---------- */
+/* ---------- Form grid (field cells themselves = .dc-field primitive) ---------- */
 
 .pf-form-grid {
   display: grid;
@@ -432,49 +215,6 @@
 }
 
 .pf-form-grid--stack { grid-template-columns: 1fr; margin-top: 0; }
-
-.pf-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.pf-field--wide { grid-column: 1 / -1; }
-
-.pf-field span {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--dc-text-2, #A9B7CE);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.pf-field input,
-.pf-field select,
-.pf-field textarea {
-  padding: 8px 10px;
-  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
-  border-radius: var(--dc-radius, 12px);
-  background: var(--dc-surface-2, #1A2438);
-  color: var(--dc-text, #EDF2FA);
-  font-family: inherit;
-  font-size: 0.85rem;
-  outline: none;
-}
-
-.pf-field input:focus,
-.pf-field select:focus,
-.pf-field textarea:focus {
-  border-color: var(--dc-accent, #2DD4BF);
-}
-
-.pf-field textarea { resize: vertical; }
-
-.pf-field select option,
-.pf-field select optgroup {
-  background: var(--dc-surface-2, #1A2438);
-  color: var(--dc-text, #EDF2FA);
-}
 
 /* ---------- Viewer ---------- */
 

@@ -1,9 +1,17 @@
+/* ==========================================================================
+   SIDEBAR — premium v2 (layout only)
+   Cosmetics come from --dc-nav-* / --dc-* theme tokens (injected app-wide by
+   DcThemeRoot). Dark Executive preserves the navy gradient + cyan accent;
+   a future light theme flips the nav for free. Fallbacks keep the original
+   palette if tokens are ever absent.
+   ========================================================================== */
+
 .sidebar {
-  width: 220px;
-  background: linear-gradient(180deg, #0d253f 0%, #24406e 100%);
-  color: #fff;
+  width: 240px;
+  background: linear-gradient(180deg, var(--dc-nav-from, #0d253f) 0%, var(--dc-nav-to, #24406e) 100%);
+  color: var(--dc-text, #fff);
   min-height: 100vh;
-  padding: 24px 0 0 0;
+  padding: 20px 0 0 0;
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -11,145 +19,221 @@
   top: 0;
   z-index: 100;
   transition: width 0.2s;
+  box-shadow: 4px 0 24px rgba(2, 6, 17, 0.18);
+}
+
+/* ---------- Brand ---------- */
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 18px 20px 18px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--dc-nav-border, #1e3457);
 }
 
 .sidebar-logo {
-  display: flex;
-  align-items: center;
-  padding: 0 24px 24px 24px;
-  font-size: 1.4em;
-  font-weight: bold;
-  letter-spacing: 1px;
+  height: 38px;
+  width: auto;
+  max-width: 46px;
+  flex-shrink: 0;
+  object-fit: contain;
+  display: block;
 }
 
-.sidebar-title {
-  margin-left: 12px;
+.sidebar-name {
+  font-weight: 800;
+  font-size: 1.7rem;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--dc-text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
+/* Clinic (workspace) header — prominent, sits above the nav tabs */
+.sidebar-clinic {
+  padding: 15px 20px 9px;
+  font-size: 1.22rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--dc-text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Nav ---------- */
 
 .sidebar-nav {
   list-style: none;
-  padding: 0;
+  padding: 8px 12px;
   margin: 0;
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .sidebar-nav-item {
+  position: relative;
   display: flex;
   align-items: center;
+  gap: 12px;
   cursor: pointer;
-  padding: 14px 24px;
-  font-size: 1.08em;
-  border-left: 4px solid transparent;
-  transition: background 0.13s, border-color 0.13s;
+  padding: 10px 13px;
+  border-radius: 11px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--dc-text-2, #c8d1e1);
   outline: none;
+  transition: background 0.14s, color 0.14s;
 }
+
 .sidebar-nav-item:hover,
-.sidebar-nav-item:focus {
-  background: rgba(255,255,255,0.08);
-  border-left: 4px solid #2bc1ff;
+.sidebar-nav-item:focus-visible {
+  background: var(--dc-nav-hover-bg, rgba(255, 255, 255, 0.08));
+  color: var(--dc-text, #fff);
 }
+
 .sidebar-nav-item.active {
-  background: #16315a;
-  border-left: 4px solid #2bc1ff;
-  color: #2bc1ff;
+  background: var(--dc-accent-soft, rgba(43, 193, 255, 0.14));
+  color: var(--dc-nav-accent, #2bc1ff);
+  font-weight: 650;
+}
+
+/* Signature accent tick on the active pill */
+.sidebar-nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--dc-nav-accent, #2bc1ff);
 }
 
 .sidebar-icon {
-  font-size: 1.4em;
-  margin-right: 18px;
+  font-size: 1.25rem;
   display: flex;
   align-items: center;
-}
-.sidebar-label {
-  flex: 1;
+  color: inherit;
+  flex-shrink: 0;
 }
 
-/* User info and logout button at the bottom */
+.sidebar-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Bottom: user + logout ---------- */
+
 .sidebar-bottom {
   width: 100%;
-  padding: 16px 24px 40px 24px; /* Increased bottom padding for breathing space */
-  border-top: 1px solid #1e3457;
-  background: #1a2943;
+  padding: 14px 16px 34px 16px;
+  border-top: 1px solid var(--dc-nav-border, #1e3457);
+  background: var(--dc-nav-bottom-bg, #1a2943);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  gap: 12px;
   margin-top: auto;
   box-sizing: border-box;
 }
 
-.sidebar-user-info {
-  margin-bottom: 10px;
-  width: 100%;
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
 }
 
+.sidebar-avatar {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--dc-accent-soft, rgba(43, 193, 255, 0.16));
+  border: 1px solid var(--dc-nav-accent, #2bc1ff);
+  color: var(--dc-nav-accent, #2bc1ff);
+  font-weight: 800;
+  font-size: 1.02rem;
+}
+
+.sidebar-user-text { min-width: 0; }
+
 .sidebar-username {
-  font-weight: bold;
-  font-size: 1.13em;
-  color: #2bc1ff;
-  margin-bottom: 3px;
-  word-break: break-all;
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--dc-text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-role {
-  font-size: 0.97em;
-  color: #c8d1e1;
-  font-style: italic;
+  font-size: 0.75rem;
+  color: var(--dc-text-2, #c8d1e1);
+  text-transform: capitalize;
+  opacity: 0.85;
 }
 
 .sidebar-logout-btn {
-  background: #233a5c;
-  border: none;
-  color: #fff;
-  padding: 8px 18px;
+  background: transparent;
+  border: 1px solid var(--dc-nav-border, #2b4a6b);
+  color: var(--dc-text-2, #c8d1e1);
+  padding: 9px 14px;
   cursor: pointer;
-  border-radius: 5px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
-  font-size: 1em;
-  font-weight: 500;
-  transition: background 0.2s;
-  margin-top: 5px;
+  gap: 9px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: all 0.16s;
   width: 100%;
-  justify-content: flex-start;
+  justify-content: center;
   box-sizing: border-box;
 }
 
 .sidebar-logout-btn:hover {
-  background: #2bc1ff;
-  color: #16315a;
+  border-color: var(--dc-nav-accent, #2bc1ff);
+  color: var(--dc-nav-accent, #2bc1ff);
+  background: var(--dc-nav-hover-bg, rgba(255, 255, 255, 0.06));
 }
 
-/* Responsive: collapse sidebar on small screens */
+.sidebar-logout-icon { font-size: 1.05rem; }
+
+/* ---------- Responsive: collapse on small screens ---------- */
+
 @media (max-width: 700px) {
   .sidebar {
-    width: 58px;
-    min-width: 58px;
-    padding-left: 0;
-    padding-right: 0;
+    width: 62px;
+    min-width: 62px;
   }
-  .sidebar-logo {
-    padding: 0 10px 24px 10px;
-  }
-  .sidebar-title,
-  .sidebar-label {
-    display: none;
-  }
-  .sidebar-nav-item {
-    padding: 14px 10px;
+  .sidebar-brand {
     justify-content: center;
+    padding: 4px 8px 16px 8px;
   }
-  .sidebar-bottom {
-    padding: 12px 10px 28px 10px; /* More breathing space on mobile too */
-    border-top: 1px solid #1e3457;
+  .sidebar-name { display: none; }
+  .sidebar-clinic { display: none; }
+  .sidebar-nav { padding: 8px 8px; }
+  .sidebar-nav-item {
+    justify-content: center;
+    padding: 11px 0;
   }
-  .sidebar-username {
-    font-size: 1em;
-  }
-  .sidebar-role {
-    font-size: 0.9em;
-  }
-  .sidebar-logout-btn {
-    padding: 8px 8px;
-    font-size: 0.98em;
-  }
+  .sidebar-nav-item.active::before { display: none; }
+  .sidebar-label { display: none; }
+  .sidebar-bottom { padding: 12px 8px 26px 8px; align-items: center; }
+  .sidebar-user-text { display: none; }
+  .sidebar-logout-btn { padding: 9px 0; }
+  .sidebar-logout-btn span { display: none; }
 }

@@ -41,6 +41,20 @@ export const darkExecutive: DcTheme = {
     radius: '12px',
     font: "'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif",
   },
+  // Sidebar harmonized into the Dark Executive material: same deep-navy family
+  // as the canvas (#0B1120) — a subtle vertical gradient so the rail reads as
+  // an elevated panel — with the accent UNIFIED to the app's teal (was a
+  // clashing cyan). One place controls the whole nav per theme.
+  nav: {
+    from: '#16233C',
+    to: '#0D1422',
+    accent: '#2DD4BF',
+    activeBg: 'rgba(45, 212, 191, 0.14)',
+    hoverBg: 'rgba(148, 163, 184, 0.10)',
+    bottomBg: '#0D1524',
+    border: 'rgba(148, 163, 184, 0.14)',
+    logoutBg: 'transparent',
+  },
   chartSeries: ['#2DD4BF', '#60A5FA', '#4ADE80', '#FBBF24', '#F87171', '#A78BFA'],
   agingScale: ['#60A5FA', '#FBBF24', '#FB923C', '#F87171', '#EF4444'],
 };

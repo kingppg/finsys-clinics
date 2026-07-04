@@ -1,20 +1,22 @@
-import React from "react";
-import { FaCheckCircle, FaCalendarAlt, FaUserTimes, FaTimesCircle, FaUserClock, FaClipboardCheck, FaExclamationTriangle } from "react-icons/fa";
+import React, { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import { FaExclamationTriangle } from "react-icons/fa";
+import './CalendarView.css';
 
+// Status colors are theme-driven: each references a --cal-* variable defined
+// once on .cal-root (CalendarView.css), which maps to the active theme tokens.
 const STATUS_CONFIG = {
-  confirmed:    { label: "Confirmed",  color: "#4caf50", icon: <FaCheckCircle /> },
-  scheduled:    { label: "Scheduled",  color: "#2196f3", icon: <FaCalendarAlt /> },
-  completed:    { label: "Completed",  color: "#673ab7", icon: <FaUserClock /> },
-  "checked-in": { label: "Checked-In", color: "#00897b", icon: <FaClipboardCheck /> },
-  "no show":    { label: "No Show",    color: "#ff9800", icon: <FaUserTimes /> },
-  cancelled:    { label: "Cancelled",  color: "#f44336", icon: <FaTimesCircle /> },
+  confirmed:    { label: "Confirmed",  color: "var(--cal-confirmed)" },
+  scheduled:    { label: "Scheduled",  color: "var(--cal-scheduled)" },
+  completed:    { label: "Completed",  color: "var(--cal-completed)" },
+  "checked-in": { label: "Checked-In", color: "var(--cal-checkedin)" },
+  "no show":    { label: "No Show",    color: "var(--cal-noshow)" },
+  cancelled:    { label: "Cancelled",  color: "var(--cal-cancelled)" },
 };
 
-const ALL_STATUSES = [
-  "confirmed", "scheduled", "completed", "checked-in", "no show", "cancelled"
-];
-
+const ALL_STATUSES = ["confirmed", "scheduled", "completed", "checked-in", "no show", "cancelled"];
 const STALE_STATUSES = new Set(["confirmed", "scheduled", "checked-in"]);
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function normalizeStatus(raw) {
   if (!raw) return "unknown";
@@ -30,7 +32,6 @@ function getDaysInMonth(year, month) {
 function getFirstDayOfWeek(year, month) {
   return new Date(year, month, 1).getDay();
 }
-
 function isPastDay(year, month, day) {
   const today = new Date();
   const cellDate = new Date(year, month, day);
@@ -47,16 +48,14 @@ function groupAppointmentsByDay(appointments, year, month) {
       if (!out[day]) out[day] = { total: 0, statusCount: {} };
       out[day].total += 1;
       const status = normalizeStatus(a.status);
-      if (!out[day].statusCount[status]) out[day].statusCount[status] = 0;
-      out[day].statusCount[status] += 1;
+      out[day].statusCount[status] = (out[day].statusCount[status] || 0) + 1;
     }
   });
   return out;
 }
 
 function getMonthStatusSummary(grouped, year, month) {
-  let total = 0;
-  let staleCount = 0;
+  let total = 0, staleCount = 0;
   const statusCounts = {};
   Object.entries(grouped).forEach(([dayStr, day]) => {
     const dayNum = parseInt(dayStr);
@@ -64,287 +63,206 @@ function getMonthStatusSummary(grouped, year, month) {
     Object.entries(day.statusCount).forEach(([stat, count]) => {
       statusCounts[stat] = (statusCounts[stat] || 0) + count;
       total += count;
-      if (past && STALE_STATUSES.has(stat)) {
-        staleCount += count;
-      }
+      if (past && STALE_STATUSES.has(stat)) staleCount += count;
     });
   });
   return { total, statusCounts, staleCount };
 }
 
-function CalendarCell({ dayNum, total, statusCounts, highlight, onClick, year, month }) {
-  const nonzeroStatusKeys = ALL_STATUSES.filter(
-    s => statusCounts[s] && statusCounts[s] > 0
-  );
-  const past = isPastDay(year, month, dayNum);
-  const hasStale = past && nonzeroStatusKeys.some(s => STALE_STATUSES.has(s));
+// Animated count-up (easeOutCubic) for the KPI numbers.
+function useCountUp(target, ms = 650) {
+  const [n, setN] = useState(0);
+  const prev = useRef(0);
+  useEffect(() => {
+    const from = prev.current;
+    const start = performance.now();
+    let raf;
+    const tick = (t) => {
+      const p = Math.min(1, (t - start) / ms);
+      const e = 1 - Math.pow(1 - p, 3);
+      setN(Math.round(from + (target - from) * e));
+      if (p < 1) raf = requestAnimationFrame(tick);
+      else prev.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return n;
+}
 
+function CountUp({ value }) {
+  return <span className="cal-kpi-num">{useCountUp(value)}</span>;
+}
+
+function StatusBar({ statusCount }) {
+  const segs = ALL_STATUSES.filter(s => statusCount[s] > 0);
   return (
-    <div
-      onClick={onClick}
-      style={{
-        minWidth: 140,
-        minHeight: 90,
-        border: highlight
-          ? "2.4px solid #185abd"
-          : hasStale
-            ? "1.5px solid #f59e0b"
-            : "1px solid #222",
-        borderRadius: 10,
-        margin: 2,
-        padding: 12,
-        background: highlight
-          ? "#ecf3fe"
-          : total > 0
-            ? "#f7fff9"
-            : "#fff",
-        boxSizing: "border-box",
-        boxShadow: highlight
-          ? "0 3px 24px #2866ee40"
-          : hasStale
-            ? "0 1.5px 8px #f59e0b28"
-            : total > 0
-              ? "0 1.5px 8px #2196f317"
-              : "0 1px 3px #9992",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-start",
-        transition: "background .18s, box-shadow .18s",
-        cursor: "pointer",
-      }}
-      onMouseEnter={e => {
-        e.currentTarget.style.background = highlight ? "#dbeafe" : "#f0f7ff";
-        e.currentTarget.style.boxShadow = "0 4px 16px #185abd33";
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.background = highlight ? "#ecf3fe" : total > 0 ? "#f7fff9" : "#fff";
-        e.currentTarget.style.boxShadow = highlight
-          ? "0 3px 24px #2866ee40"
-          : hasStale
-            ? "0 1.5px 8px #f59e0b28"
-            : total > 0
-              ? "0 1.5px 8px #2196f317"
-              : "0 1px 3px #9992";
-      }}
-    >
-      <div style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        marginBottom: 6,
-      }}>
-        <span style={{
-          fontWeight: 900,
-          fontSize: 24,
-          color: highlight ? "#185abd" : "#333",
-          lineHeight: 1.05,
-          letterSpacing: 1
-        }}>{dayNum}</span>
-        {total > 0 && (
-          <span style={{
-            fontWeight: 800,
-            fontSize: 18,
-            background: hasStale ? "#f59e0b" : "#185abd",
-            color: "#fff",
-            borderRadius: "50%",
-            padding: total > 9 ? "4px 9px" : "4px 12px",
-            marginLeft: 7,
-            transition: "background .18s",
-          }}>
-            {total}
-          </span>
-        )}
-      </div>
-      <div style={{ width: "100%" }}>
-        {nonzeroStatusKeys.length === 0 ? (
-          <div style={{ color: "#aaa", fontSize: 13, marginTop: 22 }}>No Appointment</div>
-        ) : (
-          nonzeroStatusKeys.map((status) => {
-            const s = STATUS_CONFIG[status];
-            const isStale = past && STALE_STATUSES.has(status);
-            return (
-              <div
-                key={status}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  fontSize: 15,
-                  marginBottom: 2,
-                  color: s.color,
-                  fontWeight: 600,
-                  gap: 3,
-                  borderRadius: 6,
-                  background: isStale ? "#fffbeb" : "#f5f7fa",
-                  padding: "1.5px 8px",
-                  marginLeft: -4,
-                  width: "auto",
-                }}
-                title={
-                  isStale
-                    ? `${s.label}: ${statusCounts[status]} appointment${statusCounts[status] > 1 ? "s" : ""} — needs status update!`
-                    : `${s.label}: ${statusCounts[status]} appointment${statusCounts[status] > 1 ? "s" : ""}`
-                }
-              >
-                <span style={{ display: "flex", alignItems: "center", marginRight: 3, fontSize: 15 }}>
-                  {s.icon}
-                </span>
-                <span>{statusCounts[status]}</span>
-                <span style={{ fontSize: 13, fontWeight: 400 }}>{s.label}</span>
-                {isStale && (
-                  <span style={{ color: "#f59e0b", fontSize: 13, marginLeft: 2, display: "flex", alignItems: "center" }}>
-                    <FaExclamationTriangle />
-                  </span>
-                )}
-              </div>
-            );
-          })
-        )}
-      </div>
+    <div className="cal-bar">
+      {segs.map(s => (
+        <span
+          key={s}
+          className="cal-bar-seg"
+          style={{ flexGrow: statusCount[s], background: STATUS_CONFIG[s].color }}
+        />
+      ))}
     </div>
   );
 }
 
-function CalendarWidget({ appointments, month, year, onPrevMonth, onNextMonth, onDateClick }) {
+function CalendarCell({ dayNum, dow, total, statusCounts, intensity, highlight, onClick, year, month, variants }) {
+  const nonzero = ALL_STATUSES.filter(s => statusCounts[s] > 0);
+  const past = isPastDay(year, month, dayNum);
+  const hasStale = past && nonzero.some(s => STALE_STATUSES.has(s));
+  const isWeekend = dow === 0 || dow === 6;
+
+  const cls = [
+    "cal-cell",
+    total === 0 ? "cal-cell--empty" : "",
+    isWeekend ? "cal-cell--weekend" : "",
+    hasStale && !highlight ? "cal-cell--stale" : "",
+    highlight ? "cal-cell--today" : "",
+  ].filter(Boolean).join(" ");
+
+  const shown = nonzero.slice(0, 4);
+  const more = nonzero.length - shown.length;
+  const breakdown = nonzero
+    .map(s => `${STATUS_CONFIG[s].label}: ${statusCounts[s]}`)
+    .join("  •  ");
+
+  return (
+    <motion.div
+      className={cls}
+      style={{ "--i": intensity }}
+      variants={variants}
+      whileHover={{ y: -3 }}
+      transition={{ type: "spring", stiffness: 400, damping: 26 }}
+      onClick={onClick}
+      title={total > 0 ? `${total} appointment${total > 1 ? "s" : ""} — ${breakdown}${hasStale ? "  (needs status update)" : ""}` : undefined}
+    >
+      <div className="cal-cell-top">
+        <span className="cal-daynum">{dayNum}</span>
+        {highlight && <span className="cal-today-pill">TODAY</span>}
+        {total > 0 && (
+          <span className={`cal-count${hasStale ? " cal-count--stale" : ""}`}>{total}</span>
+        )}
+      </div>
+
+      {total > 0 && (
+        <div className="cal-cell-foot">
+          <div className="cal-dots">
+            {shown.map(s => (
+              <span key={s} className="cal-dot" style={{ "--dot": STATUS_CONFIG[s].color }}>
+                {statusCounts[s]}
+              </span>
+            ))}
+            {more > 0 && <span className="cal-dot cal-dot--more">+{more}</span>}
+          </div>
+          <StatusBar statusCount={statusCounts} />
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function CalendarWidget({ appointments, month, year, onPrevMonth, onNextMonth, onDateClick, onToday }) {
   const days = getDaysInMonth(year, month);
   const grouped = groupAppointmentsByDay(appointments, year, month);
   const firstDay = getFirstDayOfWeek(year, month);
   const today = new Date();
   const blankDays = Array.from({ length: firstDay });
+  const maxDay = Math.max(1, ...days.map(d => (grouped[d]?.total || 0)));
 
-  function isToday(day) {
-    return (
-      today.getFullYear() === year &&
-      today.getMonth() === month &&
-      today.getDate() === day
-    );
-  }
+  const isToday = (day) =>
+    today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
 
-  const monthLabel = new Date(year, month).toLocaleString("default", { month: "long", year: "numeric" });
+  const monthName = new Date(year, month).toLocaleString("default", { month: "long" });
   const { total, statusCounts, staleCount } = getMonthStatusSummary(grouped, year, month);
 
-  const statusSegments = ALL_STATUSES
-    .filter(status => statusCounts[status] > 0)
-    .map(status => {
-      const s = STATUS_CONFIG[status];
-      return (
-        <span key={status} style={{ color: s.color, fontWeight: 600, marginLeft: 17, display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <span>{statusCounts[status]}</span>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>{s.label}</span>
-        </span>
-      );
-    });
+  const activeStatuses = ALL_STATUSES.filter(s => statusCounts[s] > 0);
+
+  // Stagger cells in on mount / month change
+  const container = { hidden: {}, show: { transition: { staggerChildren: 0.012 } } };
+  const cellVariant = {
+    hidden: { opacity: 0, y: 8, scale: 0.97 },
+    show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 500, damping: 30 } },
+  };
 
   return (
-    <div style={{
-      width: 1150,
-      padding: 18,
-      background: "#fafcff",
-      borderRadius: 22,
-      boxShadow: "0 4px 28px #3462db18"
-    }}>
+    <div className="cal-card">
       {/* HEADER */}
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: staleCount > 0 ? 6 : 13,
-      }}>
-        <span style={{ display: "flex", alignItems: "center", minWidth: 300 }}>
-          <button
-            onClick={onPrevMonth}
-            style={{
-              marginRight: 10, padding: "2px 13px", fontSize: 19,
-              border: "none", borderRadius: 8, background: "#e2e8f0",
-              color: "#185abd", cursor: "pointer"
-            }}
-            aria-label="Previous Month"
-          >{"<"}</button>
-          <span style={{
-            fontWeight: 650, fontSize: 23, color: "#2866ee",
-            marginRight: 10, letterSpacing: 1, minWidth: 145, textAlign: "left"
-          }}>{monthLabel}</span>
-          <button
-            onClick={onNextMonth}
-            style={{
-              marginLeft: 0, padding: "2px 13px", fontSize: 19,
-              border: "none", borderRadius: 8, background: "#e2e8f0",
-              color: "#185abd", cursor: "pointer"
-            }}
-            aria-label="Next Month"
-          >{">"}</button>
-        </span>
-        <span style={{
-          minWidth: 240, textAlign: "right", fontWeight: 650,
-          color: "#185abd", fontSize: 17,
-        }}>
-          Total for the month:&nbsp;
-          <span style={{
-            background: "#185abd", color: "#fff", borderRadius: 6,
-            padding: "1.5px 13px", fontSize: 17, fontWeight: 900
-          }}>
-            {total}
+      <div className="cal-head">
+        <div className="cal-head-left">
+          <button className="cal-nav-btn" onClick={onPrevMonth} aria-label="Previous Month">‹</button>
+          <button className="cal-nav-btn" onClick={onNextMonth} aria-label="Next Month">›</button>
+          <span className="cal-title">
+            {monthName}<span className="cal-title-year">{year}</span>
           </span>
-          {statusSegments}
-        </span>
+          {onToday && <button className="cal-today-btn" onClick={onToday}>Today</button>}
+        </div>
+
+        <div className="cal-kpis">
+          <div className="cal-kpi cal-kpi--total">
+            <CountUp value={total} />
+            <span className="cal-kpi-label">Total</span>
+          </div>
+          {activeStatuses.map(s => (
+            <div key={s} className="cal-kpi">
+              <span className="cal-kpi-dot" style={{ "--dot": STATUS_CONFIG[s].color }} />
+              <CountUp value={statusCounts[s]} />
+              <span className="cal-kpi-label">{STATUS_CONFIG[s].label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Stale warning banner */}
+      {/* Stale banner */}
       {staleCount > 0 && (
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          background: "#fffbeb",
-          border: "1px solid #f59e0b",
-          borderRadius: 8,
-          padding: "6px 14px",
-          marginBottom: 10,
-          color: "#92400e",
-          fontSize: 14,
-          fontWeight: 600,
-        }}>
-          <FaExclamationTriangle style={{ color: "#f59e0b", fontSize: 15, flexShrink: 0 }} />
+        <div className="cal-stale-banner">
+          <FaExclamationTriangle className="cal-stale-icon" />
           <span>
             <strong>{staleCount} past appointment{staleCount > 1 ? "s" : ""}</strong> still marked as Confirmed, Scheduled, or Checked-In — please update their status.
           </span>
         </div>
       )}
 
-      {/* Day headers */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "repeat(7, 1fr)",
-        gap: 4, marginBottom: 6, color: "#3462db", fontWeight: 600, fontSize: 16
-      }}>
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d =>
-          <div key={d} style={{ textAlign: "center" }}>{d}</div>
-        )}
+      {/* Weekday headers */}
+      <div className="cal-weekdays">
+        {WEEKDAYS.map((d, i) => (
+          <div key={d} className={`cal-weekday${i === 0 || i === 6 ? " cal-weekday--wknd" : ""}`}>{d}</div>
+        ))}
       </div>
 
-      {/* Calendar grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+      {/* Grid */}
+      <motion.div
+        className="cal-grid"
+        key={`${year}-${month}`}
+        variants={container}
+        initial="hidden"
+        animate="show"
+      >
         {blankDays.map((_, i) => <div key={"blank-" + i} />)}
         {days.map(dayNum => {
           const info = grouped[dayNum] || { total: 0, statusCount: {} };
+          const dow = new Date(year, month, dayNum).getDay();
           return (
             <CalendarCell
               key={dayNum}
               dayNum={dayNum}
+              dow={dow}
               total={info.total}
               statusCounts={info.statusCount}
+              intensity={info.total / maxDay}
               highlight={isToday(dayNum)}
               onClick={() => onDateClick && onDateClick({ year, month, day: dayNum })}
               year={year}
               month={month}
+              variants={cellVariant}
             />
           );
         })}
-      </div>
+      </motion.div>
 
-      {/* Click hint */}
-      <div style={{ textAlign: 'center', marginTop: 10, fontSize: 12, color: '#94a3b8' }}>
-        💡 Click any date to view appointments for that day
-      </div>
+      <div className="cal-hint">💡 Click any date to view appointments for that day</div>
     </div>
   );
 }

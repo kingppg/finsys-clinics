@@ -48,11 +48,38 @@ export interface DcThemeTokens {
   font: string;
 }
 
+/**
+ * Sidebar / side-nav is a distinct themed surface (deliberately its own group
+ * so each theme controls the nav independently of the module surfaces —
+ * Dark Executive keeps the premium navy gradient; a light theme flips it).
+ * Emitted as --dc-nav-* variables.
+ */
+export interface DcNavTokens {
+  /** Gradient top */
+  from: string;
+  /** Gradient bottom */
+  to: string;
+  /** Active bar, active label, username, hover border */
+  accent: string;
+  /** Active nav-item background */
+  activeBg: string;
+  /** Hover overlay on nav items */
+  hoverBg: string;
+  /** Bottom (user/logout) section background */
+  bottomBg: string;
+  /** Dividers / borders */
+  border: string;
+  /** Logout button background */
+  logoutBg: string;
+}
+
 export interface DcTheme {
   id: string;
   label: string;
   mode: 'light' | 'dark';
   tokens: DcThemeTokens;
+  /** Side-nav surface tokens (emitted as --dc-nav-*) */
+  nav: DcNavTokens;
   /** Ordered palette for chart series */
   chartSeries: string[];
   /** 5-step escalation scale used by receivables aging (current → 90+) */

@@ -15,6 +15,8 @@ function dateReducer(state, action) {
     case 'PREV_MONTH':
       if (state.month === 0) return { month: 11, year: state.year - 1 };
       return { ...state, month: state.month - 1 };
+    case 'TODAY':
+      return { month: new Date().getMonth(), year: new Date().getFullYear() };
     default:
       return state;
   }
@@ -42,13 +44,14 @@ function ClinicDashboard({ clinicId, user, onDateClick }) {
   }, [clinicId, date]);
 
   return (
-    <div style={{ padding: 12 }}>
+    <div className="cal-root dc-page">
       <CalendarForCalendarView
         appointments={appointments}
         month={date.month}
         year={date.year}
         onPrevMonth={() => dispatch({ type: 'PREV_MONTH' })}
         onNextMonth={() => dispatch({ type: 'NEXT_MONTH' })}
+        onToday={() => dispatch({ type: 'TODAY' })}
         onDateClick={onDateClick}
       />
     </div>

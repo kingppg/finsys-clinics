@@ -177,7 +177,7 @@ function OdontogramInner({ patientId, clinicId, patientName }: OdontogramProps) 
   const hoveredDetails = describeTooth(hoveredRecord);
 
   if (loading) {
-    return <div className="odo-loading">Loading dental chart…</div>;
+    return <div className="dc-loading">Loading dental chart…</div>;
   }
 
   return (
@@ -189,13 +189,13 @@ function OdontogramInner({ patientId, clinicId, patientName }: OdontogramProps) 
           <button
             key={c.id}
             type="button"
-            className={`odo-chip${selectedCond === c.id ? ' active' : ''}`}
+            className={`dc-chip${selectedCond === c.id ? ' active' : ''}`}
             style={{ '--tone': c.color, '--tone-soft': c.soft } as React.CSSProperties}
             onClick={() => setSelectedCond(c.id)}
           >
-            <span className="odo-chip-dot" />
+            <span className="dc-chip-dot" />
             {c.label}
-            {counts[c.id] > 0 && <span className="odo-chip-count">{counts[c.id]}</span>}
+            {counts[c.id] > 0 && <span className="dc-chip-count dc-chip-count--tone">{counts[c.id]}</span>}
           </button>
         ))}
       </div>
@@ -280,13 +280,13 @@ function OdontogramInner({ patientId, clinicId, patientName }: OdontogramProps) 
 
       {/* ── Actions ── */}
       <div className="odo-actions">
-        <button type="button" className="odo-btn-save" onClick={handleSave} disabled={saving || !dirty}>
+        <button type="button" className="dc-btn dc-btn--primary" onClick={handleSave} disabled={saving || !dirty}>
           {saving ? 'Saving…' : dirty ? 'Save Chart •' : 'Saved'}
         </button>
-        <button type="button" className="odo-btn-ghost" onClick={handleUndo} disabled={undoCount === 0}>
+        <button type="button" className="dc-btn dc-btn--ghost" onClick={handleUndo} disabled={undoCount === 0}>
           ↩ Undo{undoCount > 0 ? ` (${undoCount})` : ''}
         </button>
-        <button type="button" className="odo-btn-danger" onClick={() => setConfirmClear(true)}>
+        <button type="button" className="dc-btn dc-btn--danger" onClick={() => setConfirmClear(true)}>
           Clear All
         </button>
         <span className="odo-status">
@@ -299,18 +299,18 @@ function OdontogramInner({ patientId, clinicId, patientName }: OdontogramProps) 
 
       {/* ── Clear confirm ── */}
       {confirmClear && (
-        <div className="odo-modal-overlay" onClick={() => setConfirmClear(false)}>
-          <div className="odo-modal" onClick={e => e.stopPropagation()}>
-            <h3>Clear all markings?</h3>
+        <div className="dc-overlay" onClick={() => setConfirmClear(false)}>
+          <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">Clear all markings?</h3>
             <p>
               This removes every tooth condition for <strong>{patientName || 'this patient'}</strong>.
               Nothing is permanent until you press Save.
             </p>
-            <div className="odo-modal-actions">
-              <button type="button" className="odo-btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
+            <div className="dc-modal-actions">
+              <button type="button" className="dc-btn dc-btn--ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
               <button
                 type="button"
-                className="odo-btn-danger odo-btn-danger--solid"
+                className="dc-btn dc-btn--danger dc-btn--danger-solid"
                 onClick={() => { pushUndo(toothData); setToothData({}); setConfirmClear(false); }}
               >
                 Yes, clear all

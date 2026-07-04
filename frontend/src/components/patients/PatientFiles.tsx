@@ -346,7 +346,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
   };
 
   // ── Render ──
-  if (loading) return <div className="pf-loading">Loading files…</div>;
+  if (loading) return <div className="dc-loading">Loading files…</div>;
 
   const viewerGroup = viewerFile ? groupOfCategory(viewerFile.category) : undefined;
   const viewerAppt = viewerFile?.appointment_id
@@ -361,40 +361,40 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
         <div className="pf-filters">
           <button
             type="button"
-            className={`pf-chip${groupFilter === 'all' ? ' active' : ''}`}
+            className={`dc-chip${groupFilter === 'all' ? ' active' : ''}`}
             onClick={() => setGroupFilter('all')}
           >
-            All <span className="pf-chip-count">{counts.all}</span>
+            All <span className="dc-chip-count">{counts.all}</span>
           </button>
           {FILE_GROUPS.map(g => (
             <button
               key={g.id}
               type="button"
-              className={`pf-chip${groupFilter === g.id ? ' active' : ''}`}
+              className={`dc-chip${groupFilter === g.id ? ' active' : ''}`}
               style={{ '--tone': g.tone, '--tone-soft': g.toneSoft } as React.CSSProperties}
               onClick={() => setGroupFilter(g.id)}
             >
-              {g.icon} {g.label} <span className="pf-chip-count">{counts[g.id]}</span>
+              {g.icon} {g.label} <span className="dc-chip-count">{counts[g.id]}</span>
             </button>
           ))}
         </div>
-        <button type="button" className="pf-btn-primary" onClick={openUpload}>
+        <button type="button" className="dc-btn dc-btn--primary" onClick={openUpload}>
           + Upload
         </button>
       </div>
 
       {banner && (
-        <div className={`pf-banner pf-banner--${banner.kind}`}>{banner.text}</div>
+        <div className={`dc-banner dc-banner--${banner.kind}`}>{banner.text}</div>
       )}
 
       {/* ── Gallery ── */}
       {visible.length === 0 ? (
-        <div className="pf-empty">
-          <div className="pf-empty-icon">🩻</div>
-          <div className="pf-empty-title">
+        <div className="dc-empty">
+          <div className="dc-empty-icon">🩻</div>
+          <div className="dc-empty-title">
             {files.length === 0 ? 'No files yet' : 'Nothing in this category'}
           </div>
-          <div className="pf-empty-hint">
+          <div className="dc-empty-hint">
             {files.length === 0
               ? `Upload X-rays, photos, or documents for ${patientName || 'this patient'}.`
               : 'Try another filter, or upload a new file.'}
@@ -419,7 +419,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                   <div className="pf-card-title" title={f.title}>{f.title}</div>
                   <div className="pf-card-meta">
                     <span
-                      className="pf-cat-badge"
+                      className="dc-pill"
                       style={{ '--tone': g?.tone, '--tone-soft': g?.toneSoft } as React.CSSProperties}
                     >
                       {categoryById(f.category)?.label || f.category}
@@ -437,9 +437,9 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
 
       {/* ── Upload modal ── */}
       {uploadOpen && (
-        <div className="pf-overlay" onClick={() => !uploading && setUploadOpen(false)}>
-          <div className="pf-modal" onClick={e => e.stopPropagation()}>
-            <h3 className="pf-modal-title">Upload Files</h3>
+        <div className="dc-overlay" onClick={() => !uploading && setUploadOpen(false)}>
+          <div className="dc-modal" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">Upload Files</h3>
 
             <div
               className={`pf-dropzone${dragOver ? ' over' : ''}`}
@@ -449,7 +449,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
             >
               <span className="pf-dropzone-icon">📤</span>
               <span>Drag files here, or</span>
-              <label className="pf-btn-ghost pf-file-label">
+              <label className="dc-btn dc-btn--ghost pf-file-label">
                 Browse…
                 <input
                   type="file"
@@ -474,7 +474,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
             )}
 
             <div className="pf-form-grid">
-              <label className="pf-field">
+              <label className="dc-field">
                 <span>Category *</span>
                 <select
                   value={draft.category}
@@ -491,7 +491,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                 </select>
               </label>
 
-              <label className="pf-field">
+              <label className="dc-field">
                 <span>Date taken</span>
                 <input
                   type="date"
@@ -500,7 +500,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                 />
               </label>
 
-              <label className="pf-field">
+              <label className="dc-field">
                 <span>Tooth (FDI)</span>
                 <select
                   value={draft.toothNumber}
@@ -511,7 +511,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                 </select>
               </label>
 
-              <label className="pf-field">
+              <label className="dc-field">
                 <span>Appointment</span>
                 <select
                   value={draft.appointmentId}
@@ -525,7 +525,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
               </label>
 
               {draft.files.length === 1 && (
-                <label className="pf-field pf-field--wide">
+                <label className="dc-field dc-field--wide">
                   <span>Title</span>
                   <input
                     type="text"
@@ -536,7 +536,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                 </label>
               )}
 
-              <label className="pf-field pf-field--wide">
+              <label className="dc-field dc-field--wide">
                 <span>Notes</span>
                 <textarea
                   rows={2}
@@ -547,11 +547,11 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
               </label>
             </div>
 
-            <div className="pf-modal-actions">
-              <button type="button" className="pf-btn-ghost" onClick={() => setUploadOpen(false)} disabled={uploading}>
+            <div className="dc-modal-actions">
+              <button type="button" className="dc-btn dc-btn--ghost" onClick={() => setUploadOpen(false)} disabled={uploading}>
                 Cancel
               </button>
-              <button type="button" className="pf-btn-primary" onClick={handleUpload} disabled={uploading}>
+              <button type="button" className="dc-btn dc-btn--primary" onClick={handleUpload} disabled={uploading}>
                 {uploading ? uploadStep || 'Uploading…' : `Upload${draft.files.length > 1 ? ` ${draft.files.length} files` : ''}`}
               </button>
             </div>
@@ -561,11 +561,11 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
 
       {/* ── Viewer modal ── */}
       {viewerFile && (
-        <div className="pf-overlay" onClick={closeViewer}>
-          <div className="pf-modal pf-modal--viewer" onClick={e => e.stopPropagation()}>
+        <div className="dc-overlay" onClick={closeViewer}>
+          <div className="dc-modal dc-modal--wide" onClick={e => e.stopPropagation()}>
             <div className="pf-viewer-head">
-              <h3 className="pf-modal-title" title={viewerFile.title}>{viewerFile.title}</h3>
-              <button type="button" className="pf-close" onClick={closeViewer} title="Close">×</button>
+              <h3 className="dc-modal-title" title={viewerFile.title}>{viewerFile.title}</h3>
+              <button type="button" className="dc-modal-close" onClick={closeViewer} title="Close">×</button>
             </div>
 
             <div className="pf-viewer-body">
@@ -578,7 +578,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                     <span>{viewerFile.file_name}</span>
                     {urls[viewerFile.file_path] && (
                       <a
-                        className="pf-btn-primary"
+                        className="dc-btn dc-btn--primary"
                         href={urls[viewerFile.file_path]}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -596,7 +596,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                     <dl className="pf-detail-list">
                       <div><dt>Category</dt><dd>
                         <span
-                          className="pf-cat-badge"
+                          className="dc-pill"
                           style={{ '--tone': viewerGroup?.tone, '--tone-soft': viewerGroup?.toneSoft } as React.CSSProperties}
                         >
                           {categoryById(viewerFile.category)?.label || viewerFile.category}
@@ -622,28 +622,28 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                     </dl>
 
                     <div className="pf-viewer-actions">
-                      <button type="button" className="pf-btn-primary" onClick={() => download(viewerFile)}>
+                      <button type="button" className="dc-btn dc-btn--primary" onClick={() => download(viewerFile)}>
                         ⬇ Download
                       </button>
-                      <button type="button" className="pf-btn-ghost" onClick={startEdit}>✏️ Edit details</button>
+                      <button type="button" className="dc-btn dc-btn--ghost" onClick={startEdit}>✏️ Edit details</button>
                       {!confirmDelete ? (
-                        <button type="button" className="pf-btn-danger" onClick={() => setConfirmDelete(true)}>
+                        <button type="button" className="dc-btn dc-btn--danger" onClick={() => setConfirmDelete(true)}>
                           Delete
                         </button>
                       ) : (
                         <div className="pf-confirm-row">
                           <span>Delete this file?</span>
-                          <button type="button" className="pf-btn-danger pf-btn-danger--solid" onClick={softDelete} disabled={rowBusy}>
+                          <button type="button" className="dc-btn dc-btn--danger dc-btn--danger-solid" onClick={softDelete} disabled={rowBusy}>
                             {rowBusy ? 'Deleting…' : 'Yes, delete'}
                           </button>
-                          <button type="button" className="pf-btn-ghost" onClick={() => setConfirmDelete(false)}>No</button>
+                          <button type="button" className="dc-btn dc-btn--ghost" onClick={() => setConfirmDelete(false)}>No</button>
                         </div>
                       )}
                     </div>
                   </>
                 ) : (
                   <div className="pf-form-grid pf-form-grid--stack">
-                    <label className="pf-field">
+                    <label className="dc-field">
                       <span>Title</span>
                       <input
                         type="text"
@@ -651,7 +651,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                         onChange={e => setEditDraft(d => ({ ...d, title: e.target.value }))}
                       />
                     </label>
-                    <label className="pf-field">
+                    <label className="dc-field">
                       <span>Category</span>
                       <select
                         value={editDraft.category || ''}
@@ -666,7 +666,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                         ))}
                       </select>
                     </label>
-                    <label className="pf-field">
+                    <label className="dc-field">
                       <span>Date taken</span>
                       <input
                         type="date"
@@ -674,7 +674,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                         onChange={e => setEditDraft(d => ({ ...d, taken_date: e.target.value || null }))}
                       />
                     </label>
-                    <label className="pf-field">
+                    <label className="dc-field">
                       <span>Tooth (FDI)</span>
                       <select
                         value={editDraft.tooth_number ? String(editDraft.tooth_number) : ''}
@@ -684,7 +684,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                         {FDI_TEETH.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </label>
-                    <label className="pf-field">
+                    <label className="dc-field">
                       <span>Appointment</span>
                       <select
                         value={editDraft.appointment_id ? String(editDraft.appointment_id) : ''}
@@ -696,7 +696,7 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                         ))}
                       </select>
                     </label>
-                    <label className="pf-field">
+                    <label className="dc-field">
                       <span>Notes</span>
                       <textarea
                         rows={3}
@@ -705,10 +705,10 @@ function PatientFilesInner({ patientId, clinicId, patientName, defaultAppointmen
                       />
                     </label>
                     <div className="pf-viewer-actions">
-                      <button type="button" className="pf-btn-primary" onClick={saveEdit} disabled={rowBusy}>
+                      <button type="button" className="dc-btn dc-btn--primary" onClick={saveEdit} disabled={rowBusy}>
                         {rowBusy ? 'Saving…' : 'Save'}
                       </button>
-                      <button type="button" className="pf-btn-ghost" onClick={() => setEditing(false)} disabled={rowBusy}>
+                      <button type="button" className="dc-btn dc-btn--ghost" onClick={() => setEditing(false)} disabled={rowBusy}>
                         Cancel
                       </button>
                     </div>

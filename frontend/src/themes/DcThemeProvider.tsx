@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   ReactNode,
@@ -59,9 +60,33 @@ function tokensToCssVars(theme: DcTheme): React.CSSProperties {
     '--dc-shadow': t.shadow,
     '--dc-radius': t.radius,
     '--dc-font': t.font,
+    // Side-nav surface (--dc-nav-*)
+    '--dc-nav-from': theme.nav.from,
+    '--dc-nav-to': theme.nav.to,
+    '--dc-nav-accent': theme.nav.accent,
+    '--dc-nav-active-bg': theme.nav.activeBg,
+    '--dc-nav-hover-bg': theme.nav.hoverBg,
+    '--dc-nav-bottom-bg': theme.nav.bottomBg,
+    '--dc-nav-border': theme.nav.border,
+    '--dc-nav-logout-bg': theme.nav.logoutBg,
     color: t.text,
     fontFamily: t.font,
   } as React.CSSProperties;
+}
+
+/**
+ * Write only the --dc-* custom properties onto an element (default :root),
+ * WITHOUT forcing color/background/font. This makes the whole theme's
+ * variables available app-wide (sidebar, calendar, and body-mounted portals
+ * like SweetAlert2) while staying inert for modules that don't reference
+ * them yet — the safe path for the gradual app-wide theming rollout.
+ */
+export function applyThemeVars(theme: DcTheme, el: HTMLElement = document.documentElement) {
+  const vars = tokensToCssVars(theme);
+  Object.entries(vars).forEach(([key, value]) => {
+    if (key.startsWith('--')) el.style.setProperty(key, String(value));
+  });
+  el.setAttribute('data-dc-theme', theme.id);
 }
 
 export function DcThemeProvider({ children }: { children: ReactNode }) {
@@ -104,4 +129,45 @@ export function useDcTheme(): DcThemeContextValue {
     throw new Error('useDcTheme must be used inside <DcThemeProvider>');
   }
   return ctx;
+}
+
+/**
+ * DcThemeRoot — app-level theme injector.
+ * Writes the active theme's --dc-* variables onto :root (via applyThemeVars)
+ * and provides theme context, but renders NO wrapper div and does NOT force
+ * global color/background/font. Mount once high in the tree (Dashboard) so the
+ * sidebar, calendar, and every migrated module read the same tokens, while
+ * un-migrated modules stay exactly as they are. Persists the selection in the
+ * same localStorage key as DcThemeProvider, ready for the Clinic Config picker.
+ */
+export function DcThemeRoot({ children }: { children: ReactNode }) {
+  const [themeId, setThemeIdState] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem(STORAGE_KEY) || DEFAULT_THEME_ID;
+    } catch {
+      return DEFAULT_THEME_ID;
+    }
+  });
+
+  const setThemeId = useCallback((id: string) => {
+    setThemeIdState(THEMES[id] ? id : DEFAULT_THEME_ID);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, id);
+    } catch {
+      /* storage unavailable — theme still applies for the session */
+    }
+  }, []);
+
+  const theme = getTheme(themeId);
+
+  useEffect(() => {
+    applyThemeVars(theme);
+  }, [theme]);
+
+  const value = useMemo<DcThemeContextValue>(
+    () => ({ theme, themeId: theme.id, setThemeId, availableThemes: Object.values(THEMES) }),
+    [theme, setThemeId]
+  );
+
+  return <DcThemeContext.Provider value={value}>{children}</DcThemeContext.Provider>;
 }

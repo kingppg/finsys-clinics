@@ -97,14 +97,14 @@ function PatientProfileInner({ patient, clinicId, appointments, dentists, onBack
       </div>
 
       {/* ── Tab bar ── */}
-      <div className="pp-tabs" role="tablist">
+      <div className="dc-tabs pp-tabs" role="tablist">
         {TABS.map(t => (
           <button
             key={t.id}
             type="button"
             role="tab"
             aria-selected={tab === t.id}
-            className={`pp-tab${tab === t.id ? ' active' : ''}`}
+            className={`dc-tab${tab === t.id ? ' active' : ''}`}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -119,7 +119,11 @@ function PatientProfileInner({ patient, clinicId, appointments, dentists, onBack
       {tab === 'history' && (
         <div className="pp-panel">
           {history.length === 0 ? (
-            <div className="pp-empty">No appointments found for {patient.name}.</div>
+            <div className="dc-empty">
+              <div className="dc-empty-icon">📋</div>
+              <div className="dc-empty-title">No appointments yet</div>
+              <div className="dc-empty-hint">No appointment history on record for {patient.name}.</div>
+            </div>
           ) : (
             <ul className="pp-history">
               {history.map(a => {

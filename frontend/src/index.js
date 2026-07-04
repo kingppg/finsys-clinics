@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import './styles/dcPage.css'; // shared full-page layout (breathing gutters, geometry only)
+import './styles/dcPrimitives.css'; // single layout source of truth for repeatable patterns (buttons, chips, modals, fields…)
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 

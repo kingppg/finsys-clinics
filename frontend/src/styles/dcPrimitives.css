@@ -1,0 +1,350 @@
+/* ==========================================================================
+   DC PRIMITIVES — THE SINGLE LAYOUT SOURCE OF TRUTH FOR REPEATABLE PATTERNS
+   --------------------------------------------------------------------------
+   Every layout pattern that appears in more than one component lives HERE:
+   buttons, chips, pills, modals, form fields, tabs, banners, empty states.
+   Component CSS files may only contain geometry unique to that component
+   (an odontogram arch, a gallery grid) — they must NOT define their own
+   buttons/chips/modals/fields. If a pattern shows up in a second component,
+   it graduates into this file.
+
+   Cosmetics come exclusively from --dc-* theme tokens, so one correction
+   here corrects every component in every theme. Loaded globally (index.js).
+   ========================================================================== */
+
+/* ---------- Loading ---------- */
+
+.dc-loading {
+  padding: 40px;
+  text-align: center;
+  color: var(--dc-text-3, #6E7E98);
+  font-family: var(--dc-font, 'Inter', sans-serif);
+}
+
+/* ---------- Buttons ---------- */
+
+.dc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--dc-radius, 12px);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+
+.dc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dc-btn--primary {
+  background: var(--dc-accent, #2DD4BF);
+  color: var(--dc-accent-contrast, #06201C);
+  border: none;
+  font-weight: 700;
+}
+
+.dc-btn--primary:hover:not(:disabled) {
+  background: var(--dc-accent-hover, #14B8A6);
+}
+
+.dc-btn--ghost {
+  background: transparent;
+  color: var(--dc-text-2, #A9B7CE);
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  font-weight: 600;
+}
+
+.dc-btn--ghost:hover:not(:disabled) {
+  border-color: var(--dc-accent, #2DD4BF);
+  color: var(--dc-text, #EDF2FA);
+}
+
+.dc-btn--danger {
+  background: transparent;
+  color: var(--dc-danger, #F87171);
+  border: 1px solid var(--dc-danger, #F87171);
+  font-weight: 600;
+}
+
+.dc-btn--danger:hover:not(:disabled) {
+  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14));
+}
+
+.dc-btn--danger-solid {
+  background: var(--dc-danger, #F87171);
+  color: var(--dc-bg, #0B1120);
+}
+
+.dc-btn--danger-solid:hover:not(:disabled) {
+  background: var(--dc-danger, #F87171);
+  opacity: 0.9;
+}
+
+/* ---------- Chips (interactive filter/selector pills) ----------
+   Tone-aware: set --tone / --tone-soft inline for colored chips;
+   falls back to the accent. */
+
+.dc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  background: transparent;
+  color: var(--dc-text-2, #A9B7CE);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.dc-chip:hover {
+  border-color: var(--tone, var(--dc-accent, #2DD4BF));
+  color: var(--dc-text, #EDF2FA);
+}
+
+.dc-chip.active {
+  background: var(--tone-soft, var(--dc-accent-soft, rgba(45, 212, 191, 0.13)));
+  border-color: var(--tone, var(--dc-accent, #2DD4BF));
+  color: var(--dc-text, #EDF2FA);
+  box-shadow: 0 0 10px var(--tone-soft, var(--dc-accent-soft, rgba(45, 212, 191, 0.13)));
+}
+
+.dc-chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tone, var(--dc-accent, #2DD4BF));
+  flex-shrink: 0;
+}
+
+.dc-chip-count {
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text-2, #A9B7CE);
+  border-radius: 9999px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0 5px;
+}
+
+/* Filled tone-colored count (e.g. condition counts on the odontogram) */
+.dc-chip-count--tone {
+  background: var(--tone, var(--dc-accent, #2DD4BF));
+  color: var(--dc-bg, #0B1120);
+}
+
+/* ---------- Pills (non-interactive status/category badges) ---------- */
+
+.dc-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: var(--tone-soft, var(--dc-accent-soft, rgba(45, 212, 191, 0.13)));
+  color: var(--tone, var(--dc-accent, #2DD4BF));
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Banners ---------- */
+
+.dc-banner {
+  padding: 8px 14px;
+  border-radius: var(--dc-radius, 12px);
+  font-size: 0.83rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.dc-banner--ok {
+  background: var(--dc-success-soft, rgba(74, 222, 128, 0.13));
+  color: var(--dc-success, #4ADE80);
+  border: 1px solid var(--dc-success, #4ADE80);
+}
+
+.dc-banner--err {
+  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14));
+  color: var(--dc-danger, #F87171);
+  border: 1px solid var(--dc-danger, #F87171);
+}
+
+/* ---------- Empty state ---------- */
+
+.dc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 46px 16px;
+  border: 1.5px dashed var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: var(--dc-radius, 12px);
+  text-align: center;
+}
+
+.dc-empty-icon { font-size: 2rem; }
+.dc-empty-title { font-weight: 700; font-size: 0.95rem; color: var(--dc-text, #EDF2FA); }
+.dc-empty-hint { color: var(--dc-text-3, #6E7E98); font-size: 0.83rem; }
+
+/* ---------- Modal ---------- */
+
+.dc-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(2, 6, 17, 0.72);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.dc-modal {
+  background: var(--dc-surface, #131C2E);
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: var(--dc-radius, 12px);
+  box-shadow: var(--dc-shadow, 0 16px 40px rgba(2, 6, 17, 0.5));
+  padding: 20px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 92vh;
+  overflow-y: auto;
+  color: var(--dc-text, #EDF2FA);
+  font-family: var(--dc-font, 'Inter', sans-serif);
+}
+
+.dc-modal--sm   { max-width: 400px; }
+.dc-modal--wide { max-width: 860px; }
+
+.dc-modal-title {
+  margin: 0 0 14px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dc-modal p {
+  margin: 0 0 20px;
+  font-size: 0.85rem;
+  color: var(--dc-text-2, #A9B7CE);
+  line-height: 1.6;
+}
+
+.dc-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.dc-modal-close {
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--dc-text-3, #6E7E98);
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.dc-modal-close:hover { color: var(--dc-text, #EDF2FA); }
+
+/* ---------- Form fields ---------- */
+
+.dc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dc-field--wide { grid-column: 1 / -1; }
+
+.dc-field > span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--dc-text-2, #A9B7CE);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.dc-field input,
+.dc-field select,
+.dc-field textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text, #EDF2FA);
+  font-family: inherit;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.dc-field input::placeholder,
+.dc-field textarea::placeholder {
+  color: var(--dc-text-3, #6E7E98);
+}
+
+.dc-field input:focus,
+.dc-field select:focus,
+.dc-field textarea:focus {
+  border-color: var(--dc-accent, #2DD4BF);
+  box-shadow: 0 0 0 3px var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+}
+
+.dc-field textarea { resize: vertical; }
+
+.dc-field select option,
+.dc-field select optgroup {
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text, #EDF2FA);
+}
+
+/* ---------- Tabs ---------- */
+
+.dc-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1.5px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+
+.dc-tab {
+  padding: 9px 20px;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  background: none;
+  color: var(--dc-text-3, #6E7E98);
+  font-family: inherit;
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  margin-bottom: -1.5px;
+  transition: all 0.12s;
+}
+
+.dc-tab:hover { color: var(--dc-text-2, #A9B7CE); }
+
+.dc-tab.active {
+  color: var(--dc-accent, #2DD4BF);
+  border-bottom-color: var(--dc-accent, #2DD4BF);
+  font-weight: 700;
+}

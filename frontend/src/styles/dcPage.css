@@ -11,9 +11,33 @@
    class owns only its placement on the page. Loaded globally via index.js.
    ========================================================================== */
 
+:root {
+  /* Centralized left/right edge gap for tables & full-width content.
+     Change it here once → every table/grid using it stays consistent, in
+     every theme. No per-component gutter tweaking. */
+  --dc-gutter: 24px;
+}
+
+/* The dashboard viewport/canvas. Themed centrally so the whole app background
+   follows the active theme (dark when dark). Light fallback keeps pre-theme
+   surfaces (e.g. the login page, where no theme is injected) unchanged. */
+.dc-viewport {
+  background: var(--dc-bg, #f6f9fc);
+}
+
 .dc-page {
   width: 100%;
   max-width: 1600px;
   margin: 10px auto 36px;
   box-sizing: border-box;
+}
+
+/* Centralized table/grid gutter. Give any table's scroll wrapper (or a
+   full-width grid like the calendar) this class and it gets consistent
+   left/right breathing room from the module edges — one value, one place. */
+.dc-table {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: var(--dc-gutter, 24px);
+  padding-right: var(--dc-gutter, 24px);
 }
