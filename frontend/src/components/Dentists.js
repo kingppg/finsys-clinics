@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import DentistAvailabilityManager from './DentistAvailabilityManager';
+import { LuUserPlus, LuCalendarClock, LuSquarePen, LuTrash2 } from 'react-icons/lu';
 import './Dentists.css';
-import './MainSection.css';
 
 function Dentists({ clinicId }) {
   const [dentists, setDentists] = useState([]);
@@ -308,38 +308,40 @@ function Dentists({ clinicId }) {
     setAvailabilityModalOpen(false);
   };
 
-  // --------- STICKY HEADER PATCH (flex, align center, sticky, no UI change) ---------
   return (
-    <section className="main-section dentists-section-relative">
-      <div className="dentists-sticky-header">
-        <div className="dentists-header-row">
-          <h2 className="dentists-title">Dentists</h2>
-          <button onClick={openAddModal} style={{
-            fontWeight: 'bold', background: '#185abd', color: '#fff',
-            padding: '8px 20px', border: 'none', borderRadius: 4, minWidth: 120
-          }}>Add Dentist</button>
+    <div className="dc-page dt-page">
+      <header className="dc-page-header">
+        <div className="dc-page-titlewrap">
+          <div className="dc-page-eyebrow">Team</div>
+          <h1 className="dc-page-title">Dentists</h1>
+          <div className="dc-page-subtitle">{dentists.length} total</div>
         </div>
-        <div className="dentists-message-row" style={{ minHeight: 30 }}>
-          {error && !modalOpen && !deleteModalOpen && !addModalOpen && !availabilityModalOpen ? <span className="dentists-error">{error}</span> : null}
-          {success && !modalOpen && !deleteModalOpen && !addModalOpen && !availabilityModalOpen ? <span className="dentists-success">{success}</span> : null}
+        <div className="dc-page-header-actions">
+          <button className="dc-btn dc-btn--primary" onClick={openAddModal}>
+            <LuUserPlus /> Add Dentist
+          </button>
         </div>
-      </div>
-      <div className="dentists-table-scroll">
-        <table className="dentists-table-fixed" border="1" cellPadding="8">
+      </header>
+
+      {((error || success) && !modalOpen && !deleteModalOpen && !addModalOpen && !availabilityModalOpen) && (
+        <div className="dt-msg-row">
+          {error && <div className="dc-banner dc-banner--err">{error}</div>}
+          {success && <div className="dc-banner dc-banner--ok">{success}</div>}
+        </div>
+      )}
+
+      <div className="dc-table-wrap">
+        <table className="dc-table dt-table">
           <colgroup>
-            <col style={{width: '24%'}} />
-            <col style={{width: '24%'}} />
-            <col style={{width: '16%'}} />
-            <col style={{width: '16%'}} />
-            <col style={{width: '20%'}} />
+            <col style={{ width: '24%' }} />
+            <col style={{ width: '26%' }} />
+            <col style={{ width: '16%' }} />
+            <col style={{ width: '16%' }} />
+            <col style={{ width: '18%' }} />
           </colgroup>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th>Status</th>
-              <th>Actions</th>
+              <th>Name</th><th>Email</th><th>Phone</th><th>Status</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -350,210 +352,117 @@ function Dentists({ clinicId }) {
                 <td title={dentist.phone}>{dentist.phone}</td>
                 <td>
                   <button
+                    className={`dt-status${dentist.is_active ? ' active' : ''}`}
                     onClick={() => toggleStatus(dentist)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      padding: 0,
-                      display: 'inline-flex',
-                      alignItems: 'center'
-                    }}
                     title={`Mark as ${dentist.is_active ? 'Inactive' : 'Active'}`}
                   >
-                    <span style={{
-                      display: 'inline-block',
-                      width: 12,
-                      height: 12,
-                      borderRadius: '50%',
-                      marginRight: 8,
-                      background: dentist.is_active ? '#43a047' : '#e53935',
-                      verticalAlign: 'middle',
-                      border: '1px solid #bbb',
-                      transition: 'background 0.2s'
-                    }} />
-                    <span style={{
-                      fontWeight: 600,
-                      color: dentist.is_active ? '#43a047' : '#e53935',
-                      fontSize: '1em'
-                    }}>
-                      {dentist.is_active ? 'Active' : 'Inactive'}
-                    </span>
+                    <span className="dt-status-dot" />
+                    {dentist.is_active ? 'Active' : 'Inactive'}
                   </button>
                 </td>
-                <td className="dentists-actions-cell">
-                  <i
-                    className="fa fa-calendar icon-action calendar-icon"
-                    title="Manage Availability"
-                    onClick={() => openAvailabilityModal(dentist)}
-                    style={{
-                      cursor: "pointer",
-                      color: "#388e3c",
-                      fontSize: "1.15em",
-                      padding: 6,
-                      borderRadius: 4,
-                      background: "none",
-                      border: "none",
-                      marginRight: 12
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label="Manage Availability"
-                  />
-                  <i
-                    className="fa fa-edit icon-action edit-icon"
-                    title="Edit"
-                    onClick={() => startEdit(dentist)}
-                    style={{
-                      cursor: "pointer",
-                      color: "#2bc1ff",
-                      marginRight: 16,
-                      fontSize: "1.15em",
-                      padding: 6,
-                      borderRadius: 4,
-                      background: "none",
-                      border: "none"
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label="Edit"
-                  />
-                  <i
-                    className="fa fa-trash icon-action delete-icon"
-                    title="Delete"
-                    onClick={() => onDeleteClick(dentist)}
-                    style={{
-                      cursor: "pointer",
-                      color: "#e74c3c",
-                      fontSize: "1.15em",
-                      padding: 6,
-                      borderRadius: 4,
-                      background: "none",
-                      border: "none"
-                    }}
-                    tabIndex={0}
-                    role="button"
-                    aria-label="Delete"
-                  />
+                <td>
+                  <div className="dc-table-actions">
+                    <button className="dc-icon-btn dc-icon-btn--accent" title="Manage Availability" aria-label="Manage availability" onClick={() => openAvailabilityModal(dentist)}>
+                      <LuCalendarClock />
+                    </button>
+                    <button className="dc-icon-btn dc-icon-btn--accent" title="Edit" aria-label="Edit dentist" onClick={() => startEdit(dentist)}>
+                      <LuSquarePen />
+                    </button>
+                    <button className="dc-icon-btn dc-icon-btn--danger" title="Delete" aria-label="Delete dentist" onClick={() => onDeleteClick(dentist)}>
+                      <LuTrash2 />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
+            {dentists.length === 0 && (
+              <tr><td colSpan={5} className="dt-empty">No dentists yet.</td></tr>
+            )}
           </tbody>
         </table>
       </div>
-      {/* ---- THE REST: MODALS, NO CHANGE ---- */}
+
+      {/* ── Add ── */}
       {addModalOpen && (
-        <div className="modal-bg modal-bg-inside-section" onClick={closeAddModal}>
-          <div className="modal dentists-modal" onClick={e => e.stopPropagation()}>
-            <h3>Add Dentist</h3>
+        <div className="dc-overlay" onClick={closeAddModal}>
+          <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">Add Dentist</h3>
             <form onSubmit={handleSubmit}>
-              <label>Name:</label>
-              <input type="text" name="name" value={newDentist.name} onChange={handleChange} className="dentists-table-edit-input" autoFocus />
-              <label>Email:</label>
-              <input type="email" name="email" value={newDentist.email} onChange={handleChange} className="dentists-table-edit-input" />
-              <label>Phone:</label>
-              <input type="tel" name="phone" value={newDentist.phone} onChange={handleChange} className="dentists-table-edit-input" />
-              <label>Status:</label>
-              <div style={{marginBottom: 10}}>
-                <label style={{marginRight: 16}}>
-                  <input type="checkbox" name="is_active" checked={newDentist.is_active} onChange={handleChange} style={{marginRight: 6}} />
-                  Active
-                </label>
+              <div className="dt-form">
+                <label className="dc-field"><span>Name</span><input type="text" name="name" value={newDentist.name} onChange={handleChange} autoFocus /></label>
+                <label className="dc-field"><span>Email</span><input type="email" name="email" value={newDentist.email} onChange={handleChange} /></label>
+                <label className="dc-field"><span>Phone</span><input type="tel" name="phone" value={newDentist.phone} onChange={handleChange} /></label>
+                <label className="dt-check"><input type="checkbox" name="is_active" checked={newDentist.is_active} onChange={handleChange} /> Active</label>
               </div>
-              {error && <div className="modal-error">{error}</div>}
-              <div className="modal-actions" style={{marginTop: 18}}>
-                <button type="button" onClick={closeAddModal} style={{ background: "#fff", color: "#185abd", border: "1.5px solid #185abd" }}>Cancel</button>
-                <button type="submit" style={{ background: "#185abd", color: "#fff" }}>Add</button>
+              {error && <div className="dc-banner dc-banner--err">{error}</div>}
+              <div className="dc-modal-actions">
+                <button type="button" className="dc-btn dc-btn--ghost" onClick={closeAddModal}>Cancel</button>
+                <button type="submit" className="dc-btn dc-btn--primary">Add Dentist</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* ── Edit ── */}
       {modalOpen && (
-        <div className="modal-bg modal-bg-inside-section" onClick={closeModal}>
-          <div className="modal dentists-modal" onClick={e => e.stopPropagation()}>
-            <h3>Edit Dentist</h3>
+        <div className="dc-overlay" onClick={closeModal}>
+          <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">Edit Dentist</h3>
             <form onSubmit={e => { e.preventDefault(); saveEdit(editDentistId); }}>
-              <label>Name:</label>
-              <input type="text" name="name" value={editDentist.name} onChange={handleEditChange} className="dentists-table-edit-input" autoFocus />
-              <label>Email:</label>
-              <input type="email" name="email" value={editDentist.email} onChange={handleEditChange} className="dentists-table-edit-input" />
-              <label>Phone:</label>
-              <input type="tel" name="phone" value={editDentist.phone} onChange={handleEditChange} className="dentists-table-edit-input" />
-              <label>Status:</label>
-              <div style={{marginBottom: 10}}>
-                <label style={{marginRight: 16}}>
-                  <input type="checkbox" name="is_active" checked={editDentist.is_active} onChange={handleEditChange} style={{marginRight: 6}} />
-                  Active
-                </label>
+              <div className="dt-form">
+                <label className="dc-field"><span>Name</span><input type="text" name="name" value={editDentist.name} onChange={handleEditChange} autoFocus /></label>
+                <label className="dc-field"><span>Email</span><input type="email" name="email" value={editDentist.email} onChange={handleEditChange} /></label>
+                <label className="dc-field"><span>Phone</span><input type="tel" name="phone" value={editDentist.phone} onChange={handleEditChange} /></label>
+                <label className="dt-check"><input type="checkbox" name="is_active" checked={editDentist.is_active} onChange={handleEditChange} /> Active</label>
               </div>
-              {error && <div className="modal-error">{error}</div>}
-              <div className="modal-actions" style={{marginTop: 18}}>
-                <button type="button" onClick={closeModal} style={{ background: "#fff", color: "#185abd", border: "1.5px solid #185abd" }}>Cancel</button>
-                <button type="submit" style={{ background: "#185abd", color: "#fff" }}>Save</button>
+              {error && <div className="dc-banner dc-banner--err">{error}</div>}
+              <div className="dc-modal-actions">
+                <button type="button" className="dc-btn dc-btn--ghost" onClick={closeModal}>Cancel</button>
+                <button type="submit" className="dc-btn dc-btn--primary">Save Changes</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* ── Delete ── */}
       {deleteModalOpen && (
-        <div className="modal-bg modal-bg-inside-section" onClick={cancelDelete}>
-          <div className="modal dentists-modal" onClick={e => e.stopPropagation()}>
-            <h3>Confirm Delete</h3>
-            {deleteMode === 'hard' && (
-              <div>
-                Are you sure you want to <b>permanently delete</b> this dentist? This action cannot be undone.
-              </div>
-            )}
+        <div className="dc-overlay" onClick={cancelDelete}>
+          <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+            <h3 className="dc-modal-title">{deleteMode === 'block' ? 'Cannot delete dentist' : 'Delete dentist?'}</h3>
+            {deleteMode === 'hard' && <p>Permanently delete this dentist? This can’t be undone.</p>}
             {deleteMode === 'soft' && (
-              <div>
-                <strong>Note:</strong> This dentist has only past appointments.<br />
-                The profile will be <b>soft deleted</b> (hidden from active lists, but kept for record-keeping).
-                <br /><br />
-                Are you sure you want to proceed?
+              <div className="dc-banner dc-banner--err">
+                <strong>Note:</strong> This dentist has only past appointments. The profile will be soft-deleted (hidden from active lists, kept for records).
               </div>
             )}
             {deleteMode === 'block' && (
-              <div>
-                <strong>Cannot delete dentist!</strong><br />
-                This dentist has one or more <b>future appointments</b>.<br />
-                Please reassign or remove the following appointments first:<br /><br />
-                <ul style={{ maxHeight: 180, overflow: 'auto', padding: 0, margin: 0, listStyle: "none" }}>
-                  {futureAppointments.map((a, idx) => {
+              <>
+                <div className="dc-banner dc-banner--err">
+                  This dentist has future appointments — reassign or remove them first.
+                </div>
+                <ul className="dt-appt-list">
+                  {futureAppointments.map((a) => {
                     const patient = patients.find(p => String(p.id) === String(a.patient_id));
                     return (
-                      <React.Fragment key={a.id}>
-                        {idx > 0 && <hr className="future-appt-divider" />}
-                        <li style={{ padding: "6px 0" }}>
-                          <div>
-                            <b>{patient ? patient.name : "Unknown"}</b> (Appointment ID: <b>{a.id}</b>)
-                            <span style={{
-                              display: "inline-block",
-                              marginLeft: 8,
-                              padding: "2px 8px",
-                              borderRadius: 8,
-                              fontWeight: 600,
-                              fontSize: "0.9em",
-                              background: a.status === "Confirmed" ? "#e8f5e9" : "#fffde7",
-                              color: a.status === "Confirmed" ? "#388e3c" : "#b28704",
-                              border: a.status === "Confirmed" ? "1px solid #81c784" : "1px solid #ffe082"
-                            }}>
-                              {a.status}
-                            </span>
-                          </div>
-                          <div>{new Date(a.appointment_time).toLocaleString()}</div>
-                          {a.reason && <div>{a.reason}</div>}
-                        </li>
-                      </React.Fragment>
+                      <li key={a.id} className="dt-appt-item">
+                        <div>
+                          <b>{patient ? patient.name : 'Unknown'}</b> · #{a.id}
+                          <span className={`dt-appt-badge${a.status === 'Confirmed' ? ' confirmed' : ''}`}>{a.status}</span>
+                        </div>
+                        <div className="dt-appt-when">{new Date(a.appointment_time).toLocaleString()}</div>
+                        {a.reason && <div className="dt-appt-reason">{a.reason}</div>}
+                      </li>
                     );
                   })}
                 </ul>
-              </div>
+              </>
             )}
-            <div className="modal-actions" style={{marginTop: 16}}>
-              <button type="button" onClick={cancelDelete} style={{ background: "#fff", color: "#185abd", border: "1.5px solid #185abd" }}>Cancel</button>
+            <div className="dc-modal-actions">
+              <button type="button" className="dc-btn dc-btn--ghost" onClick={cancelDelete}>Cancel</button>
               {(deleteMode === 'hard' || deleteMode === 'soft') && (
-                <button type="button" onClick={confirmDelete} style={{ background: "#e74c3c", color: "#fff" }}>
+                <button type="button" className="dc-btn dc-btn--danger dc-btn--danger-solid" onClick={confirmDelete}>
                   {deleteMode === 'hard' ? 'Delete' : 'Soft Delete'}
                 </button>
               )}
@@ -561,67 +470,25 @@ function Dentists({ clinicId }) {
           </div>
         </div>
       )}
+
+      {/* ── Availability ── */}
       {availabilityModalOpen && (
-        <div className="modal-bg modal-bg-inside-section" onClick={closeAvailabilityModal} style={{zIndex: 1500}}>
-          <div
-            className="modal dentists-modal"
-            style={{
-              minWidth: 540,
-              maxWidth: 900,
-              width: "96%",
-              maxHeight: "86vh",
-              height: "720px",
-              position: "fixed",
-              left: "calc(120px + 50%)",
-              top: "50%",
-              transform: "translate(-50%, -50%)",
-              overflow: "hidden",
-              display: "flex",
-              flexDirection: "column",
-              padding: 0,
-              zIndex: 1600,
-              background: "#fff",
-              borderRadius: 12,
-              boxShadow: "0 10px 32px #0002"
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              onClick={closeAvailabilityModal}
-              style={{
-                position: "absolute",
-                top: 18,
-                right: 28,
-                background: "none",
-                border: "none",
-                fontSize: "1.7em",
-                cursor: "pointer",
-                color: "#555",
-                zIndex: 1700,
-                padding: 0,
-                lineHeight: 1
-              }}
-              title="Close"
-              aria-label="Close"
-            >
-              ×
-            </button>
-            <div style={{padding: '24px 32px 0 32px', textAlign: 'center'}}>
-              <div style={{fontSize: 26, fontWeight: 700, marginBottom: 8}}>Dentist Availability Manager</div>
-              <div style={{fontSize: 20, fontWeight: 500, marginBottom: 0, color: "#185abd"}}>
-                {availabilityDentist?.name || ''}
+        <div className="dc-overlay" onClick={closeAvailabilityModal}>
+          <div className="dc-modal dc-modal--wide dt-avail-modal" onClick={e => e.stopPropagation()}>
+            <div className="dt-avail-head">
+              <div>
+                <div className="dc-modal-title" style={{ margin: 0 }}>Dentist Availability</div>
+                <div className="dt-avail-sub">{availabilityDentist?.name || ''}</div>
               </div>
+              <button className="dc-modal-close" onClick={closeAvailabilityModal} title="Close" aria-label="Close">×</button>
             </div>
-            <div style={{flex: '1 1 auto', overflow: 'auto', padding: "0 32px 24px 32px"}}>
-              <DentistAvailabilityManager
-                clinicId={clinicId}
-                dentistId={availabilityDentist?.id}
-              />
+            <div className="dt-avail-body">
+              <DentistAvailabilityManager clinicId={clinicId} dentistId={availabilityDentist?.id} />
             </div>
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
