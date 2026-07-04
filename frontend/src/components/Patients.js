@@ -239,7 +239,7 @@ function Patients({ setModalContent, clinicId }) {
   }
 
   return (
-    <div className="dc-page">
+    <div className="dc-page pt-page">
       <header className="dc-page-header">
         <div className="dc-page-titlewrap">
           <div className="dc-page-eyebrow">Records</div>
