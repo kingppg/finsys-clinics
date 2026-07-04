@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import './styles/dcPage.css'; // shared full-page layout (breathing gutters, geometry only)
 import './styles/dcPrimitives.css'; // single layout source of truth for repeatable patterns (buttons, chips, modals, fields…)
+import './styles/swalTheme.css'; // global SweetAlert2 theme (token-driven, app-wide)
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 

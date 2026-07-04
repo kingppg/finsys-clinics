@@ -1,0 +1,121 @@
+/* ==========================================================================
+   SWEETALERT2 — GLOBAL THEME (token-driven)
+   --------------------------------------------------------------------------
+   SweetAlert2 renders at document.body, which inherits the --dc-* variables
+   DcThemeRoot sets on :root — so every confirm/alert/toast across the whole
+   app follows the active theme from this one file. Light fallbacks keep the
+   pre-theme pages (login) on their default look. !important is used because
+   SweetAlert2's own injected CSS is specific.
+   Loaded globally via src/index.js.
+   ========================================================================== */
+
+/* Backdrop */
+.swal2-container.swal2-backdrop-show,
+.swal2-container.swal2-backdrop-show > .swal2-backdrop {
+  background: rgba(2, 6, 17, 0.6) !important;
+}
+
+/* Popup */
+.swal2-popup {
+  background: var(--dc-surface, #fff) !important;
+  color: var(--dc-text, #263240) !important;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32)) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--dc-shadow, 0 16px 40px rgba(2, 6, 17, 0.5)) !important;
+  font-family: var(--dc-font, 'Inter', 'Segoe UI', sans-serif) !important;
+}
+
+.swal2-title { color: var(--dc-text, #24406e) !important; font-weight: 750 !important; }
+.swal2-html-container { color: var(--dc-text-2, #475569) !important; }
+.swal2-html-container b,
+.swal2-html-container strong { color: var(--dc-text, #263240) !important; }
+
+.swal2-close { color: var(--dc-text-3, #94a3b8) !important; box-shadow: none !important; }
+.swal2-close:hover { color: var(--dc-text, #EDF2FA) !important; }
+
+.swal2-footer {
+  border-top-color: var(--dc-border, rgba(148, 163, 184, 0.16)) !important;
+  color: var(--dc-text-2, #475569) !important;
+}
+
+.swal2-timer-progress-bar { background: var(--dc-accent, #2DD4BF) !important; }
+
+/* ---------- Buttons ---------- */
+
+.swal2-actions .swal2-styled.swal2-confirm {
+  background-color: var(--dc-accent, #185abd) !important;
+  color: var(--dc-accent-contrast, #fff) !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+.swal2-actions .swal2-styled.swal2-cancel {
+  background-color: transparent !important;
+  color: var(--dc-text-2, #64748b) !important;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32)) !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+.swal2-actions .swal2-styled.swal2-deny {
+  background-color: var(--dc-danger, #e74c3c) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+.swal2-actions .swal2-styled:focus,
+.swal2-actions .swal2-styled:focus-visible {
+  box-shadow: 0 0 0 3px var(--dc-accent-soft, rgba(45, 212, 191, 0.4)) !important;
+}
+
+/* ---------- Inputs ---------- */
+
+.swal2-input,
+.swal2-textarea,
+.swal2-select,
+.swal2-file {
+  background: var(--dc-surface-2, #f6f9fc) !important;
+  color: var(--dc-text, #223) !important;
+  border: 1px solid var(--dc-border-strong, #dbe6fa) !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+.swal2-input::placeholder,
+.swal2-textarea::placeholder { color: var(--dc-text-3, #94a3b8) !important; }
+.swal2-input:focus,
+.swal2-textarea:focus,
+.swal2-select:focus {
+  border-color: var(--dc-accent, #185abd) !important;
+  box-shadow: 0 0 0 3px var(--dc-accent-soft, rgba(45, 212, 191, 0.2)) !important;
+}
+.swal2-validation-message {
+  background: var(--dc-surface-2, #f0f0f0) !important;
+  color: var(--dc-danger, #e74c3c) !important;
+}
+
+/* ---------- Status icons (recolored to theme semantics) ---------- */
+
+.swal2-icon.swal2-success { border-color: var(--dc-success, #4ADE80) !important; color: var(--dc-success, #4ADE80) !important; }
+.swal2-icon.swal2-success .swal2-success-ring { border-color: var(--dc-success-soft, rgba(74, 222, 128, 0.3)) !important; }
+.swal2-icon.swal2-success [class^='swal2-success-line'] { background-color: var(--dc-success, #4ADE80) !important; }
+
+.swal2-icon.swal2-error { border-color: var(--dc-danger, #F87171) !important; color: var(--dc-danger, #F87171) !important; }
+.swal2-icon.swal2-error [class^='swal2-x-mark-line'] { background-color: var(--dc-danger, #F87171) !important; }
+
+.swal2-icon.swal2-warning { border-color: var(--dc-warning, #FBBF24) !important; color: var(--dc-warning, #FBBF24) !important; }
+.swal2-icon.swal2-info { border-color: var(--dc-info, #60A5FA) !important; color: var(--dc-info, #60A5FA) !important; }
+.swal2-icon.swal2-question { border-color: var(--dc-accent, #2DD4BF) !important; color: var(--dc-accent, #2DD4BF) !important; }
+
+/* ---------- Toast ---------- */
+
+.swal2-toast {
+  background: var(--dc-elevated, #fff) !important;
+  color: var(--dc-text, #263240) !important;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16)) !important;
+  box-shadow: var(--dc-shadow, 0 8px 24px rgba(2, 6, 17, 0.4)) !important;
+}
+.swal2-toast .swal2-title { color: var(--dc-text, #263240) !important; }
+.swal2-toast .swal2-html-container { color: var(--dc-text-2, #475569) !important; }
