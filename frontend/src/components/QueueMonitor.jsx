@@ -3,6 +3,8 @@ import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import socket from '../socket';
 import QRCode from 'qrcode';
+import { motion } from 'framer-motion';
+import { LuArmchair, LuTv, LuCopy, LuExternalLink, LuUsers, LuUserCheck, LuClock, LuLink, LuCheck, LuQrCode } from 'react-icons/lu';
 import './QueueMonitor.css';
 
 const BASE_URL = window.location.origin;
@@ -28,7 +30,6 @@ function QueueMonitor({ clinicId }) {
   const [queue, setQueue]           = useState([]);
   const [patients, setPatients]     = useState([]);
   const [queueToken, setQueueToken] = useState('');
-  const [stations, setStations]     = useState(1);
   const [stationsInput, setStationsInput] = useState(1);
   const [savingStations, setSavingStations] = useState(false);
   const [stationsSaved, setStationsSaved]   = useState(false);
@@ -49,7 +50,6 @@ function QueueMonitor({ clinicId }) {
       .then(({ data }) => {
         if (data?.queue_token) setQueueToken(data.queue_token);
         if (data?.queue_stations) {
-          setStations(data.queue_stations);
           setStationsInput(data.queue_stations);
         }
       });
@@ -61,7 +61,7 @@ function QueueMonitor({ clinicId }) {
     QRCode.toCanvas(qrCanvasRef.current, queueUrl, {
       width: 120,
       margin: 1,
-      color: { dark: '#185abd', light: '#ffffff' }
+      color: { dark: '#0f2340', light: '#ffffff' }
     });
   }, [queueUrl]);
 
@@ -124,7 +124,6 @@ function QueueMonitor({ clinicId }) {
       .from('clinics')
       .update({ queue_stations: val })
       .eq('id', clinicId);
-    setStations(val);
     setStationsInput(val);
     setSavingStations(false);
     setStationsSaved(true);
@@ -137,8 +136,11 @@ function QueueMonitor({ clinicId }) {
     return p ? firstName(p.name) : '—';
   };
 
-  const nowServingList = queue.slice(0, stations);
-  const waitingList    = queue.slice(stations);
+  // Live preview: the picker drives the display immediately; Save persists it
+  // to the DB for the public monitor.
+  const effectiveStations = Math.max(1, parseInt(stationsInput, 10) || 1);
+  const nowServingList = queue.slice(0, effectiveStations);
+  const waitingList    = queue.slice(effectiveStations);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(queueUrl).then(() => {
@@ -152,20 +154,22 @@ function QueueMonitor({ clinicId }) {
   };
 
   return (
-    <div className="qm-root">
+    <div className="dc-page qm-root">
 
-      {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      <div className="qm-header">
-        <div className="qm-title">🖥️ Queue Monitor</div>
-        <span className="qm-live-badge">
-          <span className="qm-live-dot" />
-          Live
-        </span>
-      </div>
+      {/* Standard header */}
+      <header className="dc-page-header">
+        <div className="dc-page-titlewrap">
+          <div className="dc-page-eyebrow">Operations</div>
+          <h1 className="dc-page-title">Queue Monitor</h1>
+        </div>
+        <div className="dc-page-header-actions">
+          <span className="qm-live-badge"><span className="qm-live-dot" /> Live</span>
+        </div>
+      </header>
 
-      {/* ── STATIONS CONFIG ────────────────────────────────────────────────── */}
+      {/* Stations config */}
       <div className="qm-stations-bar">
-        <span className="qm-stations-label">🪑 Active Chairs / Stations:</span>
+        <span className="qm-stations-label"><LuArmchair /> Active Chairs / Stations</span>
         <input
           type="number"
           min={1}
@@ -173,91 +177,144 @@ function QueueMonitor({ clinicId }) {
           onChange={e => setStationsInput(e.target.value)}
           className="qm-stations-input"
         />
-        <button
-          className="qm-btn qm-btn-primary"
-          onClick={handleSaveStations}
-          disabled={savingStations}
-        >
+        <button className="dc-btn dc-btn--primary" onClick={handleSaveStations} disabled={savingStations}>
           {savingStations ? 'Saving…' : 'Save'}
         </button>
         {stationsSaved && <span className="qm-copy-feedback">✓ Saved!</span>}
-        <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-          (First {stations} checked-in patient{stations !== 1 ? 's' : ''} = Now Serving)
+        <span className="qm-stations-hint">
+          First {effectiveStations} checked-in patient{effectiveStations !== 1 ? 's' : ''} = Now Serving
         </span>
       </div>
 
-      {/* ── COUNT ──────────────────────────────────────────────────────────── */}
+      {/* Count stat tiles */}
       <div className="qm-count-row">
-        <span className="qm-count-pill">{queue.length} in queue today</span>
-        <span className="qm-count-pill">{nowServingList.length} being served</span>
-        <span className="qm-count-pill">{waitingList.length} waiting</span>
+        <div className="qm-stat">
+          <span className="qm-stat-icon"><LuUsers /></span>
+          <div className="qm-stat-body">
+            <span className="qm-stat-num">{queue.length}</span>
+            <span className="qm-stat-label">In queue today</span>
+          </div>
+        </div>
+        <div className="qm-stat qm-stat--serving">
+          <span className="qm-stat-icon"><LuUserCheck /></span>
+          <div className="qm-stat-body">
+            <span className="qm-stat-num">{nowServingList.length}</span>
+            <span className="qm-stat-label">Being served</span>
+          </div>
+        </div>
+        <div className="qm-stat">
+          <span className="qm-stat-icon"><LuClock /></span>
+          <div className="qm-stat-body">
+            <span className="qm-stat-num">{waitingList.length}</span>
+            <span className="qm-stat-label">Waiting</span>
+          </div>
+        </div>
       </div>
 
-      {/* ── NOW SERVING ────────────────────────────────────────────────────── */}
-      <div className="qm-section-label-top">Now Serving</div>
-      <div className="qm-serving-row" style={{ gridTemplateColumns: `repeat(${Math.min(stations, 4)}, 1fr)` }}>
-        {Array.from({ length: stations }).map((_, idx) => {
+      {/* Now Serving */}
+      <div className="qm-section-label">Now Serving</div>
+      <div className="qm-serving-row">
+        {Array.from({ length: effectiveStations }).map((_, idx) => {
           const appt = nowServingList[idx];
-          return appt ? (
-            <div className="qm-serving-card" key={appt.id}>
-              <div className="qm-serving-label">Station {idx + 1}</div>
-              <div className="qm-serving-number">{idx + 1}</div>
-              <div className="qm-serving-name">{getPatientFirstName(appt.patient_id)}</div>
-            </div>
-          ) : (
-            <div className="qm-serving-empty" key={idx}>
-              <div style={{ fontSize: '1.5rem', marginBottom: 6 }}>🪑</div>
-              <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Station {idx + 1}</div>
-              <div style={{ fontSize: '0.75rem', color: '#cbd5e1' }}>Empty</div>
-            </div>
+          if (!appt) {
+            return (
+              <div className="qm-serving-empty" key={idx}>
+                <span className="qm-serving-empty-icon"><LuArmchair /></span>
+                <div className="qm-serving-empty-label">Station {idx + 1}</div>
+                <div className="qm-serving-empty-sub">Open</div>
+              </div>
+            );
+          }
+          const name = getPatientFirstName(appt.patient_id);
+          return (
+            <motion.div
+              className="qm-serving-card"
+              key={appt.id}
+              initial={{ opacity: 0, y: 12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+            >
+              <span className="qm-serving-watermark">{idx + 1}</span>
+              <div className="qm-serving-inner">
+                <div className="qm-serving-label">Station {idx + 1}</div>
+                <div className="qm-serving-avatar">{name.charAt(0).toUpperCase()}</div>
+                <div className="qm-serving-name">{name}</div>
+                <div className="qm-serving-status"><span className="qm-serving-status-dot" /> Serving now</div>
+              </div>
+            </motion.div>
           );
         })}
       </div>
 
-      {/* ── WAITING LIST ───────────────────────────────────────────────────── */}
-      <div className="qm-waiting-card" style={{ marginBottom: 20 }}>
+      {/* Waiting */}
+      <div className="qm-waiting-card">
         <div className="qm-waiting-title">Waiting</div>
         <div className="qm-waiting-list">
           {waitingList.length === 0 ? (
             <div className="qm-waiting-empty">No one waiting</div>
           ) : (
-            waitingList.map((appt, idx) => (
-              <div className="qm-waiting-item" key={appt.id}>
-                <div className="qm-waiting-num">{stations + idx + 1}</div>
-                <div className="qm-waiting-name">{getPatientFirstName(appt.patient_id)}</div>
-              </div>
-            ))
+            waitingList.map((appt, idx) => {
+              const name = getPatientFirstName(appt.patient_id);
+              return (
+                <motion.div
+                  className="qm-waiting-item"
+                  key={appt.id}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: Math.min(idx * 0.03, 0.3) }}
+                >
+                  <div className="qm-waiting-pos">{effectiveStations + idx + 1}</div>
+                  <div className="qm-waiting-avatar">{name.charAt(0).toUpperCase()}</div>
+                  <div className="qm-waiting-name">{name}</div>
+                  {idx === 0 && <span className="qm-waiting-chip">Up next</span>}
+                </motion.div>
+              );
+            })
           )}
         </div>
       </div>
 
-      {/* ── MONITOR SETUP ──────────────────────────────────────────────────── */}
+      {/* Monitor setup */}
       <div className="qm-setup-card">
-        <div className="qm-setup-title">📺 Display on Monitor</div>
-        <div className="qm-setup-desc">
-          Open this URL on a TV or monitor in your waiting area. Bookmark it so you only need to set it up once.
+        <div className="qm-setup-head">
+          <span className="qm-setup-icon"><LuTv /></span>
+          <div>
+            <div className="qm-setup-title">Display on Monitor</div>
+            <div className="qm-setup-desc">
+              Cast the live queue to a TV or monitor in your waiting area — set it up once and bookmark it.
+            </div>
+          </div>
         </div>
+
         <div className="qm-setup-body">
           <div className="qm-setup-left">
             <div className="qm-url-box">
-              <span className="qm-url-text">{queueUrl || 'Loading...'}</span>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="qm-btn qm-btn-primary" onClick={handleOpenMonitor} disabled={!queueUrl}>
-                🖥️ Open on Monitor
+              <LuLink className="qm-url-icon" />
+              <span className="qm-url-text">{queueUrl || 'Loading…'}</span>
+              <button className="qm-url-copy" onClick={handleCopy} disabled={!queueUrl} title="Copy URL">
+                {copied ? <LuCheck /> : <LuCopy />}
               </button>
-              <button className="qm-btn qm-btn-outline" onClick={handleCopy} disabled={!queueUrl}>
-                {copied ? '✓ Copied!' : '📋 Copy URL'}
-              </button>
-              {copied && <span className="qm-copy-feedback">URL copied to clipboard!</span>}
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginTop: 4 }}>
-              💡 Tip: Open in a new window, move it to the TV, then press F11 for fullscreen.
+            <div className="qm-setup-actions">
+              <button className="dc-btn dc-btn--primary" onClick={handleOpenMonitor} disabled={!queueUrl}>
+                <LuExternalLink /> Open on Monitor
+              </button>
+              <button className="dc-btn dc-btn--ghost" onClick={handleCopy} disabled={!queueUrl}>
+                {copied ? '✓ Copied!' : <><LuCopy /> Copy URL</>}
+              </button>
+            </div>
+            <div className="qm-steps">
+              <div className="qm-step"><span className="qm-step-num">1</span> Open it in a new window</div>
+              <div className="qm-step"><span className="qm-step-num">2</span> Drag the window onto your TV screen</div>
+              <div className="qm-step"><span className="qm-step-num">3</span> Press F11 for fullscreen</div>
             </div>
           </div>
+
           <div className="qm-qr-wrap">
-            <canvas ref={qrCanvasRef} className="qm-qr-box" />
-            <div className="qm-qr-label">Scan to open</div>
+            <div className="qm-qr-frame">
+              <canvas ref={qrCanvasRef} className="qm-qr-box" />
+            </div>
+            <div className="qm-qr-label"><LuQrCode /> Scan to open</div>
           </div>
         </div>
       </div>

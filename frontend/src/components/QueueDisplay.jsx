@@ -197,14 +197,17 @@ function QueueDisplay() {
                 const appt = nowServingList[idx];
                 return appt ? (
                   <div className="qd-serving-card" key={appt.id}>
-                    <div className="qd-queue-badge">No. {idx + 1}</div>
-                    <div className="qd-serving-number">{idx + 1}</div>
-                    <div className="qd-serving-name">{getPatientFirstName(appt.patient_id)}</div>
+                    <div className="qd-queue-badge">Station {idx + 1}</div>
+                    <div className="qd-serving-center">
+                      <div className="qd-serving-number">{idx + 1}</div>
+                      <div className="qd-serving-name">{getPatientFirstName(appt.patient_id)}</div>
+                    </div>
+                    <div className="qd-serving-live"><span className="qd-serving-live-dot" /> Now Serving</div>
                   </div>
                 ) : (
                   <div className="qd-serving-empty" key={idx}>
                     <div className="qd-serving-empty-icon">🪑</div>
-                    <div className="qd-serving-empty-text">Empty</div>
+                    <div className="qd-serving-empty-text">Available</div>
                   </div>
                 );
               })}
@@ -214,10 +217,10 @@ function QueueDisplay() {
 
         {/* WAITING LIST */}
         <div className="qd-waiting">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="qd-waiting-head">
             <div className="qd-section-label">Waiting</div>
             {waitingList.length > 0 && (
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', letterSpacing: 1 }}>
+              <span className="qd-waiting-count">
                 {waitingList.length} patient{waitingList.length !== 1 ? 's' : ''} waiting
               </span>
             )}
@@ -225,14 +228,15 @@ function QueueDisplay() {
           <div className="qd-waiting-list">
             {waitingList.length === 0 ? (
               <div className="qd-waiting-empty">
-                <div style={{ fontSize: '2rem', opacity: 0.3 }}>✓</div>
-                <div style={{ fontSize: '0.85rem', letterSpacing: 2, textTransform: 'uppercase' }}>No one waiting</div>
+                <div className="qd-waiting-empty-check">✓</div>
+                <div className="qd-waiting-empty-text">No one waiting</div>
               </div>
             ) : (
               waitingList.map((appt, idx) => (
-                <div className="qd-waiting-item" key={appt.id}>
+                <div className={`qd-waiting-item${idx === 0 ? ' qd-up-next' : ''}`} key={appt.id}>
                   <div className="qd-waiting-num">{stations + idx + 1}</div>
                   <div className="qd-waiting-name">{getPatientFirstName(appt.patient_id)}</div>
+                  {idx === 0 && <span className="qd-up-next-chip">Up next</span>}
                 </div>
               ))
             )}

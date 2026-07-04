@@ -1,28 +1,28 @@
 /* ============================================================
-   QueueDisplay.css — Clinic Queue Monitor Display
-   Dark, high-contrast, TV-optimized
+   QueueDisplay.css — Public Clinic Queue TV Display
+   Dark, high-contrast, TV-optimized. Self-contained (public route,
+   no --dc-* injection) but colour-matched to the app's Dark
+   Executive / teal brand for consistency.
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --bg:           #0a0e1a;
-  --panel:        #111827;
-  --panel-border: #1e293b;
-  --accent:       #00c6ff;
-  --accent-glow:  rgba(0, 198, 255, 0.18);
-  --accent2:      #0072ff;
-  --gold:         #f5c518;
-  --gold-glow:    rgba(245, 197, 24, 0.18);
-  --text-primary: #f0f6ff;
-  --text-muted:   #64748b;
-  --text-dim:     #94a3b8;
-  --green:        #22c55e;
-  --radius:       18px;
-  --radius-sm:    10px;
+  --bg:            #0B1120;
+  --panel:         #131C2E;
+  --panel-2:       #1A2438;
+  --panel-border:  rgba(148, 163, 184, 0.16);
+  --panel-border-2:rgba(148, 163, 184, 0.30);
+  --accent:        #2DD4BF;
+  --accent-2:      #14B8A6;
+  --accent-glow:   rgba(45, 212, 191, 0.20);
+  --text-primary:  #EDF2FA;
+  --text-muted:    #6E7E98;
+  --text-dim:      #A9B7CE;
+  --green:         #4ADE80;
+  --radius:        20px;
+  --radius-sm:     12px;
 }
-
-/* Scoped only to queue display — no global html/body overrides */
 
 .qd-root {
   display: flex;
@@ -31,13 +31,12 @@
   width: 100vw;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(0,114,255,0.13) 0%, transparent 70%),
+    radial-gradient(ellipse 70% 45% at 50% -8%, rgba(45, 212, 191, 0.05) 0%, transparent 68%),
     var(--bg);
   font-family: 'DM Sans', sans-serif;
   color: var(--text-primary);
   box-sizing: border-box;
 }
-
 .qd-root *, .qd-root *::before, .qd-root *::after {
   box-sizing: border-box;
   margin: 0;
@@ -52,63 +51,76 @@
   padding: 22px 48px 18px;
   border-bottom: 1px solid var(--panel-border);
   flex-shrink: 0;
-  background: rgba(17, 24, 39, 0.7);
-  backdrop-filter: blur(10px);
+  background: rgba(19, 28, 46, 0.6);
+  backdrop-filter: blur(12px);
 }
-
-.qd-logo-area {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
+.qd-logo-area { display: flex; flex-direction: column; gap: 3px; }
 .qd-clinic-name {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 2.6rem;
+  font-size: 2.7rem;
   letter-spacing: 3px;
   color: var(--text-primary);
   line-height: 1;
 }
-
 .qd-subtitle {
-  font-size: 0.78rem;
-  letter-spacing: 4px;
+  font-size: 0.76rem;
+  letter-spacing: 5px;
   text-transform: uppercase;
   color: var(--accent);
-  font-weight: 500;
+  font-weight: 600;
 }
-
-.qd-clock {
-  text-align: right;
-}
-
+.qd-clock { text-align: right; }
 .qd-time {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 3.2rem;
+  font-size: 3.3rem;
   letter-spacing: 2px;
   color: var(--text-primary);
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
-
 .qd-date {
   font-size: 0.78rem;
   color: var(--text-dim);
   text-align: right;
   letter-spacing: 1px;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
-/* ── Main body ───────────────────────────────────────── */
+/* ── Count pill + live dot ───────────────────────────── */
+.qd-count-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-weight: 700;
+}
+.qd-live-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+  animation: live-blink 1.4s ease-in-out infinite;
+}
+@keyframes live-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+/* ── Body ────────────────────────────────────────────── */
 .qd-body {
   display: flex;
   flex: 1;
   gap: 32px;
-  padding: 32px 48px 24px;
+  padding: 30px 48px 24px;
   overflow: hidden;
   min-height: 0;
 }
 
-/* ── Now Serving panel (left) ────────────────────────── */
+/* ── Now Serving (left) ──────────────────────────────── */
 .qd-now-serving {
   flex: 0 0 55%;
   display: flex;
@@ -116,117 +128,145 @@
   gap: 16px;
   min-width: 0;
 }
-
 .qd-section-label {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   letter-spacing: 5px;
   text-transform: uppercase;
   color: var(--text-muted);
-  font-weight: 600;
+  font-weight: 700;
   margin-bottom: 4px;
 }
 
-/* ── Multiple serving cards grid ─────────────────────── */
 .qd-serving-cards-row {
   flex: 1;
   display: grid;
-  gap: 16px;
+  gap: 20px;
+  min-height: 0;
 }
 
-/* Single card — big and bold */
-.qd-serving-cards-row .qd-serving-card:only-child {
-  font-size: inherit;
-}
-
+/* Hero serving card */
 .qd-serving-card {
-  background: var(--panel);
-  border: 1.5px solid var(--accent);
+  position: relative;
+  overflow: hidden;
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 24px 16px;
-  position: relative;
-  overflow: hidden;
-  box-shadow:
-    0 0 40px var(--accent-glow),
-    inset 0 0 60px rgba(0, 198, 255, 0.04);
-  animation: serving-pulse 3s ease-in-out infinite;
+  justify-content: space-between;
+  padding: 34px 20px 28px;
   min-height: 0;
+  background:
+    linear-gradient(165deg, rgba(45, 212, 191, 0.07) 0%, var(--panel) 55%);
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  box-shadow:
+    0 10px 30px rgba(2, 6, 17, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
-
-@keyframes serving-pulse {
-  0%, 100% { box-shadow: 0 0 40px var(--accent-glow), inset 0 0 60px rgba(0,198,255,0.04); }
-  50%       { box-shadow: 0 0 70px rgba(0,198,255,0.28), inset 0 0 60px rgba(0,198,255,0.07); }
-}
-
+/* subtle corner accent */
 .qd-serving-card::before {
   content: '';
   position: absolute;
-  top: -60px; right: -60px;
-  width: 200px; height: 200px;
+  top: -90px; right: -90px;
+  width: 240px; height: 240px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0,198,255,0.10) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+/* top sheen */
+.qd-serving-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, transparent 30%);
   pointer-events: none;
 }
 
 .qd-queue-badge {
+  position: relative;
+  z-index: 1;
   background: var(--accent);
-  color: #0a0e1a;
+  color: #06201C;
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   letter-spacing: 3px;
-  padding: 3px 16px;
+  padding: 4px 18px;
   border-radius: 99px;
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
-
+.qd-serving-center {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
 .qd-serving-number {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(3rem, 8vw, 9rem);
-  line-height: 1;
+  font-size: clamp(3.5rem, 9vw, 10rem);
+  line-height: 0.95;
   color: var(--accent);
-  text-shadow: 0 0 40px rgba(0,198,255,0.5);
   letter-spacing: -2px;
 }
-
 .qd-serving-name {
-  font-size: clamp(1.2rem, 2.5vw, 2.8rem);
-  font-weight: 600;
+  font-size: clamp(1.3rem, 2.6vw, 3rem);
+  font-weight: 700;
   color: var(--text-primary);
   text-align: center;
-  letter-spacing: 1px;
-  line-height: 1.1;
+  letter-spacing: 0.5px;
+  line-height: 1.05;
+}
+.qd-serving-live {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.68rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--accent);
+}
+.qd-serving-live-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: live-blink 1.4s ease-in-out infinite;
 }
 
+/* Empty station — refined */
 .qd-serving-empty {
   flex: 1;
+  position: relative;
   background: var(--panel);
-  border: 1.5px dashed var(--panel-border);
+  border: 1px solid var(--panel-border);
   border-radius: var(--radius);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
   color: var(--text-muted);
   min-height: 120px;
 }
-
 .qd-serving-empty-icon {
-  font-size: 2rem;
-  opacity: 0.3;
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel-2);
+  font-size: 1.9rem;
+  opacity: 0.6;
 }
-
 .qd-serving-empty-text {
-  font-size: 0.85rem;
-  letter-spacing: 2px;
+  font-size: 0.78rem;
+  letter-spacing: 0.24em;
   text-transform: uppercase;
-  opacity: 0.5;
+  font-weight: 700;
+  opacity: 0.7;
 }
 
-/* ── Waiting list (right) ────────────────────────────── */
+/* ── Waiting (right) ─────────────────────────────────── */
 .qd-waiting {
   flex: 1;
   display: flex;
@@ -235,7 +275,16 @@
   min-width: 0;
   overflow: hidden;
 }
-
+.qd-waiting-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.qd-waiting-count {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+}
 .qd-waiting-list {
   flex: 1;
   display: flex;
@@ -245,7 +294,6 @@
   padding-right: 4px;
   scrollbar-width: none;
 }
-
 .qd-waiting-list::-webkit-scrollbar { display: none; }
 
 .qd-waiting-item {
@@ -255,31 +303,45 @@
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: var(--radius-sm);
-  padding: 18px 24px;
+  padding: 16px 24px;
   animation: slide-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-
 @keyframes slide-in {
   from { opacity: 0; transform: translateX(24px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-
+/* first in line — up next */
+.qd-waiting-item.qd-up-next {
+  background: linear-gradient(120deg, var(--accent-glow) 0%, var(--panel) 60%);
+  border-color: var(--accent);
+}
 .qd-waiting-num {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 2rem;
   color: var(--text-muted);
-  min-width: 44px;
+  min-width: 48px;
   text-align: center;
   letter-spacing: 1px;
 }
-
+.qd-up-next .qd-waiting-num { color: var(--accent); }
 .qd-waiting-name {
-  font-size: 1.35rem;
-  font-weight: 500;
+  flex: 1;
+  font-size: 1.4rem;
+  font-weight: 600;
   color: var(--text-dim);
   letter-spacing: 0.5px;
 }
-
+.qd-up-next .qd-waiting-name { color: var(--text-primary); }
+.qd-up-next-chip {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #06201C;
+  background: var(--accent);
+  padding: 4px 10px;
+  border-radius: 99px;
+}
 .qd-waiting-empty {
   flex: 1;
   display: flex;
@@ -287,31 +349,30 @@
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  gap: 8px;
-  opacity: 0.5;
+  gap: 10px;
+  opacity: 0.55;
 }
+.qd-waiting-empty-check { font-size: 2.4rem; opacity: 0.4; }
+.qd-waiting-empty-text { font-size: 0.85rem; letter-spacing: 0.2em; text-transform: uppercase; }
 
 /* ── Ticker ──────────────────────────────────────────── */
 .qd-ticker-wrap {
   flex-shrink: 0;
   border-top: 1px solid var(--panel-border);
-  background: rgba(17,24,39,0.8);
-  padding: 10px 0;
+  background: rgba(19, 28, 46, 0.7);
+  padding: 11px 0;
   overflow: hidden;
   white-space: nowrap;
 }
-
 .qd-ticker-track {
   display: inline-flex;
   gap: 80px;
   animation: ticker-scroll 58s linear infinite;
 }
-
 @keyframes ticker-scroll {
   from { transform: translateX(100vw); }
   to   { transform: translateX(-100%); }
 }
-
 .qd-ticker-item {
   display: inline-flex;
   align-items: center;
@@ -319,45 +380,14 @@
   font-size: 0.82rem;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-dim);
   font-weight: 500;
 }
-
 .qd-ticker-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
   background: var(--accent);
   flex-shrink: 0;
-}
-
-/* ── Queue count badge ───────────────────────────────── */
-.qd-count-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(0,198,255,0.1);
-  border: 1px solid rgba(0,198,255,0.2);
-  color: var(--accent);
-  font-size: 0.72rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  padding: 4px 12px;
-  border-radius: 99px;
-  font-weight: 600;
-}
-
-/* ── Live dot ────────────────────────────────────────── */
-.qd-live-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--green);
-  display: inline-block;
-  animation: live-blink 1.4s ease-in-out infinite;
-}
-
-@keyframes live-blink {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.2; }
 }
 
 /* ── No clinic fallback ──────────────────────────────── */
@@ -373,16 +403,10 @@
   background: var(--bg);
   font-family: 'DM Sans', sans-serif;
 }
-
 .qd-no-clinic h2 {
   font-family: 'Bebas Neue', sans-serif;
   font-size: 2rem;
   letter-spacing: 3px;
   color: var(--text-dim);
 }
-
-.qd-no-clinic p {
-  font-size: 0.9rem;
-  color: var(--text-muted);
-  font-family: monospace;
-}
+.qd-no-clinic p { font-size: 0.9rem; color: var(--text-muted); font-family: monospace; }
