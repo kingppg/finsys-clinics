@@ -143,8 +143,9 @@ section button[type="submit"]:hover {
   vertical-align: middle;
 }
 
-/* Delete Button */
-section td button {
+/* Delete Button — scoped to this cell (was a global `section td button`
+   landmine that leaked into every table's buttons app-wide). */
+.dentists-actions-cell button {
   background: #e74c3c;
   color: #fff;
   border: none;
@@ -156,7 +157,7 @@ section td button {
   box-shadow: 0 1px 4px rgba(231,76,60,0.09);
 }
 
-section td button:hover {
+.dentists-actions-cell button:hover {
   background: #c0392b;
 }
 

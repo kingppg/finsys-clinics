@@ -25,6 +25,14 @@
   background: var(--dc-bg, #f6f9fc);
 }
 
+/* The dashboard <main> is stretched to exactly 100vh by the flex shell, so
+   taller content scrolls over the page <body> behind it. Paint the body from
+   the theme too, otherwise the area past the first screen shows default white.
+   Fallback keeps the login page (no theme injected yet) on its light bg. */
+body {
+  background: var(--dc-bg, #f6f9fc);
+}
+
 .dc-page {
   width: 100%;
   max-width: 1600px;

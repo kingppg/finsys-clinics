@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient';
 import { authHeaders } from '../api/authHeaders';
 import StatusSelect from './StatusSelect';
 import { StatusUpdateModal } from './StatusUpdateModal';
+import { LuSquarePen, LuTrash2, LuImages, LuBell, LuBellOff } from 'react-icons/lu';
 import './AppointmentsModern.css';
 import './MainSection.css';
 import Swal from 'sweetalert2';
@@ -598,8 +599,6 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
     );
   }
 
-  const statusCellStyle = { verticalAlign: 'middle', textAlign: 'center', height: 48, padding: '0 2px', minWidth: 0 };
-
   function displayOrigin(origin) {
     if (!origin || origin === '') return "System";
     if (origin.toLowerCase().includes("messenger")) return "Messenger";
@@ -629,47 +628,64 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
   }
 
   function renderActionsCell(appt) {
+    const hasMessengerId =
+      patients.find(p => String(p.id) === String(appt.patient_id))?.messenger_id
+      || appt.guardian_messenger_id;
+
     return (
       <td className="appointments-actions-cell">
-        <i
-          className="fa fa-edit icon-action edit-icon"
-          title="Edit"
-          onClick={() => onEdit(appt)}
-          style={{ cursor: "pointer", marginRight: 16 }}
-        />
-        <i
-          className="fa fa-trash icon-action delete-icon"
-          title="Delete"
-          onClick={() => handleDelete(appt.id)}
-          style={{ cursor: "pointer", marginRight: 16 }}
-        />
-        {onFiles && (
-          <i
-            className="fa fa-folder-open icon-action"
-            title="Images & Files (X-rays, photos, documents)"
-            onClick={() => onFiles(appt.id, appt.patient_id, patientName(appt.patient_id))}
-            style={{ cursor: "pointer", marginRight: 16 }}
-          />
-        )}
-        {(() => {
-          const hasMessengerId =
-            patients.find(p => String(p.id) === String(appt.patient_id))?.messenger_id
-            || appt.guardian_messenger_id;
-          return hasMessengerId ? (
-            <i
-              className="fa fa-bell icon-action reminder-icon"
+        <div className="appt-actions">
+          <button
+            type="button"
+            className="appt-action-btn appt-action-edit"
+            title="Edit"
+            aria-label="Edit appointment"
+            onClick={() => onEdit(appt)}
+          >
+            <LuSquarePen size={19} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            className="appt-action-btn appt-action-delete"
+            title="Cancel appointment"
+            aria-label="Cancel appointment"
+            onClick={() => handleDelete(appt.id)}
+          >
+            <LuTrash2 size={19} strokeWidth={2} />
+          </button>
+          {onFiles && (
+            <button
+              type="button"
+              className="appt-action-btn appt-action-files"
+              title="Images & Files (X-rays, photos, documents)"
+              aria-label="Images and files"
+              onClick={() => onFiles(appt.id, appt.patient_id, patientName(appt.patient_id))}
+            >
+              <LuImages size={19} strokeWidth={2} />
+            </button>
+          )}
+          {hasMessengerId ? (
+            <button
+              type="button"
+              className="appt-action-btn appt-action-reminder"
               title="Manage Reminders"
+              aria-label="Manage reminders"
               onClick={() => onReminder(appt.id, patientName(appt.patient_id))}
-              style={{ cursor: "pointer" }}
-            />
+            >
+              <LuBell size={19} strokeWidth={2} />
+            </button>
           ) : (
-            <i
-              className="fa fa-bell icon-action"
+            <button
+              type="button"
+              className="appt-action-btn appt-action-disabled"
               title="No Messenger ID on file — reminders unavailable"
-              style={{ cursor: "not-allowed", opacity: 0.35, color: '#bbb' }}
-            />
-        );
-      })()}
+              aria-label="Reminders unavailable"
+              disabled
+            >
+              <LuBellOff size={19} strokeWidth={2} />
+            </button>
+          )}
+        </div>
       </td>
     );
   }
@@ -731,53 +747,29 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
                   onMouseEnter={() => handleRowMouseEnter(appt.id)}
                 >
                   <td>
-                    <div style={{ fontWeight: 600, fontSize: '1.1em', marginBottom: 2 }}>
-                      {patientName(appt.patient_id)}
+                    <div className="appt-patient-name">{patientName(appt.patient_id)}</div>
+                    <div className="appt-when">
+                      <span className="appt-when-date">{formatLongDate(appt.appointment_time)}</span>
+                      <span className="appt-when-sep">·</span>
+                      <span className="appt-when-time">{formatTime(appt.appointment_time)}</span>
                     </div>
-                    <div style={{ fontSize: '0.88em', color: '#888', fontWeight: 500, marginBottom: 1 }}>
-                      Appointment ID: <span style={{
-                        fontFamily: 'monospace',
-                        background: '#f3f3f3',
-                        borderRadius: 4,
-                        padding: '0px 6px'
-                      }}>{appt.id}</span>
-                    </div>
-                    <div style={{ fontSize: '0.86em', color: '#444', fontWeight: 400, marginBottom: 1 }}>
-                      MID: <span style={{
-                        fontFamily: 'monospace',
-                        background: '#efefef',
-                        borderRadius: 4,
-                        padding: '0px 6px'
-                      }}>
-                        {patients.find(p => String(p.id) === String(appt.patient_id))?.messenger_id || 'N/A'}
+                    <div className="appt-meta">
+                      <span className="appt-meta-chip" title="Appointment ID">#{appt.id}</span>
+                      <span className="appt-meta-chip appt-meta-mid" title="Messenger ID (patient / guardian)">
+                        MID {patients.find(p => String(p.id) === String(appt.patient_id))?.messenger_id || 'N/A'}
                         {' / '}
                         {appt.guardian_messenger_id || 'N/A'}
                       </span>
                     </div>
-                    <div style={{ color: '#185abd', fontSize: '0.96em', fontWeight: 400, lineHeight: 1.1 }}>
-                      {formatLongDate(appt.appointment_time)}
-                    </div>
-                    <div style={{ color: '#555', fontSize: '0.88em' }}>
-                      {formatTime(appt.appointment_time)}
-                    </div>
                   </td>
                   <td title={appt.reason}>{renderProcedureCell(appt)}</td>
                   <td title={appt.booking_origin}>{displayOrigin(appt.booking_origin)}</td>
-                  <td style={statusCellStyle}>
+                  <td className="appt-status-cell">
                     {renderStatusCell(appt)}
                     {needsStatusUpdate && (
-                      <div style={{ marginTop: 6 }}>
-                        <span style={{
-                          color: "#d97706",
-                          fontWeight: "bold",
-                          fontSize: "0.92em",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4
-                        }}>
-                          <i className="fa fa-exclamation-triangle" aria-hidden="true" />
-                          Needs status update
-                        </span>
+                      <div className="appt-needs-update">
+                        <i className="fa fa-exclamation-triangle" aria-hidden="true" />
+                        Needs status update
                       </div>
                     )}
                   </td>
@@ -811,147 +803,93 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
   };
 
   return (
-    <section className="appointment-modern appointments-sticky-layout" style={{display:'flex', flexDirection:'column', height:'100%', minHeight:'calc(100vh - 16px)'}}>
-      <div
-        style={{
-          position:'fixed',
-          top:0,
-          left:220,
-          right:0,
-          height:40,
-          background:'#f6f9fc',
-          zIndex: 940,
-          pointerEvents:'none'
-        }}
-      />
+    <section className="appointment-modern appointments-sticky-layout">
+      <div className="appt-topcap" />
       {/* STICKY HEADER BLOCK */}
-      <div className="appointments-sticky-header" style={{
-        position:'sticky',
-        top:40,
-        zIndex:30,
-        background:'#f6f9fc',
-        paddingTop:4,
-        paddingBottom:10,
-        borderBottom:'1px solid #e2e8f0'
-      }}>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8
-        }}>
-          <h2 style={{ margin: 0 }}>Appointments</h2>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div className="appointments-sticky-header">
+        <div className="appt-header-row">
+          <h2 className="appt-title">Appointments</h2>
+          <div className="appt-header-actions">
             {unreadUpdates.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div
-                  className="new-updates-pill"
-                  title="New/updated appointments in this view"
-                >
+              <div className="appt-updates-group">
+                <div className="new-updates-pill" title="New/updated appointments in this view">
                   {unreadUpdates.length} new update{unreadUpdates.length > 1 ? 's' : ''}
                 </div>
-                <button
-                  onClick={acknowledgeAll}
-                  style={{
-                    background: '#e3f1ff',
-                    color: '#185abd',
-                    padding: '6px 12px',
-                    borderRadius: 16,
-                    fontWeight: 600,
-                    fontSize: '.75em',
-                    border: '1px solid #b5d5f7',
-                    cursor: 'pointer'
-                  }}
-                  title="Clear highlight of updated rows"
-                >
+                <button className="appt-ack-btn" onClick={acknowledgeAll} title="Clear highlight of updated rows">
                   Acknowledge All
                 </button>
               </div>
             )}
-            <button
-              className="add-btn"
-              onClick={onAdd}
-              style={{
-                fontWeight: 'bold', background: '#185abd', color: '#fff',
-                padding: '0px 30px', border: 'none', borderRadius: 4, minWidth: 170
-              }}
-            >
-              Add Appointment
+            <button className="dc-btn dc-btn--primary appt-add-btn" onClick={onAdd}>
+              + Add Appointment
             </button>
           </div>
         </div>
 
         <div className={`appointments-summary-bar ${summaryPulse ? 'pulse' : ''}`}>
-          <i className="fa fa-database" aria-hidden="true" style={{ color: '#185abd' }} />
+          <i className="fa fa-database" aria-hidden="true" />
           {totalLabel}
           {selectedDentist && (
-            <span style={{ fontWeight: 500, color: '#555' }}>
-              (Filtered: {dentistName(selectedDentist)})
-            </span>
+            <span className="appt-summary-filter">(Filtered: {dentistName(selectedDentist)})</span>
           )}
         </div>
 
-        <div style={{
-          margin: '1em 0 0.4em 0', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '1.5em'
-        }}>
-          <label>
-            <span>Dentist:&nbsp;</span>
-            <select
-              value={selectedDentist}
-              onChange={e => setSelectedDentist(e.target.value)}
-              style={{ minWidth: 200 }}
-            >
-              <option value="">
-                -- All Dentists -- ({totalAppointmentsAllDentists})
-              </option>
+        <div className="appt-filters">
+          <label className="appt-field">
+            <span>Dentist</span>
+            <select value={selectedDentist} onChange={e => setSelectedDentist(e.target.value)} className="appt-select-wide">
+              <option value="">All Dentists ({totalAppointmentsAllDentists})</option>
               {dentists.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.name} ({dentistAppointmentCountMap[d.id] || 0})
-                </option>
+                <option key={d.id} value={d.id}>{d.name} ({dentistAppointmentCountMap[d.id] || 0})</option>
               ))}
             </select>
           </label>
-          <label>
-            <span>View:&nbsp;</span>
-            <select value={viewMode} onChange={e => setViewMode(e.target.value)}>
-              <option value="monthly">Monthly</option>
-              <option value="weekly">Weekly</option>
-              <option value="daily">Daily</option>
-            </select>
-          </label>
-          <label>
-            <span>Year:&nbsp;</span>
+
+          <div className="appt-field">
+            <span>View</span>
+            <div className="appt-segmented" role="tablist">
+              {['monthly', 'weekly', 'daily'].map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={viewMode === m}
+                  className={`appt-seg-btn${viewMode === m ? ' active' : ''}`}
+                  onClick={() => setViewMode(m)}
+                >
+                  {m.charAt(0).toUpperCase() + m.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="appt-field">
+            <span>Year</span>
             <select value={selectedYear} onChange={e => setSelectedYear(e.target.value)}>
               {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </label>
-          {(viewMode === 'monthly' || viewMode === 'weekly' || viewMode === 'daily') && (
-            <label>
-              <span>Month:&nbsp;</span>
-              <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
-                {getMonthList().map(m => <option key={m.value} value={m.value}>{m.name}</option>)}
-              </select>
-            </label>
-          )}
+
+          <label className="appt-field">
+            <span>Month</span>
+            <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+              {getMonthList().map(m => <option key={m.value} value={m.value}>{m.name}</option>)}
+            </select>
+          </label>
+
           {viewMode === 'weekly' && selectedYear && selectedMonth && (
-            <label>
-              <span>Week:&nbsp;</span>
-              <select
-                value={selectedWeekIdx}
-                onChange={e => setSelectedWeekIdx(Number(e.target.value))}
-              >
-                {weeksArr.map((_, i) => (
-                  <option key={i} value={i}>{`Week ${i + 1}`}</option>
-                ))}
+            <label className="appt-field">
+              <span>Week</span>
+              <select value={selectedWeekIdx} onChange={e => setSelectedWeekIdx(Number(e.target.value))}>
+                {weeksArr.map((_, i) => (<option key={i} value={i}>{`Week ${i + 1}`}</option>))}
               </select>
             </label>
           )}
+
           {viewMode === 'daily' && selectedYear && selectedMonth && (
-            <label>
-              <span>Day:&nbsp;</span>
-              <select
-                value={selectedDay}
-                onChange={e => setSelectedDay(e.target.value)}
-                style={{ minWidth: 60, maxWidth: 80 }}
-              >
+            <label className="appt-field">
+              <span>Day</span>
+              <select value={selectedDay} onChange={e => setSelectedDay(e.target.value)} className="appt-select-narrow">
                 {Array.from({ length: daysInMonth(selectedYear, selectedMonth) }, (_, i) => i + 1)
                   .map(day => <option key={day} value={day}>{day}</option>)}
               </select>
@@ -962,22 +900,9 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
       {/* END STICKY HEADER BLOCK */}
 
       {/* SCROLL AREA FOR CARDS/TABLES */}
-      <div className="appointments-scroll-area" style={{
-        flex:1,
-        overflowY:'auto',
-        paddingTop:8,
-        paddingBottom:32
-      }}>
+      <div className="appointments-scroll-area">
         {loading ? (
-          <div style={{ 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center', 
-            height: 200,
-            fontSize: '1.1rem',
-            color: '#185abd',
-            gap: 12
-          }}>
+          <div className="appt-loading">
             <i className="fa fa-spinner fa-spin" />
             Loading appointments...
           </div>

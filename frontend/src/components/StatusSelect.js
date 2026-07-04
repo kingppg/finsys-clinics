@@ -2,14 +2,15 @@ import React from 'react';
 import Select, { components } from 'react-select';
 import { useClinic } from './ClinicContext';
 
-// Status options and color codes
+// Status options — colors reference the shared app-wide --dc-status-* tokens
+// (dcPrimitives.css) so the whole app speaks one status language.
 const statusOptions = [
-  { value: 'Scheduled',  label: 'Scheduled',  color: '#185abd' },
-  { value: 'Confirmed',  label: 'Confirmed',  color: '#2bc1ff' },
-  { value: 'Checked-In', label: 'Checked-In', color: '#f59e0b' },
-  { value: 'Completed',  label: 'Completed',  color: '#2ecc40' },
-  { value: 'No Show',    label: 'No Show',    color: '#e74c3c' },
-  { value: 'Cancelled',  label: 'Cancelled',  color: '#bdc3c7' },
+  { value: 'Scheduled',  label: 'Scheduled',  color: 'var(--dc-status-scheduled)' },
+  { value: 'Confirmed',  label: 'Confirmed',  color: 'var(--dc-status-confirmed)' },
+  { value: 'Checked-In', label: 'Checked-In', color: 'var(--dc-status-checkedin)' },
+  { value: 'Completed',  label: 'Completed',  color: 'var(--dc-status-completed)' },
+  { value: 'No Show',    label: 'No Show',    color: 'var(--dc-status-noshow)' },
+  { value: 'Cancelled',  label: 'Cancelled',  color: 'var(--dc-status-cancelled)' },
 ];
 
 // --- Helper: Status disabling logic based on appointment time, current status, and clinic timezone ---
@@ -120,7 +121,7 @@ const SingleValue = (props) => (
   </components.SingleValue>
 );
 
-// Custom styles for react-select
+// Custom styles for react-select — theme-driven (reads --dc-* tokens on :root)
 const customStyles = {
   control: (provided, state) => ({
     ...provided,
@@ -128,9 +129,18 @@ const customStyles = {
     minWidth: 130,
     height: 38,
     fontWeight: 'bold',
-    background: '#f7fbff',
-    borderColor: state.isFocused ? '#185abd' : '#ccc',
-    boxShadow: state.isFocused ? '0 0 0 2px #185abd33' : 'none',
+    background: 'var(--dc-surface-2, #f7fbff)',
+    borderColor: state.isFocused ? 'var(--dc-accent, #185abd)' : 'var(--dc-border-strong, #ccc)',
+    boxShadow: state.isFocused ? '0 0 0 2px var(--dc-accent-soft, rgba(24,90,189,0.2))' : 'none',
+    '&:hover': { borderColor: 'var(--dc-accent, #185abd)' },
+  }),
+  menu: (provided) => ({
+    ...provided,
+    background: 'var(--dc-elevated, #fff)',
+    border: '1px solid var(--dc-border-strong, #ccc)',
+    borderRadius: 12,
+    overflow: 'hidden',
+    zIndex: 9999,
   }),
   option: (provided, { data, isFocused, isSelected, selectProps }) => {
     const isOptionDisabled = getOptionDisabled(
@@ -141,8 +151,8 @@ const customStyles = {
     );
     return {
       ...provided,
-      backgroundColor: isSelected ? data.color : isFocused ? '#eef6ff' : undefined,
-      color: isSelected ? '#fff' : '#185abd',
+      backgroundColor: isSelected ? data.color : isFocused ? 'var(--dc-accent-soft, #eef6ff)' : 'transparent',
+      color: isSelected ? 'var(--dc-accent-contrast, #fff)' : 'var(--dc-text, #185abd)',
       fontWeight: isSelected ? 'bold' : 'normal',
       cursor: isOptionDisabled ? 'not-allowed' : 'pointer',
       display: 'flex',
@@ -153,7 +163,7 @@ const customStyles = {
   },
   singleValue: (provided) => ({
     ...provided,
-    color: '#185abd',
+    color: 'var(--dc-text, #185abd)',
     fontWeight: 'bold',
     background: 'transparent',
     display: 'flex',

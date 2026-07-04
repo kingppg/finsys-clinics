@@ -12,6 +12,20 @@
    here corrects every component in every theme. Loaded globally (index.js).
    ========================================================================== */
 
+/* ---------- Shared appointment-status palette ----------
+   ONE status language for the whole app (Calendar, Appointments, StatusSelect,
+   any future module). Change a status color once here → it updates everywhere,
+   in every theme. Semantic tokens flip with the theme; completed is a fixed
+   violet (no direct token). */
+:root {
+  --dc-status-scheduled: var(--dc-info, #60A5FA);
+  --dc-status-confirmed: var(--dc-success, #4ADE80);
+  --dc-status-checkedin: var(--dc-accent, #2DD4BF);
+  --dc-status-completed: #A78BFA;
+  --dc-status-noshow: var(--dc-warning, #FBBF24);
+  --dc-status-cancelled: var(--dc-danger, #F87171);
+}
+
 /* ---------- Loading ---------- */
 
 .dc-loading {

@@ -9,13 +9,14 @@
   padding: 12px;
   font-family: var(--dc-font, 'Inter', sans-serif);
 
-  /* Semantic status palette — single source, theme-driven */
-  --cal-confirmed: var(--dc-success, #4ADE80);
-  --cal-scheduled: var(--dc-info, #60A5FA);
-  --cal-completed: #A78BFA;               /* violet — brand data, no direct token */
-  --cal-checkedin: var(--dc-accent, #2DD4BF);
-  --cal-noshow: var(--dc-warning, #FBBF24);
-  --cal-cancelled: var(--dc-danger, #F87171);
+  /* Status palette — now sourced from the shared app-wide --dc-status-* tokens
+     (dcPrimitives.css) so Calendar + Appointments speak one language. */
+  --cal-confirmed: var(--dc-status-confirmed);
+  --cal-scheduled: var(--dc-status-scheduled);
+  --cal-completed: var(--dc-status-completed);
+  --cal-checkedin: var(--dc-status-checkedin);
+  --cal-noshow: var(--dc-status-noshow);
+  --cal-cancelled: var(--dc-status-cancelled);
 }
 
 /* ---------- Card ---------- */
