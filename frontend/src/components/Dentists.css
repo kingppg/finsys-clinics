@@ -22,6 +22,18 @@
 .dt-msg-row { margin-bottom: 14px; }
 .dt-msg-row .dc-banner { margin-bottom: 8px; }
 
+/* Helper note below the table */
+.dt-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 11px;
+  font-size: 0.78rem;
+  color: var(--dc-text-3, #94a3b8);
+}
+.dt-note svg { width: 15px; height: 15px; flex-shrink: 0; }
+.dt-note strong { color: var(--dc-text-2, #64748b); font-weight: 600; }
+
 .dt-table { table-layout: fixed; }
 .dt-table td {
   overflow: hidden;

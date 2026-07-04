@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import DentistAvailabilityManager from './DentistAvailabilityManager';
-import { LuUserPlus, LuCalendarClock, LuSquarePen, LuTrash2 } from 'react-icons/lu';
+import { LuUserPlus, LuCalendarClock, LuSquarePen, LuTrash2, LuInfo } from 'react-icons/lu';
 import './Dentists.css';
 
 function Dentists({ clinicId }) {
@@ -380,6 +380,10 @@ function Dentists({ clinicId }) {
             )}
           </tbody>
         </table>
+      </div>
+
+      <div className="dt-note">
+        <LuInfo /> Tip: click a dentist's <strong>status</strong> to switch them between Active and Inactive.
       </div>
 
       {/* ── Add ── */}
