@@ -1,7 +1,7 @@
 # Dental Clinic System — Webhook, Reminders, & Billing Handoff
 
-**Last updated:** 2026-07-03  
-**Scope:** Messenger webhook hardening (Ate Claire AI), booking flow fixes, reminder/notification delivery fixes, Supabase data-exposure lockdown, Facebook Login for Business (`config_id`) connect flow, **Phase 1 Billing System MVP** (manual GCash invoice recording), and **Patient Files Phase 1** (radiographs / photos / documents storage).
+**Last updated:** 2026-07-04  
+**Scope:** Messenger webhook hardening (Ate Claire AI), booking flow fixes, reminder/notification delivery fixes, Supabase data-exposure lockdown, Facebook Login for Business (`config_id`) connect flow, **Phase 1 Billing System MVP** (manual GCash invoice recording), **Patient Files Phase 1** (radiographs / photos / documents storage), and the **app-wide UI theming rollout** (Dark Executive `--dc-*` token system extended across the app — see §k).
 **Repo:** github.com/kingppg/finsys-clinics (branch `main`)
 **Backend host:** Render — https://finsys-clinics.onrender.com (auto-deploys on push to `main`)
 **Frontend:** Vercel. Backend URL is set in Vercel env `REACT_APP_API_URL` (not in the repo).
@@ -143,14 +143,14 @@ Adds storage for dental radiographs (bitewing, periapical, panoramic/OPG, CBCT, 
 - **Profile page ergonomics (owner-requested):** `PatientProfile` is a fixed-height workstation (`height: calc(100vh - 44px)`) — header (name/contact) and tab bar stay pinned while `.pp-body` scrolls; the odontogram's condition palette (`.odo-palette`) AND the files toolbar (`.pf-toolbar`, filter chips + Upload) are `position: sticky` within that scroll area, so name → tabs → toolbar chips all stay visible while working. Profile height is `calc(100vh - 62px)` (= `<main>` 8+8 padding + `.dc-page` 10+36 margins) so the page fits the viewport exactly — no outer scrollbar. Root cause of the lingering outer scrollbar was the **global `App.js` footer** ("© 2025 Finsys", `marginTop: 2rem`) rendered below the 100vh dashboard `<main>` on every route — it now renders only on public pages (`showFooter = !pathname.startsWith('/dashboard')`); login/signup/reset/queue keep it. Second offender: Dashboard `<main>` had `minHeight: 100vh` with content-box padding (no `boxSizing`) → always 16px taller than the viewport; fixed with `boxSizing: 'border-box'` in `Dashboard.js`. Odontogram chart downsized for the full page (`.odo-chart-wrap` max-width 1080px, centered) — owner evaluating the size.
 - **Shared page layout (`.dc-page`) — NEW STANDING RULE:** `frontend/src/styles/dcPage.css` (loaded globally in `src/index.js`) provides the Billing-style breathing gutters (`max-width: 1600px; margin: 10px auto 36px`) for every full-page module. Owner directive: from now on all full-page views wrap their themed root in `<div className="dc-page">` — no per-module hardcoded widths/margins. First adopter: PatientProfile. (Billing's `.bills-container` predates it and keeps its local copy for now.)
 
-### i) CSS primitives layer — single layout source of truth for repeatable patterns (**BUILT, awaiting owner test**)
+### i) CSS primitives layer — single layout source of truth for repeatable patterns (**DEPLOYED — see §k for current status**)
 Owner directive (mirrors his other project): **one shared layout file** owns every repeatable pattern (buttons, chips, pills, modals, form fields, tabs, banners, empty states); a change there corrects all components in all themes. Component CSS keeps **only** geometry unique to that component. This replaces the copy-paste duplication that had started (chips/buttons/modals were defined 2–3×).
 - **`frontend/src/styles/dcPrimitives.css`** (loaded globally in `src/index.js`, after `dcPage.css`): `.dc-btn` (`--primary`/`--ghost`/`--danger`/`--danger-solid`), `.dc-chip` (+ `.dc-chip-dot`, `.dc-chip-count`, `.dc-chip-count--tone` for filled tone counts), `.dc-pill`, `.dc-banner` (`--ok`/`--err`), `.dc-empty` (+ icon/title/hint), `.dc-overlay` + `.dc-modal` (`--sm`/`--wide`, `.dc-modal-title`/`-actions`/`-close`, styles child `p`), `.dc-field` (+ `--wide`, styles child input/select/textarea/`> span`), `.dc-tabs`/`.dc-tab`, `.dc-loading`. All cosmetics via `--dc-*` tokens; tone-aware pieces read inline `--tone`/`--tone-soft`.
 - **Migrated:** Odontogram (chips, action buttons, clear-confirm modal, loading), PatientFiles (filter chips, buttons, banner, empty, upload+viewer modals, category pill, form fields, loading), PatientProfile (tab bar, empty state). Each component's own CSS now holds only unique geometry (odontogram arch/surface rings/center panel; files gallery grid/cards/dropzone/viewer split; profile header/history rows). Net CSS bundle got **smaller** despite the added file (dedup). Visual no-op — verified `tsc --noEmit` + `npm run build`.
 - **RULE going forward:** any pattern that appears in a 2nd component graduates into `dcPrimitives.css`; component CSS never (re)defines a button/chip/modal/field. Billing (`BillsPayment.css`, live) not yet migrated — planned as a later careful pass.
 - **Still ahead (app-wide theming rollout):** see item (j) — rollout has now STARTED (root injection + sidebar + calendar).
 
-### j) App-wide theming rollout — STARTED: root token injection + Sidebar + Calendar View (**BUILT, awaiting owner test**)
+### j) App-wide theming rollout — STARTED: root token injection + Sidebar + Calendar View (**DEPLOYED — superseded by §k full status**)
 Owner directive: theme the whole app one module at a time, **including the side nav so each theme's sidebar is consistent with it**. First module: Calendar View. Chosen approach (owner-approved): full CSS refactor for the calendar; preserve the current navy sidebar look via tokens.
 - **Root token injection — `DcThemeRoot`** (`themes/DcThemeProvider.tsx`, mounted in `Dashboard.js` wrapping the shell): writes the active theme's `--dc-*` variables onto `:root` (`document.documentElement`) via new `applyThemeVars()`, **without** forcing global color/background/font — so the sidebar, calendar, and every future module read the same tokens while un-migrated modules stay exactly as-is (variables are inert until referenced). Renders no wrapper div. Same `localStorage` key as `DcThemeProvider`; provides context for the future Clinic Config picker. This is also the groundwork for theming body-mounted portals (SweetAlert2).
 - **Nav token group** added to the theme contract (`themes/types.ts` `DcNavTokens`; `darkExecutive.ts` `nav`): `from/to` (gradient), `accent`, `activeBg`, `hoverBg`, `bottomBg`, `border`, `logoutBg` — emitted as `--dc-nav-*`. Dark Executive's nav values are the **exact original sidebar colors** (navy gradient #0d253f→#24406e, cyan #2bc1ff), so the sidebar looks unchanged today and a future light theme flips it for free.
@@ -244,6 +244,22 @@ Note: with 0 credits, the briefly-exposed Semaphore key has no value to an attac
 - **FB connect:** `GET /api/clinics/1/facebook/connect` (follow redirect header) should point to `…/dialog/oauth?...&config_id=1735537977881310`.
 - **Patient Files:** `003_patient_files.sql` has been **run in Supabase ✅** (2026-07-03). Test: Patients → click a patient's name → **full-page profile** opens → **Images & Files** tab → upload a JPG (any category) → thumbnail appears → click card → viewer shows image + details → download/edit/delete. From Appointments: folder icon on a row → upload → confirm the file shows "Appointment" pre-linked. Security check: the `patient-files` bucket must show **private** in Supabase Storage, and an anon (logged-out) REST read of `patient_files` must be denied.
 
+### k) App-wide UI theming rollout — IN PROGRESS (all deployed as of 2026-07-04)
+The Dark Executive `--dc-*` token system (built for Billing) now extends across the app, one module at a time. **Frontend-only, no logic/flow/DB changes.** Owner directive: as Chief Designer, *challenge & elevate* each module's design (premium SaaS), not just recolour it.
+
+**Infrastructure (the enablers):**
+- **`DcThemeRoot`** (`themes/DcThemeProvider.tsx`, mounted in `Dashboard.js`) → `applyThemeVars()` writes `--dc-*` onto `:root` WITHOUT forcing global color/bg/font — vars available app-wide, inert for un-migrated modules. Never wrap the dashboard in the scoped `DcThemeProvider` (it forces `color:text` and breaks light modules). `.dc-viewport` + `body` painted from `--dc-bg`.
+- **Standard scaffold** — every module: `.dc-page` (centered 1600 gutters) + `.dc-page-header` (eyebrow + title + actions; font pinned to `--dc-font`). All in `styles/dcPage.css` (+ `--dc-gutter`).
+- **Primitives** (`styles/dcPrimitives.css`, single source of truth): `.dc-btn`, `.dc-chip`, `.dc-pill`, `.dc-banner`, `.dc-empty`, `.dc-overlay`+`.dc-modal`, `.dc-field`, `.dc-tabs`, `.dc-loading`, **`.dc-table-wrap`/`.dc-table` + `.dc-icon-btn`** (shared table + row-action standard). `.dc-overlay` offset by `left: var(--dc-sidebar-w)` so modals dim/centre in the content area.
+- **Shared status palette** `--dc-status-*` (one status colour language: Calendar, Appointments, StatusSelect).
+- **Sidebar** — `--dc-nav-*` token group; redesigned (bundled FS logo + FinSys lockup, clinic workspace header, Feather/Lucide icons, active pill + tick, avatar footer), harmonized to Dark Executive navy + teal. **Collapsible** (click the brand; persisted in localStorage; `--dc-sidebar-w` drives sidebar width + `<main>` margin + modal centering; default collapsed <1024px for tablet).
+
+**Modules done:** Calendar View (premium: density heatmap, KPI count-up header, framer-motion), Appointments (list + segmented view toggle + Lucide row actions; booking form with titled sections + live summary bar + Lucide slot grid; reminder modal; wide-modal wrapper), Queue (staff monitor hero cards + realtime chairs picker + cast-to-screen setup; public `/queue-display` TV screen re-themed to teal, glow toned down for all-day viewing), Patients (list on `.dc-table` + sticky headers + Lucide icon actions; add/edit/delete modals on primitives), and **SweetAlert2 global theme** (`styles/swalTheme.css` — every dialog/toast app-wide).
+
+**Remaining:** Dentists (⚠️ has a duplicate global `section {}` landmine to defuse), Procedures, Clinic Config, Chat, AdminUsersRoles; Billing (pilot predates primitives — later careful pass); react-select/react-calendar polish; then the **theme picker** in Clinic Config + a 2nd theme (Light Executive) to prove the flip.
+
+**Gotchas captured:** legacy unscoped `section td button` / `section {}` rules leak app-wide and distort new components — make new elements defensive + scope the legacy rule (Patients/Dentists had these). `.dc-field` controls forced `width:100%/min-width:0/box-sizing` so long `<select>` options don't blow out forms.
+
 ### Local dev note
 A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
 
@@ -269,5 +285,16 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `5e217b2` | BILLING first attempt: schema migration + REST API + BillsPaymentEnhanced UI (**UI later rolled back** — replaced owner's working component) |
 | `9105307` | BILLING first-attempt integration (routes + Enhanced component into dashboard) — **UI portion rolled back** |
 | `c9b76d1` | Revert dashboard to the original BillsPayment component |
+| `472c94a` | CSS primitives layer + app-wide theming rollout start (nav tokens, viewport, Calendar) |
+| `0e0d5dd`… | (theming) full-page patient profile + Patient Files (earlier in the sequence) |
+| `001e87d` | Appointments list view themed + unified `--dc-status-*` colors |
+| `42cd246` | Appointments booking form + reminder modal + wide-modal wrapper themed |
+| `a6bff77` | Premium booking-form redesign (sections, live summary bar, Lucide slots) |
+| `70028f1` | Global SweetAlert2 theme (`swalTheme.css`) |
+| `49f7fd0` | Collapsible sidebar (persisted) + consistent content-area modals |
+| `a3475c4` | Standard `.dc-page-header` (eyebrow+title) + consistent gutters |
+| `a0b6d7c` | Queue premium redesign — staff monitor + public TV display |
+| `c601684` | Patients themed + shared table standard (`.dc-table`/`.dc-icon-btn`) |
+| `196378a` | Patients fixed-height page + sticky table headers |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
