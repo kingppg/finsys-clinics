@@ -444,42 +444,29 @@ export default function AppointmentReminderControl({ appointmentId, patientName,
               <tbody>
                 {sentReminders.length === 0 && (
                   <tr>
-                    <td colSpan={3} style={{ textAlign: "center", color: "#888" }}>No reminders sent yet.</td>
+                    <td colSpan={3} className="reminder-log-empty">No reminders sent yet.</td>
                   </tr>
                 )}
-                {sentReminders.map((rem, idx) => (
-                  <tr key={idx}>
-                    <td style={{
-                      color: rem.is_manual === true
-                        ? "#007bff"
-                        : "#d9534f"
-                    }}>
-                      {new Date(rem.sent_on).toLocaleString()}
-                    </td>
-                    <td style={{
-                      color: rem.is_manual === true
-                        ? "#007bff"
-                        : "#d9534f"
-                    }}>
-                      {rem.days_ahead}
-                    </td>
-                    <td style={{
-                      color: rem.is_manual === true
-                        ? "#007bff"
-                        : "#d9534f"
-                    }}>
-                      {rem.messenger_id}
-                    </td>
-                  </tr>
-                ))}
+                {sentReminders.map((rem, idx) => {
+                  const rowColor = rem.is_manual === true
+                    ? 'var(--dc-info, #007bff)'
+                    : 'var(--dc-danger, #d9534f)';
+                  return (
+                    <tr key={idx}>
+                      <td style={{ color: rowColor }}>{new Date(rem.sent_on).toLocaleString()}</td>
+                      <td style={{ color: rowColor }}>{rem.days_ahead}</td>
+                      <td style={{ color: rowColor }}>{rem.messenger_id}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           {/* --- END FIXED HEIGHT REMINDER LOG TABLE --- */}
           <div style={{ marginTop: "8px", fontSize: "0.96rem" }}>
             <span>
-              <span style={{ color: "#007bff", marginRight: "12px" }}>■ Manual Reminder</span>
-              <span style={{ color: "#d9534f" }}>■ Automated Reminder</span>
+              <span className="reminder-legend-manual">■ Manual Reminder</span>
+              <span className="reminder-legend-auto">■ Automated Reminder</span>
             </span>
           </div>
         </div>

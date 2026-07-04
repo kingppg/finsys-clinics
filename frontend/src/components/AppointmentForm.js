@@ -137,86 +137,50 @@ function PatientSearchSelect({ patients, selectedPatient, onSelect, onPatientAdd
   };
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative', marginBottom: 4 }}>
+    <div ref={wrapRef} className="aps-wrap">
       {/* ── Trigger button ── */}
       <div
         onClick={handleOpen}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '7px 10px', borderRadius: 4, cursor: 'pointer',
-          border: hasError ? '1.5px solid #e74c3c' : '1px solid #d1d5db',
-          background: '#fff', minHeight: 36, fontSize: 14,
-          color: selectedLabel ? '#111827' : '#9ca3af',
-        }}
+        className={`aps-trigger${hasError ? ' error' : ''}${selectedLabel ? '' : ' placeholder'}`}
       >
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span className="aps-trigger-label">
           {selectedLabel || 'Search or select patient…'}
         </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
+        <span className="aps-actions">
           {selectedLabel && (
-            <span
-              onClick={handleClear}
-              title="Clear"
-              style={{ color: '#9ca3af', fontSize: 16, lineHeight: 1, cursor: 'pointer', padding: '0 2px' }}
-            >
-              ×
-            </span>
+            <span onClick={handleClear} title="Clear" className="aps-clear">×</span>
           )}
-          <span style={{ color: '#9ca3af', fontSize: 11 }}>▼</span>
+          <span className="aps-caret">▼</span>
         </span>
       </div>
 
       {/* ── Dropdown ── */}
       {open && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999,
-          background: '#fff', border: '1px solid #d1d5db', borderRadius: 6,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.13)', marginTop: 2,
-          maxHeight: 320, display: 'flex', flexDirection: 'column',
-        }}>
+        <div className="aps-dropdown">
           {/* Search input */}
-          <div style={{ padding: '8px 8px 4px', borderBottom: '1px solid #f3f4f6' }}>
+          <div className="aps-search">
             <input
               ref={inputRef}
               type="text"
               value={search}
               onChange={e => { setSearch(e.target.value); setShowAddForm(false); }}
               placeholder="Type name or phone…"
-              style={{
-                width: '100%', padding: '6px 10px', borderRadius: 4,
-                border: '1px solid #e5e7eb', fontSize: 13, boxSizing: 'border-box',
-                outline: 'none',
-              }}
             />
           </div>
 
           {/* Patient list */}
-          <div style={{ overflowY: 'auto', flex: 1 }}>
+          <div className="aps-list">
             {filtered.length === 0 && !showAddForm && (
-              <div style={{ padding: '10px 12px', color: '#9ca3af', fontSize: 13 }}>
-                No patients found.
-              </div>
+              <div className="aps-empty">No patients found.</div>
             )}
             {filtered.map(p => (
               <div
                 key={p.id}
                 onClick={() => handleSelect(p)}
-                style={{
-                  padding: '8px 12px', cursor: 'pointer', fontSize: 13,
-                  background: String(p.id) === String(selectedPatient) ? '#eff6ff' : '#fff',
-                  color: String(p.id) === String(selectedPatient) ? '#185abd' : '#111827',
-                  fontWeight: String(p.id) === String(selectedPatient) ? 600 : 400,
-                  borderBottom: '1px solid #f9fafb',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
-                onMouseLeave={e => e.currentTarget.style.background =
-                  String(p.id) === String(selectedPatient) ? '#eff6ff' : '#fff'}
+                className={`aps-option${String(p.id) === String(selectedPatient) ? ' selected' : ''}`}
               >
                 <span>{p.name}</span>
-                {p.phone && (
-                  <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>{p.phone}</span>
-                )}
+                {p.phone && <span className="aps-option-phone">{p.phone}</span>}
               </div>
             ))}
           </div>
@@ -225,33 +189,19 @@ function PatientSearchSelect({ patients, selectedPatient, onSelect, onPatientAdd
           {!showAddForm ? (
             <div
               onClick={() => { setShowAddForm(true); setNewName(search); setNewPhone(''); setAddError(''); }}
-              style={{
-                padding: '9px 12px', borderTop: '1px solid #e5e7eb',
-                cursor: 'pointer', fontSize: 13, color: '#185abd',
-                fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6,
-                background: '#f8faff',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
-              onMouseLeave={e => e.currentTarget.style.background = '#f8faff'}
+              className="aps-addrow"
             >
-              <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
+              <span className="aps-addrow-plus">+</span>
               Add new patient{search.trim() ? ` "${search.trim()}"` : ''}
             </div>
           ) : (
-            <div style={{ padding: '10px 12px', borderTop: '1px solid #e5e7eb', background: '#f8faff' }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#185abd', marginBottom: 8 }}>
-                New Patient
-              </div>
+            <div className="aps-addform">
+              <div className="aps-addform-title">New Patient</div>
               <input
                 type="text"
                 placeholder="Full name *"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
-                style={{
-                  width: '100%', padding: '6px 8px', borderRadius: 4,
-                  border: '1px solid #d1d5db', fontSize: 13, marginBottom: 6,
-                  boxSizing: 'border-box',
-                }}
                 autoFocus
               />
               <input
@@ -259,36 +209,22 @@ function PatientSearchSelect({ patients, selectedPatient, onSelect, onPatientAdd
                 placeholder="Phone number *"
                 value={newPhone}
                 onChange={e => setNewPhone(e.target.value)}
-                style={{
-                  width: '100%', padding: '6px 8px', borderRadius: 4,
-                  border: '1px solid #d1d5db', fontSize: 13, marginBottom: 6,
-                  boxSizing: 'border-box',
-                }}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddNew(); }}
               />
-              {addError && (
-                <div style={{ fontSize: 12, color: '#e74c3c', marginBottom: 6 }}>{addError}</div>
-              )}
-              <div style={{ display: 'flex', gap: 6 }}>
+              {addError && <div className="aps-addform-error">{addError}</div>}
+              <div className="aps-addform-actions">
                 <button
+                  type="button"
+                  className="dc-btn dc-btn--ghost"
                   onClick={() => { setShowAddForm(false); setAddError(''); }}
-                  style={{
-                    flex: 1, padding: '6px 0', borderRadius: 4,
-                    border: '1px solid #d1d5db', background: '#fff',
-                    fontSize: 12, cursor: 'pointer', color: '#374151',
-                  }}
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
+                  className="dc-btn dc-btn--primary"
                   onClick={handleAddNew}
                   disabled={adding}
-                  style={{
-                    flex: 2, padding: '6px 0', borderRadius: 4,
-                    border: 'none', background: '#185abd',
-                    fontSize: 12, cursor: adding ? 'not-allowed' : 'pointer',
-                    color: '#fff', fontWeight: 600, opacity: adding ? 0.7 : 1,
-                  }}
                 >
                   {adding ? 'Adding…' : 'Add Patient'}
                 </button>
@@ -640,7 +576,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
             />
             {validationErrors.selectedDate && <div className="field-error">{validationErrors.selectedDate}</div>}
             {!isClinicOpen(selectedDate) && selectedDate && (
-              <div style={{ color: "red", marginTop: 8 }}>
+              <div className="appt-closed-note">
                 Clinic is closed on Sundays. Please select another day.
               </div>
             )}
@@ -681,12 +617,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
                     title={title || "Available"}
                   >
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '100%', minHeight: '1em' }}>
-                      <span style={{
-                        color: isLunchSlot(time) ? '#FF9800' : blockedSlots.includes(time) ? '#b71c1c' : !!bookedSlotObj ? '#888' : isSlotInPast(time) ? '#bdbdbd' : undefined,
-                        fontWeight: isLunchSlot(time) || blockedSlots.includes(time) ? 'bold' : undefined,
-                      }}>
-                        {to12HourFormat(time)}
-                      </span>
+                      <span>{to12HourFormat(time)}</span>
                       <span
                         className={isLunchSlot(time) ? "lunch-icon" : blockedSlots.includes(time) ? "blocked-icon" : !!bookedSlotObj ? "booked-icon" : isSlotInPast(time) ? "past-icon" : "icon-placeholder"}
                         aria-label={ariaLabel} title={title}
@@ -718,7 +649,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
             {validationErrors.selectedProcedure && <div className="field-error">{validationErrors.selectedProcedure}</div>}
 
             {selectedProcedure && (
-              <div style={{ marginTop: 6, color: '#185abd', fontWeight: 600 }}>
+              <div className="appt-price">
                 Price: ₱{procedures.find(p => String(p.id) === String(selectedProcedure))?.price || '0.00'}
               </div>
             )}

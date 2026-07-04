@@ -22,7 +22,7 @@ const Modal = ({ open, onClose, children }) => {
     <div style={{
       position: 'fixed',
       top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.18)',
+      background: 'rgba(2, 6, 17, 0.6)',
       zIndex: 9999,
       display: 'flex',
       alignItems: 'center',
@@ -38,13 +38,15 @@ const Modal = ({ open, onClose, children }) => {
     }}>
       <div
         style={{
-          background: '#fff',
+          background: 'var(--dc-surface, #fff)',
+          border: '1px solid var(--dc-border-strong, transparent)',
+          color: 'var(--dc-text, #263240)',
           borderRadius: 16,
           padding: '38px 40px 36px 40px',
           width: '100%',
           maxWidth: '1700px',
           minWidth: '900px',
-          boxShadow: '0 8px 32px #0002',
+          boxShadow: 'var(--dc-shadow, 0 8px 32px #0002)',
           position: 'relative',
           maxHeight: '86vh',
           overflow: 'hidden', // <-- Remove scroll on modal content
@@ -63,7 +65,8 @@ const Modal = ({ open, onClose, children }) => {
             border: 'none',
             fontSize: 32,
             cursor: 'pointer',
-            zIndex: 10
+            zIndex: 10,
+            color: 'var(--dc-text-2, #263240)'
           }}
           aria-label="Close modal"
         >

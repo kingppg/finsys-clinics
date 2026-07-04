@@ -562,7 +562,134 @@ tr.row-scroll-focus {
 .slot-btn.selected { background: var(--dc-accent, #2bc1ff); color: var(--dc-accent-contrast, #fff); border-color: var(--dc-accent, #2bc1ff); box-shadow: 0 0 16px 2px var(--dc-accent-soft, rgba(45, 212, 191, 0.4)); }
 .slot-btn.booked, .slot-btn:disabled { background: var(--dc-surface-2, #e3e9f3); color: var(--dc-text-3, #b8b8bd) !important; cursor: not-allowed; border: 3px solid var(--dc-border, #dde6ef); }
 .slot-btn.blocked { background: var(--dc-danger-soft, #ffebee) !important; border: 2.5px solid var(--dc-danger, #e53935) !important; color: var(--dc-danger, #b71c1c) !important; font-weight: bold; }
+.slot-btn.lunch { background: var(--dc-warning-soft, #fff8e1) !important; border: 2.5px solid var(--dc-warning, #f6b93b) !important; color: var(--dc-warning, #b26a00) !important; font-weight: bold; }
+.slot-btn.past { background: var(--dc-surface-2, #eef1f5) !important; color: var(--dc-text-3, #b0b0b0) !important; border: 3px solid var(--dc-border, #e3e9f3) !important; }
 .slot-btn, .slot-btn * { text-decoration: none !important; }
+
+/* Booking form card (Add/Edit view) */
+.appointment-modern.main-section {
+  background: var(--dc-surface, #fff);
+  border: 1px solid var(--dc-border, #e4e9f2);
+  border-radius: 16px;
+  box-shadow: var(--dc-shadow, 0 2px 20px rgba(13, 37, 63, 0.07));
+  max-width: 1600px;
+  margin: 10px auto 36px;
+  padding: 26px 30px 30px;
+  color: var(--dc-text, #263240);
+}
+.appointment-modern.main-section h2 { color: var(--dc-text, #24406e); }
+.appointment-modern h3 {
+  color: var(--dc-text, #24406e);
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+}
+.appt-price { margin-top: 6px; color: var(--dc-accent, #185abd); font-weight: 600; }
+.appt-closed-note { color: var(--dc-danger, #e74c3c); margin-top: 8px; font-size: 0.9rem; }
+
+/* Patient search + add (booking form) */
+.aps-wrap { position: relative; margin-bottom: 4px; }
+.aps-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--dc-border-strong, #d1d5db);
+  background: var(--dc-surface-2, #fff);
+  min-height: 40px;
+  font-size: 0.9rem;
+  color: var(--dc-text, #111827);
+  box-sizing: border-box;
+}
+.aps-trigger.error { border-color: var(--dc-danger, #e74c3c); }
+.aps-trigger.placeholder { color: var(--dc-text-3, #9ca3af); }
+.aps-trigger-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aps-actions { display: flex; align-items: center; gap: 4px; margin-left: 6px; }
+.aps-clear { color: var(--dc-text-3, #9ca3af); font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }
+.aps-clear:hover { color: var(--dc-danger, #e74c3c); }
+.aps-caret { color: var(--dc-text-3, #9ca3af); font-size: 11px; }
+
+.aps-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  background: var(--dc-elevated, #fff);
+  border: 1px solid var(--dc-border-strong, #d1d5db);
+  border-radius: 10px;
+  box-shadow: var(--dc-shadow, 0 4px 16px rgba(0, 0, 0, 0.13));
+  margin-top: 4px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.aps-search { padding: 8px; border-bottom: 1px solid var(--dc-border, #f3f4f6); }
+.aps-search input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--dc-border-strong, #e5e7eb);
+  background: var(--dc-surface-2, #fff);
+  color: var(--dc-text, #111827);
+  font-size: 0.85rem;
+  box-sizing: border-box;
+  outline: none;
+}
+.aps-search input:focus { border-color: var(--dc-accent, #185abd); }
+.aps-list { overflow-y: auto; flex: 1; }
+.aps-empty { padding: 10px 12px; color: var(--dc-text-3, #9ca3af); font-size: 0.85rem; }
+.aps-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--dc-text, #111827);
+  border-bottom: 1px solid var(--dc-border, #f9fafb);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.aps-option:hover { background: var(--dc-surface-2, #f0f7ff); }
+.aps-option.selected { background: var(--dc-accent-soft, #eff6ff); color: var(--dc-accent, #185abd); font-weight: 600; }
+.aps-option-phone { font-size: 0.72rem; color: var(--dc-text-3, #9ca3af); margin-left: 8px; }
+
+.aps-addrow {
+  padding: 10px 12px;
+  border-top: 1px solid var(--dc-border, #e5e7eb);
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--dc-accent, #185abd);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--dc-surface, #f8faff);
+}
+.aps-addrow:hover { background: var(--dc-accent-soft, #eff6ff); }
+.aps-addrow-plus { font-size: 18px; line-height: 1; }
+
+.aps-addform { padding: 10px 12px; border-top: 1px solid var(--dc-border, #e5e7eb); background: var(--dc-surface, #f8faff); }
+.aps-addform-title { font-size: 0.72rem; font-weight: 700; color: var(--dc-accent, #185abd); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+.aps-addform input {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--dc-border-strong, #d1d5db);
+  background: var(--dc-surface-2, #fff);
+  color: var(--dc-text, #111827);
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+  outline: none;
+}
+.aps-addform input:focus { border-color: var(--dc-accent, #185abd); }
+.aps-addform-error { font-size: 0.75rem; color: var(--dc-danger, #e74c3c); margin-bottom: 6px; }
+.aps-addform-actions { display: flex; gap: 8px; }
+.aps-addform-actions .dc-btn { flex: 1; padding: 7px 0; }
+.aps-addform-actions .dc-btn--primary { flex: 2; }
 
 /* modals (booking) */
 .modal-bg { position: fixed; inset: 0; background: rgba(2, 6, 17, 0.55); z-index: 999; display: flex; align-items: center; justify-content: center; }
