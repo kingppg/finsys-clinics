@@ -419,6 +419,81 @@
   max-width: 82%;
 }
 
+/* ---- Message Templates panel ---- */
+.cc-token--static { cursor: default; }
+.cc-token--static:hover {
+  border-color: var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  background: var(--dc-bg, #0B1120);
+}
+.cc-tpl-section-label {
+  margin: 22px 0 4px;
+  padding-top: 18px;
+  border-top: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dc-text-2, #A9B7CE);
+}
+.cc-status-list { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.cc-tpl-block {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-surface-2, #1A2438);
+}
+.cc-status-list .cc-tpl-block { margin-top: 0; }
+.cc-tpl-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.cc-tpl-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--dc-text, #EDF2FA);
+}
+.cc-status-pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--dc-text-3, #6E7E98);
+  flex-shrink: 0;
+}
+.cc-status-pip[data-status="Scheduled"]  { background: var(--dc-status-scheduled); }
+.cc-status-pip[data-status="Confirmed"]  { background: var(--dc-status-confirmed); }
+.cc-status-pip[data-status="Checked-In"] { background: var(--dc-status-checkedin); }
+.cc-status-pip[data-status="Completed"]  { background: var(--dc-status-completed); }
+.cc-status-pip[data-status="No Show"]    { background: var(--dc-status-noshow); }
+.cc-status-pip[data-status="Cancelled"]  { background: var(--dc-status-cancelled); }
+.cc-load-default {
+  background: none;
+  border: none;
+  color: var(--dc-accent, #2DD4BF);
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.cc-load-default:hover { text-decoration: underline; }
+.cc-tpl-defaultflag {
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: var(--dc-bg, #0B1120);
+  color: var(--dc-text-3, #6E7E98);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* Shared meta/warn/input styles (used by the template preview) */
 .cc-checker {
   margin-top: 22px;

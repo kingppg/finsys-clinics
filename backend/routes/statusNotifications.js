@@ -108,7 +108,7 @@ router.post('/:appointmentId', async (req, res) => {
   // ✅ Fetch clinic with SMS config AND timezone
   const { data: clinicRow, error: clinicError } = await supabase
     .from('clinics')
-    .select('fb_page_access_token, name, contact_phone, time_zone, sms_provider, sms_api_key, sms_api_secret, sms_sender')
+    .select('fb_page_access_token, name, contact_phone, time_zone, sms_provider, sms_api_key, sms_api_secret, sms_sender, status_templates')
     .eq('id', clinic_id)
     .single();
 
@@ -132,20 +132,33 @@ router.post('/:appointmentId', async (req, res) => {
     timeZone: clinicTZ
   });
 
-  const contactLine = clinicPhone
-    ? `You may reach us at ${clinicPhone}.`
-    : `Please contact us to get assistance.`;
+  // Token substitution for status messages. Clinic-editable templates AND the
+  // built-in defaults use [TOKENS]; this fills them with the real values.
+  const fillTokens = (tpl) => String(tpl)
+    .replace(/\[PATIENT_NAME\]/g, appt.patient_name || 'there')
+    .replace(/\[DATE\]/g, dateStr)
+    .replace(/\[TIME\]/g, timeStr)
+    .replace(/\[CLINIC\]/g, clinicName)
+    .replace(/\[CLINIC_PHONE\]/g, clinicPhone || 'the clinic');
 
-  const defaultMessages = {
-    "Checked-In": `Hi ${appt.patient_name}! 😊 You're now checked in at ${clinicName}. Please have a seat and relax — we'll be with you shortly. Thank you for your patience! 🦷`,
-    "Confirmed":  `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment on ${dateStr} at ${timeStr} has been confirmed. We look forward to seeing you! 🦷`,
-    "Scheduled":  `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment has been scheduled for ${dateStr} at ${timeStr}. See you then! 🦷`,
-    "Completed":  `Hello ${appt.patient_name}, this is ${clinicName}. Thank you for coming to your appointment on ${dateStr}. We hope to see you again soon! 🦷`,
-    "No Show":    `Hello ${appt.patient_name}, this is ${clinicName}. We noticed you missed your appointment on ${dateStr} at ${timeStr}. ${contactLine}`,
-    "Cancelled":  `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment on ${dateStr} at ${timeStr} has been cancelled. ${contactLine}`,
+  // Built-in defaults — emoji-free and plain-ASCII so they send as cheap GSM
+  // (an emoji or em dash would force the whole SMS to ~2x-cost Unicode). Used
+  // when the clinic hasn't set its own template for that status.
+  const STATUS_DEFAULTS = {
+    "Scheduled":  "Hello [PATIENT_NAME], this is [CLINIC]. Your appointment has been scheduled for [DATE] at [TIME]. See you then!",
+    "Confirmed":  "Hello [PATIENT_NAME], this is [CLINIC]. Your appointment on [DATE] at [TIME] has been confirmed. We look forward to seeing you!",
+    "Checked-In": "Hi [PATIENT_NAME]! You're now checked in at [CLINIC]. Please have a seat and relax, we'll be with you shortly. Thank you for your patience!",
+    "Completed":  "Hello [PATIENT_NAME], this is [CLINIC]. Thank you for coming to your appointment on [DATE]. We hope to see you again soon!",
+    "No Show":    "Hello [PATIENT_NAME], this is [CLINIC]. We noticed you missed your appointment on [DATE] at [TIME]. You may reach us at [CLINIC_PHONE].",
+    "Cancelled":  "Hello [PATIENT_NAME], this is [CLINIC]. Your appointment on [DATE] at [TIME] has been cancelled. You may reach us at [CLINIC_PHONE].",
   };
 
-  const finalMsg = message || defaultMessages[status] ||
+  // Precedence: explicit typed message → clinic status template → built-in default → generic.
+  const clinicStatusTpl = clinicRow.status_templates && clinicRow.status_templates[status];
+  const finalMsg =
+    (message && message.trim() ? message : null) ||
+    (clinicStatusTpl && String(clinicStatusTpl).trim() ? fillTokens(clinicStatusTpl) : null) ||
+    (STATUS_DEFAULTS[status] ? fillTokens(STATUS_DEFAULTS[status]) : null) ||
     `Hello ${appt.patient_name}, this is ${clinicName}. Your appointment status has been updated to "${status}" as of ${dateStr} at ${timeStr}.`;
 
   const messenger_id = recipient || appt.messenger_id || appt.guardian_messenger_id;

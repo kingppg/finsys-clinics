@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { authHeaders } from '../api/authHeaders';
 import {
   LuFacebook, LuSmartphone, LuUsers, LuPlus, LuRefreshCw,
-  LuCheck, LuInfo, LuExternalLink
+  LuCheck, LuInfo, LuExternalLink, LuMessageSquare
 } from 'react-icons/lu';
 import AdminUsersRoles from './AdminUsersRoles';
 import { smsInfo } from '../utils/smsSegments';
@@ -19,7 +19,7 @@ const SAFE_CLINIC_COLUMNS =
   'id, name, address, contact_email, contact_phone, fb_page_id, created_at, ' +
   'updated_at, messenger_page_id, reminder_time, is_active, time_zone, ' +
   'queue_token, queue_stations, currency_symbol, currency_locale, ' +
-  'sms_provider, sms_sender, reminder_template';
+  'sms_provider, sms_sender, reminder_template, status_templates';
 
 const initialClinicState = {
   name: '',
@@ -34,13 +34,27 @@ const initialClinicState = {
   sms_api_key: '',
   sms_api_secret: '',
   sms_sender: '',
-  reminder_template: ''
+  reminder_template: '',
+  status_templates: {}
 };
 
 // The hardcoded fallback the backend uses when both the per-appointment message
 // and the clinic template are blank. Mirrored here for "Reset to default" + preview.
 const SYSTEM_DEFAULT_REMINDER =
   'Hello [PATIENT_NAME], this is a reminder for your dental clinic appointment on [DATE] at [TIME].';
+
+// Status-change notifications. Defaults mirror statusNotifications.js (emoji-free
+// so they stay cheap GSM); shown as placeholder/preview when not customized.
+const STATUS_LIST = ['Scheduled', 'Confirmed', 'Checked-In', 'Completed', 'No Show', 'Cancelled'];
+const STATUS_DEFAULTS = {
+  'Scheduled':  'Hello [PATIENT_NAME], this is [CLINIC]. Your appointment has been scheduled for [DATE] at [TIME]. See you then!',
+  'Confirmed':  'Hello [PATIENT_NAME], this is [CLINIC]. Your appointment on [DATE] at [TIME] has been confirmed. We look forward to seeing you!',
+  'Checked-In': "Hi [PATIENT_NAME]! You're now checked in at [CLINIC]. Please have a seat and relax, we'll be with you shortly. Thank you for your patience!",
+  'Completed':  'Hello [PATIENT_NAME], this is [CLINIC]. Thank you for coming to your appointment on [DATE]. We hope to see you again soon!',
+  'No Show':    'Hello [PATIENT_NAME], this is [CLINIC]. We noticed you missed your appointment on [DATE] at [TIME]. You may reach us at [CLINIC_PHONE].',
+  'Cancelled':  'Hello [PATIENT_NAME], this is [CLINIC]. Your appointment on [DATE] at [TIME] has been cancelled. You may reach us at [CLINIC_PHONE].',
+};
+const TEMPLATE_TOKENS = ['[PATIENT_NAME]', '[DATE]', '[TIME]', '[CLINIC]', '[CLINIC_PHONE]'];
 
 function ClinicConfig({ user, clinicId, onBack }) {
   const [clinics, setClinics] = useState([]);
@@ -118,7 +132,8 @@ function ClinicConfig({ user, clinicId, onBack }) {
         sms_api_key: clinic.sms_api_key ?? '',
         sms_api_secret: clinic.sms_api_secret ?? '',
         sms_sender: clinic.sms_sender ?? '',
-        reminder_template: clinic.reminder_template ?? ''
+        reminder_template: clinic.reminder_template ?? '',
+        status_templates: clinic.status_templates ?? {}
       });
     }
   }, [selectedClinicId, clinics]);
@@ -370,21 +385,25 @@ function ClinicConfig({ user, clinicId, onBack }) {
     }
   }
 
-  function insertTemplateToken(token) {
-    setFormData((prev) => ({
-      ...prev,
-      reminder_template: `${prev.reminder_template || ''}${token}`
-    }));
-  }
-
   function handleResetTemplate() {
     setFormData((prev) => ({ ...prev, reminder_template: SYSTEM_DEFAULT_REMINDER }));
   }
 
-  async function handleSaveTemplate() {
+  function setStatusTemplate(status, value) {
+    setFormData((prev) => ({
+      ...prev,
+      status_templates: { ...(prev.status_templates || {}), [status]: value }
+    }));
+  }
+
+  function loadStatusDefault(status) {
+    setStatusTemplate(status, STATUS_DEFAULTS[status]);
+  }
+
+  async function handleSaveTemplates() {
     const result = await Swal.fire({
-      title: 'Save reminder template?',
-      text: 'This becomes the default reminder message for appointments that have no custom message.',
+      title: 'Save message templates?',
+      text: 'Update the reminder and status-change messages for this clinic?',
       icon: 'question',
       showCancelButton: true,
       confirmButtonText: 'Yes, Save',
@@ -396,16 +415,25 @@ function ClinicConfig({ user, clinicId, onBack }) {
 
     setLoading(true);
     try {
-      // Blank → store NULL so the backend cleanly falls through to the system default.
+      // Keep only non-blank status overrides; blank fields fall back to defaults.
+      const st = {};
+      STATUS_LIST.forEach((s) => {
+        const v = (formData.status_templates?.[s] || '').trim();
+        if (v) st[s] = formData.status_templates[s];
+      });
+      // Blank → store NULL so the backend cleanly falls through to the defaults.
       const { error } = await supabase
         .from('clinics')
-        .update({ reminder_template: formData.reminder_template?.trim() ? formData.reminder_template : null })
+        .update({
+          reminder_template: formData.reminder_template?.trim() ? formData.reminder_template : null,
+          status_templates: Object.keys(st).length ? st : null
+        })
         .eq('id', selectedClinicId);
       if (error) throw error;
       await fetchClinics(selectedClinicId);
-      Swal.fire({ title: 'Template saved!', icon: 'success', timer: 1400, showConfirmButton: false });
+      Swal.fire({ title: 'Templates saved!', icon: 'success', timer: 1400, showConfirmButton: false });
     } catch {
-      Swal.fire({ title: 'Error', text: 'Failed to save the reminder template.', icon: 'error' });
+      Swal.fire({ title: 'Error', text: 'Failed to save the templates.', icon: 'error' });
     } finally {
       setLoading(false);
     }
@@ -569,18 +597,24 @@ function ClinicConfig({ user, clinicId, onBack }) {
   // Template preview (client-only): render the template with sample data so the
   // credit/encoding estimate matches what actually goes out. Blank template →
   // preview the system default so staff see what "blank" means.
-  const templateIsBlank = !formData.reminder_template || !formData.reminder_template.trim();
-  const templatePreview = (templateIsBlank ? SYSTEM_DEFAULT_REMINDER : formData.reminder_template)
+  const currentClinicName = clinics.find(c => String(c.id) === String(selectedClinicId))?.name;
+
+  // Fill [TOKENS] with sample values for live previews.
+  const sampleFill = (tpl) => String(tpl || '')
     .replace(/\[PATIENT_NAME\]/g, 'Maria')
     .replace(/\[DATE\]/g, 'Jun 13, 2026')
-    .replace(/\[TIME\]/g, '2:00 PM');
+    .replace(/\[TIME\]/g, '2:00 PM')
+    .replace(/\[CLINIC\]/g, currentClinicName || 'your clinic')
+    .replace(/\[CLINIC_PHONE\]/g, formData.contact_phone || 'the clinic');
+
+  const templateIsBlank = !formData.reminder_template || !formData.reminder_template.trim();
+  const templatePreview = sampleFill(templateIsBlank ? SYSTEM_DEFAULT_REMINDER : formData.reminder_template);
   const tcost = smsInfo(templatePreview);
   const estSends = smsBalance !== null && tcost.segments > 0
     ? Math.floor(parseFloat(smsBalance) / tcost.segments)
     : null;
 
   const canManageUsers = user.role === 'superadmin' || user.role === 'admin';
-  const currentClinicName = clinics.find(c => String(c.id) === String(selectedClinicId))?.name;
 
   const RAIL = [
     {
@@ -597,6 +631,14 @@ function ClinicConfig({ user, clinicId, onBack }) {
       label: 'SMS Reminders',
       sub: smsActive ? `${smsProviderLabel} active` : 'Not configured',
       dot: !smsActive ? 'off' : (isLowBalance ? 'warn' : 'ok'),
+      show: true
+    },
+    {
+      key: 'templates',
+      icon: <LuMessageSquare />,
+      label: 'Message Templates',
+      sub: 'Reminders & status messages',
+      dot: null,
       show: true
     },
     {
@@ -924,70 +966,6 @@ function ClinicConfig({ user, clinicId, onBack }) {
                   <button type="button" className="dc-btn dc-btn--ghost" onClick={handleBack}>Back</button>
                 </div>
               </form>
-
-              {/* Default reminder message template (with live preview + cost) */}
-              <div className="cc-template">
-                <div className="cc-checker-head">
-                  <span className="cc-checker-title">Default reminder message</span>
-                  <span className="cc-checker-sub">Used when an appointment has no custom message. Leave blank to use the system default.</span>
-                </div>
-
-                <div className="cc-token-row">
-                  <span className="cc-token-hint">Insert</span>
-                  {['[PATIENT_NAME]', '[DATE]', '[TIME]'].map((tok) => (
-                    <button key={tok} type="button" className="cc-token" onClick={() => insertTemplateToken(tok)}>
-                      {tok}
-                    </button>
-                  ))}
-                </div>
-
-                <textarea
-                  className="cc-checker-input"
-                  rows={3}
-                  value={formData.reminder_template}
-                  onChange={(e) => setFormData((p) => ({ ...p, reminder_template: e.target.value }))}
-                  placeholder="e.g. Hi [PATIENT_NAME], reminder: your appointment is on [DATE] at [TIME]. Reply YES to confirm."
-                />
-
-                <div className="cc-template-actions">
-                  <button type="button" className="dc-btn dc-btn--primary" onClick={handleSaveTemplate} disabled={loading}>
-                    Save template
-                  </button>
-                  <button type="button" className="dc-btn dc-btn--ghost" onClick={handleResetTemplate}>
-                    Reset to default
-                  </button>
-                </div>
-
-                <div className="cc-preview">
-                  <div className="cc-preview-label">
-                    Preview {templateIsBlank && <em>(system default)</em>}
-                  </div>
-                  <div className="cc-preview-bubble">{templatePreview}</div>
-                  <div className="cc-checker-meta">
-                    <span><b>{tcost.chars}</b> chars</span>
-                    <span className="cc-sep">·</span>
-                    <span><b>{tcost.segments}</b> credit{tcost.segments === 1 ? '' : 's'}</span>
-                    <span className="cc-sep">·</span>
-                    <span className={tcost.isUnicode ? 'cc-enc cc-enc--uni' : 'cc-enc cc-enc--gsm'}>{tcost.encoding}</span>
-                    {estSends !== null && (
-                      <span className="cc-checker-est">balance ≈ <b>{estSends.toLocaleString()}</b> sends</span>
-                    )}
-                  </div>
-                  {tcost.isUnicode && (
-                    <div className="cc-checker-warn">
-                      <LuInfo />
-                      <span>
-                        Sends as <b>Unicode</b> (~70 chars/credit, about 2× the cost)
-                        {tcost.offenders.length > 0 && (
-                          <> because of {tcost.offenders.map((c, i) => (
-                            <code key={i} className="cc-offender">{c === ' ' ? '␣' : c}</code>
-                          ))}</>
-                        )}. Swap <code>₱</code>→<code>PHP</code>, em dash <code>—</code>→<code>-</code>, and curly quotes → straight <code>"</code> <code>'</code>.
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
             </>
           )}
 
@@ -1002,6 +980,126 @@ function ClinicConfig({ user, clinicId, onBack }) {
                 <span className="dc-empty-title">Save the clinic first</span>
                 <span className="dc-empty-hint">Add and save this clinic before configuring SMS.</span>
               </div>
+            </>
+          )}
+
+          {/* ── MESSAGE TEMPLATES ── */}
+          {subTab === 'templates' && (
+            <>
+              <div className="cc-panel-head">
+                <div className="cc-panel-eyebrow">Message Templates</div>
+                <h2 className="cc-panel-title">Reminders &amp; Notifications</h2>
+              </div>
+
+              {(!user.role || clinics.length === 0) ? (
+                <div className="dc-empty">
+                  <span className="dc-empty-icon">💬</span>
+                  <span className="dc-empty-title">No clinic selected</span>
+                  <span className="dc-empty-hint">Select or add a clinic to edit its messages.</span>
+                </div>
+              ) : isNew ? (
+                <div className="dc-empty">
+                  <span className="dc-empty-icon">💾</span>
+                  <span className="dc-empty-title">Save the clinic first</span>
+                  <span className="dc-empty-hint">Add and save this clinic before editing its messages.</span>
+                </div>
+              ) : (
+                <>
+                  <div className="cc-token-row">
+                    <span className="cc-token-hint">Tokens</span>
+                    {TEMPLATE_TOKENS.map((tok) => (
+                      <span key={tok} className="cc-token cc-token--static">{tok}</span>
+                    ))}
+                  </div>
+                  <p className="cc-hint cc-hint--muted">
+                    Tokens are filled in automatically when a message is sent. Leave a field blank to use the built-in default.
+                  </p>
+
+                  {/* Appointment reminder default */}
+                  <div className="cc-tpl-block">
+                    <div className="cc-tpl-head">
+                      <span className="cc-tpl-title">Appointment reminder</span>
+                      <button type="button" className="cc-load-default" onClick={handleResetTemplate}>Load default</button>
+                    </div>
+                    <textarea
+                      className="cc-checker-input"
+                      rows={3}
+                      value={formData.reminder_template}
+                      onChange={(e) => setFormData((p) => ({ ...p, reminder_template: e.target.value }))}
+                      placeholder={SYSTEM_DEFAULT_REMINDER}
+                    />
+                    <div className="cc-preview">
+                      <div className="cc-preview-label">Preview {templateIsBlank && <em>(default)</em>}</div>
+                      <div className="cc-preview-bubble">{templatePreview}</div>
+                      <div className="cc-checker-meta">
+                        <span><b>{tcost.chars}</b> chars</span>
+                        <span className="cc-sep">·</span>
+                        <span><b>{tcost.segments}</b> credit{tcost.segments === 1 ? '' : 's'}</span>
+                        <span className="cc-sep">·</span>
+                        <span className={tcost.isUnicode ? 'cc-enc cc-enc--uni' : 'cc-enc cc-enc--gsm'}>{tcost.encoding}</span>
+                        {estSends !== null && (
+                          <span className="cc-checker-est">balance ≈ <b>{estSends.toLocaleString()}</b> sends</span>
+                        )}
+                      </div>
+                      {tcost.isUnicode && (
+                        <div className="cc-checker-warn">
+                          <LuInfo />
+                          <span>
+                            Sends as <b>Unicode</b> (~2× the cost)
+                            {tcost.offenders.length > 0 && (
+                              <> because of {tcost.offenders.map((c, i) => (
+                                <code key={i} className="cc-offender">{c === ' ' ? '␣' : c}</code>
+                              ))}</>
+                            )}. Swap <code>₱</code>→<code>PHP</code>, em dash <code>—</code>→<code>-</code>.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Status-change messages */}
+                  <div className="cc-tpl-section-label">Status-change messages</div>
+                  <div className="cc-status-list">
+                    {STATUS_LIST.map((status) => {
+                      const val = formData.status_templates?.[status] || '';
+                      const isBlank = !val.trim();
+                      const info = smsInfo(sampleFill(isBlank ? STATUS_DEFAULTS[status] : val));
+                      return (
+                        <div className="cc-tpl-block" key={status}>
+                          <div className="cc-tpl-head">
+                            <span className="cc-tpl-title">
+                              <span className="cc-status-pip" data-status={status} /> {status}
+                            </span>
+                            <button type="button" className="cc-load-default" onClick={() => loadStatusDefault(status)}>Load default</button>
+                          </div>
+                          <textarea
+                            className="cc-checker-input"
+                            rows={2}
+                            value={val}
+                            onChange={(e) => setStatusTemplate(status, e.target.value)}
+                            placeholder={STATUS_DEFAULTS[status]}
+                          />
+                          <div className="cc-checker-meta">
+                            {isBlank && <span className="cc-tpl-defaultflag">using default</span>}
+                            <span><b>{info.chars}</b> chars</span>
+                            <span className="cc-sep">·</span>
+                            <span><b>{info.segments}</b> credit{info.segments === 1 ? '' : 's'}</span>
+                            <span className="cc-sep">·</span>
+                            <span className={info.isUnicode ? 'cc-enc cc-enc--uni' : 'cc-enc cc-enc--gsm'}>{info.encoding}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="cc-actions">
+                    <button type="button" className="dc-btn dc-btn--primary" onClick={handleSaveTemplates} disabled={loading}>
+                      {loading ? 'Saving…' : 'Save all templates'}
+                    </button>
+                    <button type="button" className="dc-btn dc-btn--ghost" onClick={handleBack}>Back</button>
+                  </div>
+                </>
+              )}
             </>
           )}
 

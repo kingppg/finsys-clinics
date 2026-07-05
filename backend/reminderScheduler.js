@@ -254,8 +254,6 @@ async function sendRemindersForClinic(clinic) {
         .replace(/\[DATE\]/g, dateStr)
         .replace(/\[TIME\]/g, timeStr);
 
-      reminderText += `\n\nSee you soon!`;
-
       // --- Try Messenger first, fall back to SMS ---
       let sent = false;
 
