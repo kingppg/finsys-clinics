@@ -11,6 +11,7 @@ export interface InvoiceLike {
   id: number;
   patient_id?: number | null;
   total?: number | string | null;
+  discount?: number | string | null;
   status?: string | null;
   invoice_date?: string | null;
   due_date?: string | null;
@@ -87,6 +88,12 @@ export interface CollectionsResult {
   paymentCount: number;
   byMethod: MethodSlice[];
   monthly: MonthPoint[];
+  /** Gross charged before discounts = Σ(invoice.total + invoice.discount). */
+  grossCharged: number;
+  /** Total price reductions given = Σ(invoice.discount). */
+  discountsGiven: number;
+  /** Net billed after discounts = Σ(invoice.total) (== totalBilled). */
+  netBilled: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +228,12 @@ export function computeCollections(
   const outstanding = Math.max(totalBilled - totalCollected, 0);
   const collectionRate = totalBilled > 0 ? totalCollected / totalBilled : 0;
 
+  // Charges vs discounts. invoice.total is stored NET of discount, so gross =
+  // net + discount. Lets the practice see how much was discounted per period.
+  const discountsGiven = active.reduce((s, inv) => s + num(inv.discount), 0);
+  const netBilled = totalBilled;
+  const grossCharged = netBilled + discountsGiven;
+
   // Payment method mix
   const methodMap = new Map<string, MethodSlice>();
   for (const p of payments || []) {
@@ -267,6 +280,9 @@ export function computeCollections(
     paymentCount: (payments || []).length,
     byMethod,
     monthly,
+    grossCharged,
+    discountsGiven,
+    netBilled,
   };
 }
 

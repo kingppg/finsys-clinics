@@ -368,6 +368,58 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Charges & discounts strip ---------- */
+
+.dcb-gdn {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dcb-gdn-item {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius);
+  background: var(--dc-surface-2);
+}
+
+.dcb-gdn-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dc-text-3);
+}
+
+.dcb-gdn-val {
+  font-size: 1.3rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--dc-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.dcb-gdn-val--discount { color: var(--dc-warning); }
+.dcb-gdn-val--net { color: var(--dc-success); }
+
+.dcb-gdn-op {
+  display: flex;
+  align-items: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--dc-text-3);
+}
+
+@media (max-width: 560px) {
+  .dcb-gdn-op { display: none; }
+}
+
 /* ---------- Collection rate progress ---------- */
 
 .dcb-progress-head {

@@ -153,6 +153,32 @@ export function CollectionsOverview({
         </div>
       </div>
 
+      {/* Charges vs discounts — gross → discounts given → net billed */}
+      <div className="dcb-card">
+        <div className="dcb-card-head">
+          <h3 className="dcb-card-title">Charges &amp; Discounts</h3>
+          <span className="dcb-card-sub">Across active invoices</span>
+        </div>
+        <div className="dcb-card-body">
+          <div className="dcb-gdn">
+            <div className="dcb-gdn-item">
+              <span className="dcb-gdn-label">Gross Charged</span>
+              <span className="dcb-gdn-val">{fmt(data.grossCharged)}</span>
+            </div>
+            <span className="dcb-gdn-op">−</span>
+            <div className="dcb-gdn-item">
+              <span className="dcb-gdn-label">Discounts Given</span>
+              <span className="dcb-gdn-val dcb-gdn-val--discount">{fmt(data.discountsGiven)}</span>
+            </div>
+            <span className="dcb-gdn-op">=</span>
+            <div className="dcb-gdn-item">
+              <span className="dcb-gdn-label">Net Billed</span>
+              <span className="dcb-gdn-val dcb-gdn-val--net">{fmt(data.netBilled)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="dcb-two-col">
         {/* Monthly billed vs collected */}
         <div className="dcb-card">
