@@ -5,8 +5,12 @@ node_modules/
 dist/
 build/
 
-# Ignore backup and temp files
+# Ignore backup and temp files (agent-workflow noise: *.jsXXX / *.jsxINVOICE /
+# *.jsREFACTORED are hand-made backups of real source, not to be committed)
 *XXX*
+*.jsXXX
+*.jsxINVOICE
+*.jsREFACTORED
 *.bak
 *bfg*
 test-claude.js
