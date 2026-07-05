@@ -43,8 +43,8 @@ const I = {
 };
 
 const swalConfig = {
-  confirmButtonColor: "#0f2340",
-  cancelButtonColor: "#64748b",
+  // Dialog colors come from the global swalTheme.css (app-wide SweetAlert theme);
+  // only geometry is set here via customClass.
   customClass: {
     confirmButton: "CPM-swal-confirm-btn",
     cancelButton: "CPM-swal-cancel-btn",
@@ -249,6 +249,10 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
   useEffect(() => { setCatName(category.name); }, [category.name]);
 
   const procedures = [...(category.procedures ?? [])].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+  const catPrices  = procedures.map(p => Number(p.price || 0)).filter(n => n > 0);
+  const catMin     = catPrices.length ? Math.min(...catPrices) : 0;
+  const catMax     = catPrices.length ? Math.max(...catPrices) : 0;
+  const fmtCat     = (n) => `${currencySymbol}${Number(n).toLocaleString(currencyLocale, { maximumFractionDigits: 0 })}`;
   const hasSearch  = !!searchQuery;
   const filtered   = hasSearch
     ? procedures.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -488,6 +492,11 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
           <div className="CPM-cat-name-display">
             <span className="CPM-cat-name" onClick={() => !hasSearch && onToggle()} style={{ cursor: "pointer" }}>{category.name}</span>
             <span className="CPM-cat-badge">{procedures.length}</span>
+            {catPrices.length > 0 && (
+              <span className="CPM-cat-range" title="Price range in this category">
+                {catMin === catMax ? fmtCat(catMin) : `${fmtCat(catMin)} – ${fmtCat(catMax)}`}
+              </span>
+            )}
             <button className="CPM-icon-btn CPM-icon-btn--edit" onClick={() => setEditName(true)} title="Rename"><Icon d={I.pencil} size={13} /></button>
             <button className="CPM-icon-btn CPM-icon-btn--bulk" onClick={() => setShowBulk(true)} title="Bulk price edit" disabled={procedures.length === 0}>
               <Icon d={I.percent} size={13} />
@@ -735,6 +744,15 @@ const ClinicProcedureManager = () => {
 
   const totalProcs = categories.reduce((s, c) => s + (c.procedures?.length ?? 0), 0);
 
+  // Derived price insight for the header KPI strip (read-only; no logic change)
+  const allPrices = categories
+    .flatMap(c => (c.procedures ?? []).map(p => Number(p.price || 0)))
+    .filter(n => n > 0);
+  const fmtMoney = (n) => `${currencySymbol}${Number(n).toLocaleString(currencyLocale, { maximumFractionDigits: 0 })}`;
+  const avgPrice = allPrices.length ? allPrices.reduce((a, b) => a + b, 0) / allPrices.length : 0;
+  const minPrice = allPrices.length ? Math.min(...allPrices) : 0;
+  const maxPrice = allPrices.length ? Math.max(...allPrices) : 0;
+
   const displayed = search
     ? categories.filter(cat =>
         cat.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -747,20 +765,20 @@ const ClinicProcedureManager = () => {
   }
 
   return (
-    <div className="CPM-container">
-      {/* ── Sticky Header ── */}
-      <div className="CPM-sticky-header">
-        <div className="CPM-header-top">
-          <div className="CPM-header-title">
-            <h2>Procedure Manager</h2>
-            <div className="CPM-header-meta">
-              <span className="CPM-stat">{categories.length} <em>categories</em></span>
-              <span className="CPM-stat-divider">·</span>
-              <span className="CPM-stat">{totalProcs} <em>procedures</em></span>
-            </div>
+    <div className="dc-page CPM-container">
+      {/* ── Standard module header ── */}
+      <header className="dc-page-header">
+        <div className="dc-page-titlewrap">
+          <div className="dc-page-eyebrow">Clinic Configuration</div>
+          <h1 className="dc-page-title">Procedures</h1>
+          <div className="dc-page-subtitle CPM-header-meta">
+            <span className="CPM-stat">{categories.length} <em>categories</em></span>
+            <span className="CPM-stat-divider">·</span>
+            <span className="CPM-stat">{totalProcs} <em>procedures</em></span>
           </div>
+        </div>
 
-          <div className="CPM-header-actions">
+        <div className="dc-page-header-actions CPM-header-actions">
             {/* Search */}
             <div className="CPM-search-wrap">
               <span className="CPM-search-icon"><Icon d={I.search} size={14} /></span>
@@ -794,9 +812,32 @@ const ClinicProcedureManager = () => {
             ) : (
               <button className="CPM-add-cat-btn" onClick={() => setAddingCat(true)}><Icon d={I.plus} /> New Category</button>
             )}
+        </div>
+      </header>
+
+      {/* ── KPI strip (derived price insight) ── */}
+      {!!categories.length && (
+        <div className="CPM-kpis">
+          <div className="CPM-kpi">
+            <span className="CPM-kpi-val">{categories.length}</span>
+            <span className="CPM-kpi-lbl">Categories</span>
+          </div>
+          <div className="CPM-kpi">
+            <span className="CPM-kpi-val">{totalProcs}</span>
+            <span className="CPM-kpi-lbl">Procedures</span>
+          </div>
+          <div className="CPM-kpi">
+            <span className="CPM-kpi-val CPM-kpi-val--money">{fmtMoney(avgPrice)}</span>
+            <span className="CPM-kpi-lbl">Avg Price</span>
+          </div>
+          <div className="CPM-kpi">
+            <span className="CPM-kpi-val CPM-kpi-val--money">
+              {allPrices.length ? `${fmtMoney(minPrice)} – ${fmtMoney(maxPrice)}` : '—'}
+            </span>
+            <span className="CPM-kpi-lbl">Price Range</span>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Body ── */}
       <div className="CPM-body">
