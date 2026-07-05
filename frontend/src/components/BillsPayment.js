@@ -5,6 +5,7 @@ import InvoiceLineItems from './billing/InvoiceLineItems';
 import { DcThemeProvider } from '../themes/DcThemeProvider';
 import { AgingAnalysis } from './billing/AgingAnalysis';
 import { CollectionsOverview } from './billing/CollectionsOverview';
+import { GRANS, getPeriodRange, shiftAnchor, inRange, isCurrentOrFuture } from './billing/period';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
@@ -31,6 +32,8 @@ const I = {
   print:    ["M6 9V2h12v7", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v8H6z"],
   settings: ["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"],
   trendingUp: ["M23 6l-9.5 9.5-5-5L1 18", "M17 6h6v6"],
+  chevL:    ["M15 18l-6-6 6-6"],
+  chevR:    ["M9 18l6-6-6-6"],
   alert:    ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z", "M12 9v4", "M12 17h.01"],
   banknote: ["M2 6h20v12H2z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M6 9v.01M18 15v.01"],
   coins:    ["M12 8c-3.87 0-7-1.34-7-3s3.13-3 7-3 7 1.34 7 3-3.13 3-7 3z", "M5 5v6c0 1.66 3.13 3 7 3s7-1.34 7-3V5", "M5 11v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6"],
@@ -68,6 +71,11 @@ function BillsPayment() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [activeTab, setActiveTab] = useState('invoices'); // 'invoices' | 'aging' | 'collections'
+
+  // Period picker — scopes the Invoices tab, header, and Collections KPIs.
+  // Aging stays a live "as of today" snapshot (unaffected).
+  const [periodGran, setPeriodGran] = useState('all'); // 'all' | 'year' | 'month' | 'week' | 'day'
+  const [periodAnchor, setPeriodAnchor] = useState(() => new Date());
 
   // Invoices table: search / filter / sort / pagination
   const [invoiceSearch, setInvoiceSearch] = useState('');
@@ -195,11 +203,24 @@ function BillsPayment() {
     return map;
   }, new Map());
 
+  // ------- Period scoping -------
+  // Invoices are scoped by invoice_date, payments by payment_date (cash in the
+  // period). Balances still use ALL payments (paidByInvoice above) so a period
+  // invoice's outstanding reflects every payment ever made against it.
+  const periodRange = getPeriodRange(periodGran, periodAnchor, currencyLocale);
+  const invoicesInPeriod = invoices.filter(inv => inRange(inv.invoice_date, periodRange, inv.created_at));
+  const paymentsInPeriod = payments.filter(p => inRange(p.payment_date, periodRange, p.created_at));
+  const canGoNext = !isCurrentOrFuture(periodRange);
+  const periodCollected = paymentsInPeriod.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+
+  const goPeriod = (dir) => { setPeriodAnchor(a => shiftAnchor(periodGran, a, dir)); setInvoicePage(1); };
+  const setGran = (g) => { setPeriodGran(g); setPeriodAnchor(new Date()); setInvoicePage(1); };
+
   // ------- Invoices table pipeline: enrich → filter → sort → paginate -------
   const INVOICES_PAGE_SIZE = 20;
   const nowForOverdue = new Date();
 
-  const enrichedInvoices = invoices.map(inv => {
+  const enrichedInvoices = invoicesInPeriod.map(inv => {
     const patient = getPatientById(inv.patient_id);
     const patientName = patient ? patient.name : `ID: ${inv.patient_id}`;
     const currentStatus = inv.status || 'Unpaid';
@@ -228,19 +249,21 @@ function BillsPayment() {
     ];
   })();
 
-  // Practice-finance KPIs for the Invoices tab — computed from the ACTIVE ledger
-  // (voided excluded), independent of the current search/filter so the headline
-  // numbers stay stable while the user drills the table below.
+  // Practice-finance KPIs for the Invoices tab — scoped to the selected period.
+  // Billed/Outstanding/Overdue come from invoices billed in the period (voided
+  // excluded); Collected is CASH RECEIVED in the period (by payment date), so it
+  // can include payments settling older invoices — that's true period income.
   const ledgerKpis = (() => {
-    let billed = 0, collected = 0, outstanding = 0, overdueAmt = 0, overdueCount = 0;
+    let billed = 0, outstanding = 0, overdueAmt = 0, overdueCount = 0, activeCount = 0;
     for (const r of enrichedInvoices) {
       if (r.isCancelled) continue;
+      activeCount += 1;
       billed += parseFloat(r.inv.total || 0);
-      collected += r.paidAmount;
       outstanding += r.balanceDue;
       if (r.isOverdue) { overdueAmt += r.balanceDue; overdueCount += 1; }
     }
-    return { billed, collected, outstanding, overdueAmt, overdueCount, rate: billed > 0 ? collected / billed : 0 };
+    const collected = periodCollected;
+    return { billed, collected, outstanding, overdueAmt, overdueCount, activeCount, rate: billed > 0 ? collected / billed : 0 };
   })();
 
   const searchQ = invoiceSearch.trim().toLowerCase().replace(/^#/, '');
@@ -529,9 +552,12 @@ function BillsPayment() {
           <div className="dc-page-eyebrow">Clinic Finance</div>
           <h1 className="dc-page-title">Billing &amp; Payments</h1>
           <div className="dc-page-subtitle bills-header-meta">
-            <span className="bills-stat">{invoices.length} <em>invoices</em></span>
+            <span className="bills-stat">{ledgerKpis.activeCount} <em>invoices billed</em></span>
             <span className="bills-stat-divider">·</span>
-            <span className="bills-stat">{payments.length} <em>payments recorded</em></span>
+            <span className="bills-stat">{paymentsInPeriod.length} <em>payments</em></span>
+            <span className="bills-stat-divider">·</span>
+            <span className="bills-stat">{fmt(periodCollected)} <em>collected</em></span>
+            {periodGran !== 'all' && <span className="bills-period-tag">{periodRange.label}</span>}
           </div>
         </div>
         <div className="dc-page-header-actions">
@@ -565,6 +591,34 @@ function BillsPayment() {
         </button>
       </div>
 
+      {/* Period picker — Aging is always "as of today", so it opts out */}
+      {activeTab !== 'aging' && (
+        <div className="bills-period-bar no-print">
+          <div className="bills-seg">
+            {GRANS.map(g => (
+              <button
+                key={g.key}
+                className={`bills-seg-btn ${periodGran === g.key ? 'active' : ''}`}
+                onClick={() => setGran(g.key)}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+          {periodGran !== 'all' && (
+            <div className="bills-period-nav">
+              <button className="dc-icon-btn" onClick={() => goPeriod(-1)} aria-label="Previous period">
+                <Icon d={I.chevL} size={16} />
+              </button>
+              <span className="bills-period-label">{periodRange.label}</span>
+              <button className="dc-icon-btn" onClick={() => goPeriod(1)} disabled={!canGoNext} aria-label="Next period">
+                <Icon d={I.chevR} size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Main Body */}
       <div className="bills-body no-print">
         {tableLoading && activeTab === 'invoices' && <div className="bills-table-loading"><span className="bills-spinner" /> Syncing ledgers...</div>}
@@ -580,7 +634,7 @@ function BillsPayment() {
               <span className="bills-kpi-icon"><Icon d={I.wallet} size={16} /></span>
             </div>
             <div className="bills-kpi-value">{fmt(ledgerKpis.outstanding)}</div>
-            <div className="bills-kpi-sub">across active invoices</div>
+            <div className="bills-kpi-sub">{periodGran === 'all' ? 'across active invoices' : 'unpaid on period invoices'}</div>
           </div>
           <div className="bills-kpi" style={toneVars('success')}>
             <div className="bills-kpi-top">
@@ -588,7 +642,7 @@ function BillsPayment() {
               <span className="bills-kpi-icon"><Icon d={I.banknote} size={16} /></span>
             </div>
             <div className="bills-kpi-value">{fmt(ledgerKpis.collected)}</div>
-            <div className="bills-kpi-sub">of {fmt(ledgerKpis.billed)} billed</div>
+            <div className="bills-kpi-sub">{periodGran === 'all' ? `of ${fmt(ledgerKpis.billed)} billed` : 'cash received in period'}</div>
           </div>
           <div className="bills-kpi" style={toneVars('danger')}>
             <div className="bills-kpi-top">
@@ -771,7 +825,7 @@ function BillsPayment() {
           <div className="bills-section-header">
             <Icon d={I.wallet} size={16} />
             <h3 className="bills-section-title">Payment Collections Audit</h3>
-            <span className="bills-section-sub">{payments.length} transaction{payments.length === 1 ? '' : 's'}</span>
+            <span className="bills-section-sub">{paymentsInPeriod.length} transaction{paymentsInPeriod.length === 1 ? '' : 's'}</span>
           </div>
 
           <table className="bills-table bills-payments-table">
@@ -787,12 +841,12 @@ function BillsPayment() {
               </tr>
             </thead>
             <tbody>
-              {payments.length === 0 ? (
+              {paymentsInPeriod.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="bills-no-data">Zero monetary collections documented yet.</td>
+                  <td colSpan={7} className="bills-no-data">No payments recorded in this period.</td>
                 </tr>
               ) : (
-                payments.map(pay => {
+                paymentsInPeriod.map(pay => {
                   const patient = getPatientById(pay.patient_id);
                   return (
                     <tr key={pay.id}>
@@ -834,6 +888,9 @@ function BillsPayment() {
             fmt={fmt}
             currencySymbol={currencySymbol}
             locale={currencyLocale}
+            periodStart={periodRange.start}
+            periodEnd={periodRange.end}
+            periodLabel={periodGran === 'all' ? null : periodRange.label}
           />
         )}
       </div>

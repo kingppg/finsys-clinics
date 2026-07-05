@@ -216,27 +216,44 @@ function methodLabel(raw: unknown): string {
 export function computeCollections(
   invoices: InvoiceLike[],
   payments: PaymentLike[],
-  options?: { months?: number; locale?: string; today?: Date }
+  options?: { months?: number; locale?: string; today?: Date; periodStart?: Date | null; periodEnd?: Date | null }
 ): CollectionsResult {
   const months = options?.months ?? 6;
   const locale = options?.locale || undefined;
   const today = options?.today || new Date();
+  const periodStart = options?.periodStart ?? null;
+  const periodEnd = options?.periodEnd ?? null;
 
-  const active = (invoices || []).filter((inv) => normStatus(inv.status) !== 'cancelled');
-  const totalBilled = active.reduce((s, inv) => s + num(inv.total), 0);
-  const totalCollected = (payments || []).reduce((s, p) => s + num(p.amount), 0);
-  const outstanding = Math.max(totalBilled - totalCollected, 0);
+  // Period filter (invoices by invoice_date, payments by payment_date). Balances
+  // use ALL payments so a period invoice's outstanding reflects every payment.
+  const inPeriod = (raw: unknown, fallback?: unknown): boolean => {
+    if (!periodStart || !periodEnd) return true;
+    const d = parseDay(String(raw ?? '')) || parseDay(String(fallback ?? ''));
+    return d ? d >= periodStart && d < periodEnd : false;
+  };
+
+  const paidMap = sumPaymentsByInvoice(payments); // all-payments, for cohort balances
+  const activeAll = (invoices || []).filter((inv) => normStatus(inv.status) !== 'cancelled');
+  const activePeriod = activeAll.filter((inv) => inPeriod(inv.invoice_date, inv.created_at));
+  const paymentsPeriod = (payments || []).filter((p) => inPeriod(p.payment_date, p.created_at));
+
+  const totalBilled = activePeriod.reduce((s, inv) => s + num(inv.total), 0);
+  const totalCollected = paymentsPeriod.reduce((s, p) => s + num(p.amount), 0); // cash in period
+  const outstanding = activePeriod.reduce(
+    (s, inv) => s + Math.max(num(inv.total) - (paidMap.get(Number(inv.id)) || 0), 0),
+    0
+  ); // cohort: unpaid balance of period invoices
   const collectionRate = totalBilled > 0 ? totalCollected / totalBilled : 0;
 
   // Charges vs discounts. invoice.total is stored NET of discount, so gross =
   // net + discount. Lets the practice see how much was discounted per period.
-  const discountsGiven = active.reduce((s, inv) => s + num(inv.discount), 0);
+  const discountsGiven = activePeriod.reduce((s, inv) => s + num(inv.discount), 0);
   const netBilled = totalBilled;
   const grossCharged = netBilled + discountsGiven;
 
-  // Payment method mix
+  // Payment method mix — cash received in the period.
   const methodMap = new Map<string, MethodSlice>();
-  for (const p of payments || []) {
+  for (const p of paymentsPeriod) {
     const label = methodLabel(p.method);
     const slice = methodMap.get(label) || { method: normStatus(p.method), label, amount: 0, count: 0 };
     slice.amount += num(p.amount);
@@ -260,7 +277,9 @@ export function computeCollections(
     monthly.push(point);
     index.set(key, point);
   }
-  for (const inv of active) {
+  // Monthly trend is a fixed trailing window (full data), independent of the
+  // selected period, so the chart stays a stable "last 6 months" view.
+  for (const inv of activeAll) {
     const key = String(inv.invoice_date || '').slice(0, 7);
     const point = index.get(key);
     if (point) point.billed += num(inv.total);
@@ -276,8 +295,8 @@ export function computeCollections(
     totalCollected,
     outstanding,
     collectionRate,
-    invoiceCount: active.length,
-    paymentCount: (payments || []).length,
+    invoiceCount: activePeriod.length,
+    paymentCount: paymentsPeriod.length,
     byMethod,
     monthly,
     grossCharged,

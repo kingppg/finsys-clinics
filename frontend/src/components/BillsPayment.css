@@ -38,6 +38,74 @@
   color: var(--dc-text-3, #94a3b8);
 }
 
+.bills-period-tag {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  background: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+  color: var(--dc-accent, #2DD4BF);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* ==========================================================================
+   PERIOD PICKER BAR — granularity segmented control + prev/next navigator
+   ========================================================================== */
+.bills-period-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.bills-seg {
+  display: inline-flex;
+  background: var(--dc-surface-2, #f1f5f9);
+  border: 1px solid var(--dc-border, #e2e8f0);
+  border-radius: 11px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.bills-seg-btn {
+  border: none;
+  background: transparent;
+  color: var(--dc-text-3, #64748b);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 15px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.bills-seg-btn:hover { color: var(--dc-text, #0f2340); }
+
+.bills-seg-btn.active {
+  background: var(--dc-accent, #2DD4BF);
+  color: var(--dc-accent-contrast, #06201C);
+}
+
+.bills-period-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bills-period-label {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--dc-text, #0f2340);
+  min-width: 168px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ==========================================================================
    KPI STRIP — headline finance metrics (Invoices tab)
    Tone-aware cards: set --tone / --tone-soft inline per card.

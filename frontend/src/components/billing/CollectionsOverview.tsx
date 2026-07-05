@@ -21,6 +21,9 @@ interface CollectionsOverviewProps {
   fmt: (n: number) => string;
   currencySymbol?: string;
   locale?: string;
+  periodStart?: Date | null;
+  periodEnd?: Date | null;
+  periodLabel?: string | null;
 }
 
 const toneStyle = (color: string, soft: string): React.CSSProperties =>
@@ -38,13 +41,16 @@ export function CollectionsOverview({
   fmt,
   currencySymbol = '₱',
   locale,
+  periodStart = null,
+  periodEnd = null,
+  periodLabel = null,
 }: CollectionsOverviewProps) {
   const { theme } = useDcTheme();
   const t = theme.tokens;
 
   const data = useMemo(
-    () => computeCollections(invoices || [], payments || [], { months: 6, locale }),
-    [invoices, payments, locale]
+    () => computeCollections(invoices || [], payments || [], { months: 6, locale, periodStart, periodEnd }),
+    [invoices, payments, locale, periodStart, periodEnd]
   );
 
   const ratePct = Math.min(data.collectionRate * 100, 100);
@@ -157,7 +163,7 @@ export function CollectionsOverview({
       <div className="dcb-card">
         <div className="dcb-card-head">
           <h3 className="dcb-card-title">Charges &amp; Discounts</h3>
-          <span className="dcb-card-sub">Across active invoices</span>
+          <span className="dcb-card-sub">{periodLabel ? `In ${periodLabel}` : 'Across active invoices'}</span>
         </div>
         <div className="dcb-card-body">
           <div className="dcb-gdn">
