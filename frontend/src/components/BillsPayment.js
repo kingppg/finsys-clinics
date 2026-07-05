@@ -219,7 +219,7 @@ function BillsPayment() {
   const periodCollected = paymentsInPeriod.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
 
   const goPeriod = (dir) => { setPeriodAnchor(a => shiftAnchor(periodGran, a, dir)); setInvoicePage(1); };
-  const setGran = (g) => { setPeriodGran(g); setPeriodAnchor(new Date()); setInvoicePage(1); };
+  const setGran = (g) => { setPeriodGran(g); setPeriodAnchor(new Date()); setInvoicePage(1); setStatusFilter('all'); setInvoiceSearch(''); };
 
   // ------- Invoices table pipeline: enrich → filter → sort → paginate -------
   const INVOICES_PAGE_SIZE = 20;
@@ -727,7 +727,21 @@ function BillsPayment() {
                   <td colSpan={9} className="bills-no-data">
                     {invoices.length === 0
                       ? 'No recorded clinic invoices discovered.'
-                      : 'No invoices match the current search or filter.'}
+                      : enrichedInvoices.length === 0
+                        ? `No invoices billed in ${periodGran === 'all' ? 'the ledger' : periodRange.label}.`
+                        : (
+                          <>
+                            No invoices match the current filter{searchQ ? ' / search' : ''}
+                            {statusFilter !== 'all' ? ` (${statusFilter})` : ''}.{' '}
+                            <button
+                              type="button"
+                              className="bills-inline-link"
+                              onClick={() => { setStatusFilter('all'); setInvoiceSearch(''); setInvoicePage(1); }}
+                            >
+                              Show all {enrichedInvoices.filter(r => !r.isCancelled).length} invoice{enrichedInvoices.filter(r => !r.isCancelled).length === 1 ? '' : 's'}
+                            </button>
+                          </>
+                        )}
                   </td>
                 </tr>
               ) : (
