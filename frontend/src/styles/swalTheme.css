@@ -9,6 +9,12 @@
    Loaded globally via src/index.js.
    ========================================================================== */
 
+/* Stacking: SweetAlert2's own container is z-index 1060, but our modals
+   (.dc-overlay / .CPM-modal-backdrop) sit at 9999 — so a dialog/toast fired
+   from inside a modal would render BEHIND the dim overlay (looking broken /
+   unthemed). Force SweetAlert above every app modal. */
+.swal2-container { z-index: 100000 !important; }
+
 /* Backdrop */
 .swal2-container.swal2-backdrop-show,
 .swal2-container.swal2-backdrop-show > .swal2-backdrop {
