@@ -286,7 +286,8 @@ function BillsPayment() {
     if (searchQ) {
       const matchesName = row.patientName.toLowerCase().includes(searchQ);
       const matchesId = String(row.inv.id).includes(searchQ);
-      if (!matchesName && !matchesId) return false;
+      const matchesNumber = (row.inv.invoice_number || '').toLowerCase().includes(searchQ);
+      if (!matchesName && !matchesId && !matchesNumber) return false;
     }
     return true;
   });
@@ -544,7 +545,7 @@ function BillsPayment() {
     const element = document.querySelector('.print-receipt-area');
     const opt = {
       margin:       [8, 8, 8, 8],
-      filename:     `SOA-Invoice-${activeReceipt?.id}.pdf`,
+      filename:     `SOA-${activeReceipt?.invoice_number || 'Invoice-' + activeReceipt?.id}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
       html2canvas:  { scale: 2, useCORS: true },
       windowWidth: 350,  // ADD THIS — constrains the render width to match narrow receipt
@@ -710,7 +711,7 @@ function BillsPayment() {
           <table className="bills-table bills-invoices-table">
             <thead>
               <tr>
-                <th className="bills-th-sort" style={{ width: "70px" }} onClick={() => handleSort('id')}>ID{sortArrow('id')}</th>
+                <th className="bills-th-sort" style={{ width: "140px" }} onClick={() => handleSort('id')}>Invoice #{sortArrow('id')}</th>
                 <th className="bills-th-sort" onClick={() => handleSort('patient')}>Patient Name{sortArrow('patient')}</th>
                 <th className="bills-th-sort" onClick={() => handleSort('invoice_date')}>Invoice Date{sortArrow('invoice_date')}</th>
                 <th className="bills-th-sort" onClick={() => handleSort('due_date')}>Due Date{sortArrow('due_date')}</th>
@@ -750,7 +751,7 @@ function BillsPayment() {
 
                   return (
                     <tr key={inv.id} className={isCancelled ? 'bills-row-voided' : ''}>
-                      <td className="bills-td-id">#{inv.id}</td>
+                      <td className="bills-td-id">{inv.invoice_number || `#${inv.id}`}</td>
                       <td><span className="bills-patient-name">{patient ? patient.name : `ID: ${inv.patient_id}`}</span></td>
                       <td className="bills-td-date">
                         {inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString(currencyLocale, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
@@ -855,7 +856,7 @@ function BillsPayment() {
           <table className="bills-table bills-payments-table">
             <thead>
               <tr>
-                <th style={{ width: "80px" }}>Inv ID</th>
+                <th style={{ width: "130px" }}>Invoice #</th>
                 <th>Patient Name</th>
                 <th style={{ textAlign: "right" }}>Amount Settled</th>
                 <th>OR #</th>
@@ -878,7 +879,7 @@ function BillsPayment() {
                   const isEarlier = periodRange.start && invDate && new Date(invDate) < periodRange.start;
                   return (
                     <tr key={pay.id}>
-                      <td className="bills-td-id">#{pay.invoice_id}</td>
+                      <td className="bills-td-id">{srcInv?.invoice_number || `#${pay.invoice_id}`}</td>
                       <td><span className="bills-patient-name">{patient ? patient.name : `ID: ${pay.patient_id}`}</span></td>
                       <td style={{ textAlign: "right" }} className="bills-td-price">{fmt(pay.amount || 0)}</td>
                       <td><code className="inv-or-num">{pay.or_number || '—'}</code></td>
@@ -1117,7 +1118,7 @@ function BillsPayment() {
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <span className="receipt-label">INVOICE DETAILS:</span>
-                    <div className="receipt-number">ID: #{activeReceipt.id}</div>
+                    <div className="receipt-number">{activeReceipt.invoice_number || `ID: #${activeReceipt.id}`}</div>
                     {dentist && <div style={{ fontSize: '12px', color: '#64748b' }}>Dr. {dentist.name}</div>}
                     {activeReceipt.invoice_date && <div style={{ fontSize: '12px', color: '#64748b' }}>Date: {new Date(activeReceipt.invoice_date).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })}</div>}
                     {activeReceipt.due_date && <div style={{ fontSize: '12px', color: '#64748b' }}>Due: {new Date(activeReceipt.due_date).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })}</div>}

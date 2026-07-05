@@ -171,7 +171,7 @@ function InvoiceManagementModal({
         <div className="inv-mgmt-header">
           <div>
             <div className="inv-mgmt-title">
-              Invoice <span className="inv-mgmt-id">#{invoice.id}</span>
+              Invoice <span className="inv-mgmt-id">{invoice.invoice_number || `#${invoice.id}`}</span>
             </div>
             <div className="inv-mgmt-sub">
               <span className="inv-mgmt-patient">{patient?.name || `Patient #${invoice.patient_id}`}</span>
