@@ -345,6 +345,204 @@
 }
 .cc-meter-warn a svg { width: 12px; height: 12px; }
 
+/* ---- Default reminder template + live cost preview ---- */
+.cc-template {
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-surface-2, #1A2438);
+}
+.cc-token-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cc-token-hint {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dc-text-3, #6E7E98);
+  margin-right: 2px;
+}
+.cc-token {
+  padding: 3px 9px;
+  border-radius: 9999px;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  background: var(--dc-bg, #0B1120);
+  color: var(--dc-accent, #2DD4BF);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cc-token:hover {
+  border-color: var(--dc-accent, #2DD4BF);
+  background: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+}
+.cc-template-actions { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.cc-preview {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+}
+.cc-preview-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dc-text-2, #A9B7CE);
+  margin-bottom: 8px;
+}
+.cc-preview-label em {
+  color: var(--dc-text-3, #6E7E98);
+  font-style: normal;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.cc-preview-bubble {
+  display: inline-block;
+  padding: 11px 14px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+  border: 1px solid var(--dc-accent, #2DD4BF);
+  color: var(--dc-text, #EDF2FA);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 82%;
+}
+
+/* Shared meta/warn/input styles (used by the template preview) */
+.cc-checker {
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-surface-2, #1A2438);
+}
+.cc-checker-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.cc-checker-title { font-size: 0.9rem; font-weight: 700; color: var(--dc-text, #EDF2FA); }
+.cc-checker-sub { font-size: 0.76rem; color: var(--dc-text-3, #6E7E98); }
+.cc-checker-input {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-bg, #0B1120);
+  color: var(--dc-text, #EDF2FA);
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  outline: none;
+}
+.cc-checker-input:focus {
+  border-color: var(--dc-accent, #2DD4BF);
+  box-shadow: 0 0 0 3px var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+}
+.cc-checker-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--dc-text-2, #A9B7CE);
+}
+.cc-checker-meta b { color: var(--dc-text, #EDF2FA); font-weight: 800; }
+.cc-sep { color: var(--dc-text-3, #6E7E98); }
+.cc-enc { font-weight: 700; }
+.cc-enc--gsm { color: var(--dc-success, #4ADE80); }
+.cc-enc--uni { color: var(--dc-warning, #FBBF24); }
+.cc-checker-est { margin-left: auto; color: var(--dc-text-3, #6E7E98); }
+.cc-checker-est b { color: var(--dc-accent, #2DD4BF); }
+.cc-checker-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-warning-soft, rgba(251, 191, 36, 0.13));
+  border: 1px solid var(--dc-warning, #FBBF24);
+  color: var(--dc-warning, #FBBF24);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+.cc-checker-warn svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; }
+.cc-checker-warn b { font-weight: 800; }
+.cc-checker-warn code,
+.cc-offender {
+  padding: 0 5px;
+  margin: 0 1px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--dc-text, #EDF2FA);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+}
+.cc-offender { color: var(--dc-warning, #FBBF24); }
+
+/* ---- Semaphore sender-name approval status ---- */
+.cc-sender-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 2px 0;
+  padding: 9px 12px;
+  border-radius: var(--dc-radius, 12px);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.45;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text-2, #A9B7CE);
+}
+.cc-sender-status-msg { min-width: 0; }
+.cc-sender-status--ok {
+  border-color: var(--dc-success, #4ADE80);
+  background: var(--dc-success-soft, rgba(74, 222, 128, 0.13));
+  color: var(--dc-success, #4ADE80);
+}
+.cc-sender-status--warn {
+  border-color: var(--dc-warning, #FBBF24);
+  background: var(--dc-warning-soft, rgba(251, 191, 36, 0.13));
+  color: var(--dc-warning, #FBBF24);
+}
+.cc-sender-status--err {
+  border-color: var(--dc-danger, #F87171);
+  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14));
+  color: var(--dc-danger, #F87171);
+}
+.cc-status-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.cc-status-refresh:hover { opacity: 1; }
+.cc-status-refresh svg { width: 12px; height: 12px; }
+
 /* ---- Facebook page-select list (inside dc-modal) ---- */
 .cc-fbpage-list { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .cc-fbpage-btn {

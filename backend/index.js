@@ -198,6 +198,23 @@ app.post('/api/clinics/:id/facebook/select-page', async (req, res) => {
   }
 });
 
+// Semaphore throttles rapid calls (HTTP 429 "Too Many Attempts"). Opening the
+// SMS tab fires balance + sender-status back to back, so the second call can be
+// rejected. Retry a GET a couple times with backoff to smooth that over.
+async function semaphoreGet(url, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await axios.get(url);
+    } catch (e) {
+      if (e.response?.status === 429 && attempt < retries) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 // --- SMS BALANCE ENDPOINT ---
 app.get('/api/clinics/:id/sms/balance', requireAuth, sameClinic(req => req.params.id), async (req, res) => {
   const clinicId = req.params.id;
@@ -214,7 +231,7 @@ app.get('/api/clinics/:id/sms/balance', requireAuth, sameClinic(req => req.param
 
     if (clinic.sms_provider === 'semaphore') {
       if (!clinic.sms_api_key) return res.status(400).json({ error: 'No Semaphore API key configured.' });
-      const response = await axios.get(`https://semaphore.co/api/v4/account?apikey=${clinic.sms_api_key}`);
+      const response = await semaphoreGet(`https://semaphore.co/api/v4/account?apikey=${clinic.sms_api_key}`);
       res.json({
         credit_balance: response.data.credit_balance,
         currency: 'credits',
@@ -240,6 +257,61 @@ app.get('/api/clinics/:id/sms/balance', requireAuth, sameClinic(req => req.param
   } catch (err) {
     console.error('SMS balance error:', err.response?.data || err.message);
     res.status(500).json({ error: 'Failed to fetch SMS balance.' });
+  }
+});
+
+// --- SMS SENDER NAME APPROVAL STATUS (Semaphore only) ---
+// Semaphore rejects sends from a sender name that isn't approved on the account.
+// This looks up the clinic's configured sender name against the account's
+// registered sender names and returns a normalized state the UI can render.
+// Uses the saved key server-side (service key); never exposes it.
+app.get('/api/clinics/:id/sms/sender-status', requireAuth, sameClinic(req => req.params.id), async (req, res) => {
+  const clinicId = req.params.id;
+  try {
+    const { data: clinic, error } = await supabase
+      .from('clinics')
+      .select('sms_provider, sms_api_key, sms_sender')
+      .eq('id', clinicId)
+      .single();
+
+    if (error || !clinic) return res.status(404).json({ error: 'Clinic not found.' });
+
+    // Sender-name approval is a Semaphore concept only.
+    if (clinic.sms_provider !== 'semaphore') {
+      return res.json({ state: 'na', sender: clinic.sms_sender || null });
+    }
+    if (!clinic.sms_api_key) {
+      return res.json({ state: 'no_key', sender: clinic.sms_sender || null });
+    }
+    const sender = (clinic.sms_sender || '').trim();
+    if (!sender) return res.json({ state: 'none', sender: null });
+
+    // Semaphore's built-in default sender is always usable.
+    if (sender.toLowerCase() === 'semaphore') {
+      return res.json({ state: 'approved', sender, provider_status: 'Default sender' });
+    }
+
+    const response = await semaphoreGet(
+      `https://api.semaphore.co/api/v4/account/sendernames?apikey=${encodeURIComponent(clinic.sms_api_key)}`
+    );
+    const list = Array.isArray(response.data) ? response.data : [];
+    const match = list.find(
+      s => String(s.name || '').trim().toLowerCase() === sender.toLowerCase()
+    );
+
+    if (!match) return res.json({ state: 'not_found', sender, provider_status: null });
+
+    const raw = String(match.status || '').toLowerCase();
+    let state = 'unknown';
+    if (raw.includes('approv') || raw === 'success' || raw === 'active') state = 'approved';
+    else if (raw.includes('pend')) state = 'pending';
+    else if (raw.includes('reject') || raw.includes('denied') || raw.includes('fail')) state = 'rejected';
+
+    return res.json({ state, sender, provider_status: match.status || null });
+  } catch (err) {
+    console.error('SMS sender-status error:', err.response?.data || err.message);
+    // Non-fatal: the UI treats this as "couldn't check", not a hard error.
+    return res.json({ state: 'error', error: 'Could not check sender status.' });
   }
 });
 

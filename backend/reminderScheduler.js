@@ -86,7 +86,7 @@ async function sendSMS(phone, text, clinic) {
 async function getAllClinics() {
   const { data, error } = await supabase
     .from('clinics')
-    .select('id, name, fb_page_access_token, reminder_time, time_zone, sms_provider, sms_api_key, sms_api_secret, sms_sender')
+    .select('id, name, fb_page_access_token, reminder_time, time_zone, sms_provider, sms_api_key, sms_api_secret, sms_sender, reminder_template')
     .not('reminder_time', 'is', null);
 
   if (error) {
@@ -190,6 +190,12 @@ async function sendRemindersForClinic(clinic) {
   const page_access_token = clinic.fb_page_access_token;
   const clinic_name = clinic.name;
   const timeZone = clinic.time_zone || 'Asia/Manila';
+  // Clinic-wide default reminder template (used when an appointment has no
+  // per-appointment message). Blank/null → fall through to the system default.
+  const clinicTemplate =
+    clinic.reminder_template && clinic.reminder_template.trim().length > 0
+      ? clinic.reminder_template
+      : null;
 
   console.log(`[ReminderScheduler][${clinic_name}] sendRemindersForClinic started (timezone: ${timeZone})`);
   const appointments = await getAppointmentsWithReminders(clinic_id);
@@ -236,9 +242,11 @@ async function sendRemindersForClinic(clinic) {
       });
 
       // ✅ Fix #14 & #17: Use template variables and ensure patient name exists
+      // Precedence: per-appointment message → clinic default template → system default.
       let reminderText = appt.reminder_message && appt.reminder_message.trim().length > 0
         ? appt.reminder_message
-        : `Hello ${appt.patient?.name || 'there'}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
+        : (clinicTemplate
+          || `Hello ${appt.patient?.name || 'there'}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`);
 
       // Support template variables for customization
       reminderText = reminderText

@@ -148,7 +148,7 @@ router.post('/:id/send-reminder', async (req, res) => {
   // ✅ Fetch clinic token, timezone, AND SMS config
   const { data: clinicRow, error: clinicError } = await supabase
     .from('clinics')
-    .select('fb_page_access_token, time_zone, name, sms_provider, sms_api_key, sms_api_secret, sms_sender')
+    .select('fb_page_access_token, time_zone, name, sms_provider, sms_api_key, sms_api_secret, sms_sender, reminder_template')
     .eq('id', clinicId)
     .single();
 
@@ -201,8 +201,14 @@ router.post('/:id/send-reminder', async (req, res) => {
   });
 
   // ✅ Fix #14 & #17: Support template variables and ensure patient name exists
+  // Precedence: manual override → per-appointment message → clinic default template → system default.
+  const clinicTemplate =
+    clinicRow.reminder_template && clinicRow.reminder_template.trim().length > 0
+      ? clinicRow.reminder_template
+      : null;
   let reminderText = req.body.message_override ||
     appt.reminder_message ||
+    clinicTemplate ||
     `Hello ${appt.patient?.name || 'there'}, this is a reminder for your dental clinic appointment on ${dateStr} at ${timeStr}.`;
 
   // Support template variables for customization

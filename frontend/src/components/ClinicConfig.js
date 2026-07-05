@@ -7,6 +7,7 @@ import {
   LuCheck, LuInfo, LuExternalLink
 } from 'react-icons/lu';
 import AdminUsersRoles from './AdminUsersRoles';
+import { smsInfo } from '../utils/smsSegments';
 import './ClinicConfig.css';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -18,7 +19,7 @@ const SAFE_CLINIC_COLUMNS =
   'id, name, address, contact_email, contact_phone, fb_page_id, created_at, ' +
   'updated_at, messenger_page_id, reminder_time, is_active, time_zone, ' +
   'queue_token, queue_stations, currency_symbol, currency_locale, ' +
-  'sms_provider, sms_sender';
+  'sms_provider, sms_sender, reminder_template';
 
 const initialClinicState = {
   name: '',
@@ -32,8 +33,14 @@ const initialClinicState = {
   sms_provider: 'none',
   sms_api_key: '',
   sms_api_secret: '',
-  sms_sender: ''
+  sms_sender: '',
+  reminder_template: ''
 };
+
+// The hardcoded fallback the backend uses when both the per-appointment message
+// and the clinic template are blank. Mirrored here for "Reset to default" + preview.
+const SYSTEM_DEFAULT_REMINDER =
+  'Hello [PATIENT_NAME], this is a reminder for your dental clinic appointment on [DATE] at [TIME].';
 
 function ClinicConfig({ user, clinicId, onBack }) {
   const [clinics, setClinics] = useState([]);
@@ -48,6 +55,8 @@ function ClinicConfig({ user, clinicId, onBack }) {
   const [smsBalance, setSmsBalance] = useState(null);
   const [smsBalanceCurrency, setSmsBalanceCurrency] = useState('credits');
   const [balanceLoading, setBalanceLoading] = useState(false);
+  const [senderStatus, setSenderStatus] = useState(null);
+  const [loadingSenderStatus, setLoadingSenderStatus] = useState(false);
 
   const [subTab, setSubTab] = useState('fb');
 
@@ -108,7 +117,8 @@ function ClinicConfig({ user, clinicId, onBack }) {
         sms_provider: clinic.sms_provider ?? 'none',
         sms_api_key: clinic.sms_api_key ?? '',
         sms_api_secret: clinic.sms_api_secret ?? '',
-        sms_sender: clinic.sms_sender ?? ''
+        sms_sender: clinic.sms_sender ?? '',
+        reminder_template: clinic.reminder_template ?? ''
       });
     }
   }, [selectedClinicId, clinics]);
@@ -123,6 +133,18 @@ function ClinicConfig({ user, clinicId, onBack }) {
     }
     // eslint-disable-next-line
   }, [subTab, selectedClinicId]);
+
+  // Sender-name approval status (Semaphore). Re-runs when the provider changes
+  // too, so switching to Semaphore checks immediately. Staggered ~900ms so it
+  // doesn't fire in the same instant as the balance call (Semaphore throttles).
+  useEffect(() => {
+    if (subTab === 'sms' && formData.sms_provider === 'semaphore') {
+      const t = setTimeout(() => fetchSenderStatus(), 900);
+      return () => clearTimeout(t);
+    }
+    setSenderStatus(null);
+    // eslint-disable-next-line
+  }, [subTab, selectedClinicId, formData.sms_provider]);
 
   function handleFieldChange(e) {
     const { name, value } = e.target;
@@ -162,6 +184,52 @@ function ClinicConfig({ user, clinicId, onBack }) {
       setSmsBalance(null);
     } finally {
       setBalanceLoading(false);
+    }
+  }
+
+  async function fetchSenderStatus() {
+    if (!selectedClinicId || formData.sms_provider !== 'semaphore') {
+      setSenderStatus(null);
+      return;
+    }
+    setLoadingSenderStatus(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/clinics/${selectedClinicId}/sms/sender-status`, {
+        headers: await authHeaders()
+      });
+      const data = await res.json();
+      setSenderStatus(data);
+    } catch {
+      setSenderStatus({ state: 'error' });
+    } finally {
+      setLoadingSenderStatus(false);
+    }
+  }
+
+  function senderStatusTone(state, loading) {
+    if (loading) return 'muted';
+    switch (state) {
+      case 'approved': return 'ok';
+      case 'pending':
+      case 'not_found': return 'warn';
+      case 'rejected': return 'err';
+      default: return 'muted';
+    }
+  }
+
+  function senderStatusMessage(s, loading) {
+    if (loading) return 'Checking sender name status…';
+    if (!s) return '';
+    const name = s.sender ? `"${s.sender}"` : 'your sender name';
+    switch (s.state) {
+      case 'approved': return `✓ Sender ${name} is approved — ready to send.`;
+      case 'pending': return `⏳ Sender ${name} is awaiting Semaphore approval. Sends are rejected until it is approved.`;
+      case 'rejected': return `✗ Sender ${name} was rejected by Semaphore. Apply again or use a different name.`;
+      case 'not_found': return `⚠ Sender ${name} is not registered on your Semaphore account. Apply for it in the Semaphore dashboard.`;
+      case 'none': return 'No sender name set yet — add your approved Semaphore sender name above.';
+      case 'no_key': return 'Save your Semaphore API key first to check sender-name status.';
+      case 'error': return 'Couldn’t check sender status right now — try Refresh.';
+      default: return s.provider_status ? `Sender ${name} status: ${s.provider_status}.` : `Sender ${name} status unknown.`;
     }
   }
 
@@ -260,6 +328,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
       setFormData((prev) => ({ ...prev, sms_api_key: '', sms_api_secret: '' }));
       await fetchClinics(selectedClinicId);
       await fetchSmsBalance();
+      await fetchSenderStatus();
       Swal.fire({ title: 'SMS Settings Saved!', icon: 'success', timer: 1500, showConfirmButton: false });
     } catch (err) {
       Swal.fire({ title: 'Error', text: err.message || 'Failed to save SMS settings.', icon: 'error' });
@@ -298,6 +367,47 @@ function ClinicConfig({ user, clinicId, onBack }) {
       }
     } catch {
       Swal.fire({ title: 'Error', text: 'Could not reach the server.', icon: 'error' });
+    }
+  }
+
+  function insertTemplateToken(token) {
+    setFormData((prev) => ({
+      ...prev,
+      reminder_template: `${prev.reminder_template || ''}${token}`
+    }));
+  }
+
+  function handleResetTemplate() {
+    setFormData((prev) => ({ ...prev, reminder_template: SYSTEM_DEFAULT_REMINDER }));
+  }
+
+  async function handleSaveTemplate() {
+    const result = await Swal.fire({
+      title: 'Save reminder template?',
+      text: 'This becomes the default reminder message for appointments that have no custom message.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Yes, Save',
+      cancelButtonText: 'Cancel',
+      reverseButtons: true,
+      focusCancel: true
+    });
+    if (!result.isConfirmed) return;
+
+    setLoading(true);
+    try {
+      // Blank → store NULL so the backend cleanly falls through to the system default.
+      const { error } = await supabase
+        .from('clinics')
+        .update({ reminder_template: formData.reminder_template?.trim() ? formData.reminder_template : null })
+        .eq('id', selectedClinicId);
+      if (error) throw error;
+      await fetchClinics(selectedClinicId);
+      Swal.fire({ title: 'Template saved!', icon: 'success', timer: 1400, showConfirmButton: false });
+    } catch {
+      Swal.fire({ title: 'Error', text: 'Failed to save the reminder template.', icon: 'error' });
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -455,6 +565,19 @@ function ClinicConfig({ user, clinicId, onBack }) {
   const meterPct = smsBalance !== null
     ? Math.max(4, Math.min(100, (parseFloat(smsBalance) / smsThreshold) * 100))
     : 0;
+
+  // Template preview (client-only): render the template with sample data so the
+  // credit/encoding estimate matches what actually goes out. Blank template →
+  // preview the system default so staff see what "blank" means.
+  const templateIsBlank = !formData.reminder_template || !formData.reminder_template.trim();
+  const templatePreview = (templateIsBlank ? SYSTEM_DEFAULT_REMINDER : formData.reminder_template)
+    .replace(/\[PATIENT_NAME\]/g, 'Maria')
+    .replace(/\[DATE\]/g, 'Jun 13, 2026')
+    .replace(/\[TIME\]/g, '2:00 PM');
+  const tcost = smsInfo(templatePreview);
+  const estSends = smsBalance !== null && tcost.segments > 0
+    ? Math.floor(parseFloat(smsBalance) / tcost.segments)
+    : null;
 
   const canManageUsers = user.role === 'superadmin' || user.role === 'admin';
   const currentClinicName = clinics.find(c => String(c.id) === String(selectedClinicId))?.name;
@@ -758,11 +881,27 @@ function ClinicConfig({ user, clinicId, onBack }) {
                     </div>
 
                     {formData.sms_provider === 'semaphore' && (
-                      <p className="cc-hint">
-                        <LuInfo /> Get your API key from{' '}
-                        <a href="https://semaphore.co" target="_blank" rel="noreferrer">semaphore.co</a> → Account → API.
-                        Sender name must be registered and approved in your Semaphore account.
-                      </p>
+                      <>
+                        <p className="cc-hint">
+                          <LuInfo /> Semaphore requires an <b>approved</b> sender name before it will send.
+                          Apply for one in your Semaphore dashboard (approval can take ~1–2 business days),
+                          then enter it here. Until it is approved, sends will be rejected.
+                        </p>
+                        {(loadingSenderStatus || (senderStatus && senderStatus.state !== 'na')) && (
+                          <div className={`cc-sender-status cc-sender-status--${senderStatusTone(senderStatus?.state, loadingSenderStatus)}`}>
+                            <span className="cc-sender-status-msg">{senderStatusMessage(senderStatus, loadingSenderStatus)}</span>
+                            {!loadingSenderStatus && (
+                              <button type="button" className="cc-status-refresh" onClick={fetchSenderStatus}>
+                                <LuRefreshCw /> Refresh
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        <p className="cc-hint cc-hint--muted">
+                          Get your API key from{' '}
+                          <a href="https://semaphore.co" target="_blank" rel="noreferrer">semaphore.co</a> → Account → API.
+                        </p>
+                      </>
                     )}
                     {formData.sms_provider === 'twilio' && (
                       <p className="cc-hint">
@@ -785,6 +924,70 @@ function ClinicConfig({ user, clinicId, onBack }) {
                   <button type="button" className="dc-btn dc-btn--ghost" onClick={handleBack}>Back</button>
                 </div>
               </form>
+
+              {/* Default reminder message template (with live preview + cost) */}
+              <div className="cc-template">
+                <div className="cc-checker-head">
+                  <span className="cc-checker-title">Default reminder message</span>
+                  <span className="cc-checker-sub">Used when an appointment has no custom message. Leave blank to use the system default.</span>
+                </div>
+
+                <div className="cc-token-row">
+                  <span className="cc-token-hint">Insert</span>
+                  {['[PATIENT_NAME]', '[DATE]', '[TIME]'].map((tok) => (
+                    <button key={tok} type="button" className="cc-token" onClick={() => insertTemplateToken(tok)}>
+                      {tok}
+                    </button>
+                  ))}
+                </div>
+
+                <textarea
+                  className="cc-checker-input"
+                  rows={3}
+                  value={formData.reminder_template}
+                  onChange={(e) => setFormData((p) => ({ ...p, reminder_template: e.target.value }))}
+                  placeholder="e.g. Hi [PATIENT_NAME], reminder: your appointment is on [DATE] at [TIME]. Reply YES to confirm."
+                />
+
+                <div className="cc-template-actions">
+                  <button type="button" className="dc-btn dc-btn--primary" onClick={handleSaveTemplate} disabled={loading}>
+                    Save template
+                  </button>
+                  <button type="button" className="dc-btn dc-btn--ghost" onClick={handleResetTemplate}>
+                    Reset to default
+                  </button>
+                </div>
+
+                <div className="cc-preview">
+                  <div className="cc-preview-label">
+                    Preview {templateIsBlank && <em>(system default)</em>}
+                  </div>
+                  <div className="cc-preview-bubble">{templatePreview}</div>
+                  <div className="cc-checker-meta">
+                    <span><b>{tcost.chars}</b> chars</span>
+                    <span className="cc-sep">·</span>
+                    <span><b>{tcost.segments}</b> credit{tcost.segments === 1 ? '' : 's'}</span>
+                    <span className="cc-sep">·</span>
+                    <span className={tcost.isUnicode ? 'cc-enc cc-enc--uni' : 'cc-enc cc-enc--gsm'}>{tcost.encoding}</span>
+                    {estSends !== null && (
+                      <span className="cc-checker-est">balance ≈ <b>{estSends.toLocaleString()}</b> sends</span>
+                    )}
+                  </div>
+                  {tcost.isUnicode && (
+                    <div className="cc-checker-warn">
+                      <LuInfo />
+                      <span>
+                        Sends as <b>Unicode</b> (~70 chars/credit, about 2× the cost)
+                        {tcost.offenders.length > 0 && (
+                          <> because of {tcost.offenders.map((c, i) => (
+                            <code key={i} className="cc-offender">{c === ' ' ? '␣' : c}</code>
+                          ))}</>
+                        )}. Swap <code>₱</code>→<code>PHP</code>, em dash <code>—</code>→<code>-</code>, and curly quotes → straight <code>"</code> <code>'</code>.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </>
           )}
 
