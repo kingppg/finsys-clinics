@@ -264,6 +264,10 @@ The Dark Executive `--dc-*` token system (built for Billing) now extends across 
 
 **Gotchas captured:** the global `section td button` and `section {}` / `section input|button|h2|form` landmines are now FULLY REMOVED (last copies were in Patients.css + Dentists.css). Rule going forward: never write bare element selectors in component CSS; make new interactive elements defensive (`padding`, `box-sizing`, `flex-shrink`). `.dc-field` controls forced `width:100%/min-width:0/box-sizing` so long `<select>` options don't blow out forms. Sticky table headers need a fixed-height flex page (`height: calc(100vh - 62px)`) + `.dc-table-wrap { flex:1; min-height:0; overflow:auto }`.
 
+**SweetAlert stacking + toast gotchas (fixed in `swalTheme.css`):** SweetAlert2's container is `z-index: 1060`, but app modals (`.dc-overlay`, `.CPM-modal-backdrop`) sit at `9999` — so a dialog/toast fired from **inside a modal** rendered *behind* the dim overlay (looked broken/unthemed). Fix: `.swal2-container { z-index: 100000 !important }`. Also, the global backdrop-dim rule was painting the **toast's own container column** dark (a vertical "shadow" band) — SweetAlert marks `<body>` with `.swal2-toast-shown` while a toast is up, so the dim is now scoped `body:not(.swal2-toast-shown) .swal2-container.swal2-backdrop-show`. Toasts also get `align-items:center` + a tighter shadow so the icon/message align. (`showNotification` toasts use `position:'top', toast:true`.)
+
+**react-calendar replaced by custom `AvCalendar`** (in `DentistAvailabilityManager.jsx`): react-calendar v6 wraps weekdays/days in two inline-styled `<div>`s and places the first day via a **flex margin-offset** — forcing `display:grid` on its day container breaks day placement (Saturdays land wrong). Not worth fighting; `AvCalendar` is a ~70-line component with its own 7-col grid (correct placement + `grid-auto-rows:1fr` fills height), same disable rules (past + Sundays) and the same `handleCalendarChange`. react-calendar dep STAYS (AppointmentForm still uses it) — a future task could migrate that too.
+
 ### Local dev note
 A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
 
@@ -302,5 +306,9 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `196378a` | Patients fixed-height page + sticky table headers |
 | `9565f17` | Dentists themed on the shared standard + defuse last `section {}` landmine |
 | `ef9acc8` | Dentists: helper note under table (status-toggle tip) |
+| `b3148a0` | Dentists: full-page availability workstation + custom `AvCalendar` (replaces react-calendar) + `.dc-back-btn` primitive |
+| `ea9d3e8` | Procedures: theme on `--dc-*` + premium elevation (KPI strip, per-category price range) |
+| `748baf6` | Fix: SweetAlert dialogs/toasts render above app modals (z-index) |
+| `c7f29b1` | Fix: no backdrop band on toasts + center toast content |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
