@@ -306,6 +306,8 @@ Brought the Billing module (the theming pilot, predating the primitives/`.dc-pag
 
 **Tally guide (standard):** day's income = actual cash = Σ`payments.amount` (Collections "Total Collected"); net revenue billed = Σ`invoice.total`; gross = Σ(total + discount); discounts given = Σ`discount`.
 
+**Period picker (`5c12e60`):** `billing/period.ts` (All time / Annual / Monthly / Weekly / Daily + prev/next navigator) scopes the header, Invoices tab (table + KPIs + chips + totals), Payments audit, and Collections KPIs/mix/charges — **client-side date filtering, no backend**. Invoices scoped by `invoice_date`; **Collected = cash received in the period** (by `payment_date`, owner decision) so it's true period income even when settling older invoices; Outstanding/Overdue = unpaid balance of invoices billed in the period (balances still use ALL payments). Header no longer counts voided. **Aging stays "as of today"** (period bar hidden on that tab, owner decision). Collections monthly trend stays a fixed trailing-6-month view. `computeCollections` takes optional `periodStart`/`periodEnd`.
+
 **Still deferred (billing):** tax/VAT lines (`tax_rates` still unused), %-based or Senior/PWD-preset discounts, formal `invoice_number` sequence, persisting an `appointment_id` FK on invoices (column existence unconfirmed — the link autofills dentist/date/procedure only). Manage modal still uses `.bills-modal-overlay` (not `.dc-overlay`) — minor consistency follow-up.
 
 ### Local dev note
@@ -355,5 +357,6 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `7eaaac5` | Templates: 6 clinic-editable status messages (`status_templates` jsonb) + emoji-free defaults + drop "See you soon!"; migration 005 |
 | `5a1523e` | Billing: premium theming pass (.dc-page/header/tabs/chips/KPIs) + complete staged invoice creation (appt link prefills procedure) + shared `<InvoiceLineItems>` builder |
 | `7d8ad71` | Billing: Collections "Charges & Discounts" (gross/net) + migration 006 populates `invoices.subtotal` (RUN IN SUPABASE) |
+| `5c12e60` | Billing: period picker (All time/Annual/Monthly/Weekly/Daily) scoping header + Invoices + Payments + Collections; Aging stays as-of-today |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
