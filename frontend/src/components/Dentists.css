@@ -130,20 +130,64 @@
 .dt-appt-when { color: var(--dc-text-3, #94a3b8); font-size: 0.78rem; margin-top: 2px; }
 .dt-appt-reason { color: var(--dc-text-2, #64748b); font-size: 0.8rem; margin-top: 2px; }
 
-/* Availability modal */
-.dt-avail-modal {
-  max-width: 900px;
-  max-height: 86vh;
-  padding: 0;
+/* ── Availability full-page workstation (mirrors PatientProfile layout) ──
+   Fixed-height page: back button + identity header stay pinned, the body
+   scrolls. 62px = <main> padding (8+8) + .dc-page margins (10+36). */
+.dt-avail-page {
+  background: var(--dc-bg, #0B1120);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: var(--dc-radius, 12px);
+  padding: 18px 24px 24px;
+  color: var(--dc-text, #EDF2FA);
+  font-family: var(--dc-font, 'Inter', sans-serif);
   display: flex;
   flex-direction: column;
+  height: calc(100vh - 62px);
 }
-.dt-avail-head {
+.dt-avail-page-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 20px 24px 14px;
-  border-bottom: 1px solid var(--dc-border, #e2e8f0);
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
 }
-.dt-avail-sub { color: var(--dc-accent, #185abd); font-weight: 600; font-size: 0.95rem; margin-top: 2px; }
-.dt-avail-body { flex: 1; overflow: auto; padding: 18px 24px 22px; }
+.dt-avail-identity { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.dt-avail-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 800;
+  background: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+  color: var(--dc-accent, #2DD4BF);
+  border: 1px solid var(--dc-accent, #2DD4BF);
+}
+.dt-avail-identity-text { min-width: 0; }
+.dt-avail-name {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--dc-text, #EDF2FA);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt-avail-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 3px;
+  font-size: 0.83rem;
+  color: var(--dc-text-2, #A9B7CE);
+}
+.dt-avail-contact-dim { color: var(--dc-text-3, #6E7E98); }
+.dt-avail-page-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}

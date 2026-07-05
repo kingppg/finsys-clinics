@@ -100,6 +100,27 @@
   opacity: 0.9;
 }
 
+/* ---------- Back button (full-page views: "← Back to X") ----------
+   Shared by full-page workstations that swap in over a list (PatientProfile,
+   Dentist availability). Self-aligns left. */
+.dc-back-btn {
+  align-self: flex-start;
+  padding: 7px 14px;
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: var(--dc-radius, 12px);
+  background: transparent;
+  color: var(--dc-text-2, #A9B7CE);
+  font-family: inherit;
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.dc-back-btn:hover {
+  border-color: var(--dc-accent, #2DD4BF);
+  color: var(--dc-text, #EDF2FA);
+}
+
 /* ---------- Chips (interactive filter/selector pills) ----------
    Tone-aware: set --tone / --tone-soft inline for colored chips;
    falls back to the accent. */

@@ -1,287 +1,428 @@
+/* ==========================================================================
+   DENTIST AVAILABILITY MANAGER — COMPONENT-UNIQUE LAYOUT ONLY
+   --------------------------------------------------------------------------
+   Rendered inside the dark availability modal (Dentists.js). Buttons, tables,
+   fields, pills come from dcPrimitives; this file holds only the availability
+   workspace geometry (utilization meter, slot grid, calendar skin, blocked-
+   periods list). Colors come exclusively from --dc-* tokens.
+   ========================================================================== */
+
 .availability-manager-container {
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(33,68,109,0.07);
-  padding: 32px 24px 18px 24px;
-  margin: 20px 0;
-}
-
-/* Headings */
-.availability-manager-container h2 {
-  font-size: 1.35em;
-  font-weight: 600;
-  margin-bottom: 18px;
-  color: #21446d;
-  letter-spacing: 0.2px;
-}
-.availability-manager-container h3 {
-  font-size: 1.1em;
-  font-weight: 500;
-  margin-top: 22px;
-  margin-bottom: 8px;
-  color: #21446d;
-}
-
-/* Form Styles */
-.availability-form,
-.calendar-controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 18px;
-  align-items: center;
-}
-.availability-form label,
-.calendar-controls label {
-  font-size: 0.98em;
-  font-weight: 400;
-  margin-right: 10px;
-  color: #21446d;
-}
-
-.availability-form select,
-.availability-form input[type="date"],
-.availability-form input[type="month"],
-.availability-form input[type="time"] {
-  padding: 5px 10px;
-  border: 1px solid #e6e6e6;
-  border-radius: 5px;
-  font-size: 1em;
-  outline: none;
-  background: #f6f9fc;
-  margin-right: 4px;
-}
-
-/* Mode toggle buttons */
-.availability-manager-container > div > button {
-  padding: 7px 18px;
-  border-radius: 5px;
-  border: none;
-  background-color: #e6e6e6;
-  color: #21446d;
-  font-weight: 500;
-  font-size: 1em;
-  cursor: pointer;
-  margin-right: 8px;
-  margin-bottom: 6px;
-  transition: background 0.18s;
-}
-.availability-manager-container > div > button.active,
-.availability-manager-container > div > button:focus {
-  background: #21446d;
-  color: #fff;
-}
-.availability-manager-container > div > button:hover:not(.active) {
-  background: #40a9ff;
-  color: #fff;
-}
-
-/* Calendar Grid for Day Mode */
-.calendar-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  width: 280px;
-  margin-bottom: 10px;
-}
-
-.calendar-day {
-  width: 36px;
-  height: 36px;
-  border-radius: 4px;
-  border: none;
-  outline: none;
-  font-size: 1em;
-  font-weight: 500;
-  margin: 2px;
-  cursor: pointer;
-  transition: background 0.18s, color 0.18s, box-shadow 0.13s;
-  box-shadow: 0 1px 2px rgba(33,68,109,0.04);
-}
-
-.calendar-day.available {
-  background: #1976d2;
-  color: #fff;
-}
-
-.calendar-day.blocked {
-  background: #e53935;
-  color: #fff;
-}
-
-.calendar-day.sunday {
-  background: #eee !important;
-  color: #888 !important;
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-/* Calendar Grid for 7-day layout (Monday-first) */
-.calendar-grid-7day {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 280px;
-  margin-bottom: 10px;
+  gap: 24px;
+  font-family: var(--dc-font, 'Inter', system-ui, sans-serif);
+  color: var(--dc-text, #EDF2FA);
 }
-.calendar-row {
+
+/* Standalone (route) header + dentist picker — hidden when launched per-dentist */
+.av-standalone-head {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
 }
-.calendar-header > div {
-  background: #f0f7ff;
-  border-radius: 4px;
-  margin: 2px;
-  width: 36px;
-  height: 36px;
+.av-title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--dc-text, #EDF2FA); }
+.av-picker { min-width: 220px; }
+
+/* ---------- Workspace: calendar + slots side by side ---------- */
+/* Full-width day header on top, then the two-column row — so the slot
+   workstation (left) and the calendar (right) both start level with the
+   analytics, and the calendar can stretch to bottom-align with the slots. */
+.av-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.av-cols {
+  display: flex;
+  gap: 26px;
+  align-items: stretch;   /* calendar column stretches to the slots' height */
+  flex-wrap: wrap;
+}
+.av-slots-col {
+  order: 1;
+  flex: 1.35 1 0;
+  min-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* Calendar sits on the RIGHT as a proportional panel (not a thin fixed rail),
+   stretched to fill the row height so its bottom aligns with the slot grid. */
+.av-cal-col {
+  order: 2;
+  flex: 1 1 0;
+  min-width: 400px;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Legend footer lives INSIDE the calendar card so the card fills the full
+   column height and its bottom aligns with the slots column. */
+.av-cal-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  font-size: 0.76rem;
+  color: var(--dc-text-3, #6E7E98);
+}
+
+/* ---------- Day header ---------- */
+.av-day-head { display: flex; flex-direction: column; gap: 2px; }
+.av-day-date {
+  font-size: 1.12rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--dc-text, #EDF2FA);
+}
+.av-day-hint { font-size: 0.76rem; color: var(--dc-text-3, #6E7E98); }
+
+/* ---------- Utilization meter ---------- */
+.av-meter {
+  background: var(--dc-surface-2, #1A2438);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.av-meter-top { display: flex; align-items: center; gap: 14px; }
+.av-meter-pct {
+  font-size: 2.1rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--dc-accent, #2DD4BF);
+}
+.av-meter-pct span { font-size: 1rem; font-weight: 700; margin-left: 1px; opacity: 0.7; }
+.av-meter-cap { display: flex; flex-direction: column; gap: 2px; }
+.av-meter-cap-lead {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dc-text-2, #A9B7CE);
+}
+.av-meter-cap-sub { font-size: 0.8rem; color: var(--dc-text-3, #6E7E98); }
+
+.av-meter-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dc-elevated, #1F2B42);
+}
+.av-seg { flex-basis: 0; min-width: 0; transition: flex-grow 0.3s ease; }
+.av-seg--available { background: var(--dc-info, #60A5FA); }
+.av-seg--blocked   { background: var(--dc-danger, #F87171); }
+.av-seg--booked    { background: var(--dc-text-3, #6E7E98); }
+.av-seg--lunch     { background: var(--dc-warning, #FBBF24); }
+
+/* ---------- Stat chips ---------- */
+.av-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.av-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: var(--dc-surface-2, #1A2438);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-left-width: 3px;
+}
+.av-stat b { font-size: 1.15rem; font-weight: 800; color: var(--dc-text, #EDF2FA); line-height: 1.1; }
+.av-stat span {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--dc-text-3, #6E7E98);
+}
+.av-stat--available { border-left-color: var(--dc-info, #60A5FA); }
+.av-stat--blocked   { border-left-color: var(--dc-danger, #F87171); }
+.av-stat--booked    { border-left-color: var(--dc-text-3, #6E7E98); }
+.av-stat--lunch     { border-left-color: var(--dc-warning, #FBBF24); }
+
+/* ---------- Quick presets ---------- */
+.av-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.av-quick-btn { padding: 6px 12px; font-size: 0.78rem; }
+.av-quick-btn svg { width: 15px; height: 15px; }
+
+/* ---------- Hour slot grid ---------- */
+.av-hour-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.av-slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 58px;
+  box-sizing: border-box;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text-2, #A9B7CE);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+.av-slot:hover:not(:disabled) { transform: translateY(-2px); }
+.av-slot:disabled { cursor: not-allowed; }
+.av-slot-ico { width: 14px; height: 14px; opacity: 0.9; }
+.av-slot-time { font-size: 0.86rem; font-weight: 800; white-space: nowrap; letter-spacing: -0.01em; }
+.av-slot-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+}
+
+/* State tones — all from tokens */
+.av-slot--available {
+  background: var(--dc-info-soft, rgba(96, 165, 250, 0.13));
+  border-color: color-mix(in srgb, var(--dc-info, #60A5FA) 45%, transparent);
+  color: var(--dc-text, #EDF2FA);
+}
+.av-slot--available:hover:not(:disabled) {
+  border-color: var(--dc-info, #60A5FA);
+  box-shadow: 0 6px 16px rgba(96, 165, 250, 0.18);
+}
+.av-slot--blocked {
+  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.14));
+  border-color: color-mix(in srgb, var(--dc-danger, #F87171) 50%, transparent);
+  color: var(--dc-danger, #F87171);
+}
+.av-slot--blocked:hover:not(:disabled) {
+  border-color: var(--dc-danger, #F87171);
+  box-shadow: 0 6px 16px rgba(248, 113, 113, 0.18);
+}
+.av-slot--booked {
+  background: var(--dc-surface-2, #1A2438);
+  border-color: var(--dc-border, rgba(148, 163, 184, 0.16));
+  color: var(--dc-text-3, #6E7E98);
+  opacity: 0.85;
+}
+.av-slot--lunch {
+  background: var(--dc-warning-soft, rgba(251, 191, 36, 0.13));
+  border-color: color-mix(in srgb, var(--dc-warning, #FBBF24) 45%, transparent);
+  color: var(--dc-warning, #FBBF24);
+}
+
+/* ---------- Actions ---------- */
+.av-actions { display: flex; gap: 12px; margin-top: 2px; }
+
+/* ---------- Blocked-periods table ---------- */
+.av-table-section { display: flex; flex-direction: column; gap: 10px; }
+.av-section-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--dc-text, #EDF2FA);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.av-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--dc-surface-2, #1A2438);
+  border: 1px solid var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  color: var(--dc-text-2, #A9B7CE);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.av-table-wrap { max-height: 240px; overflow-y: auto; }
+
+.av-blocks-table th:last-child,
+.av-blocks-table td.av-blocks-action { width: 56px; text-align: right; }
+.av-day-col { color: var(--dc-text-2, #A9B7CE) !important; }
+
+.av-date-cell { display: inline-flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.av-current-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--dc-accent, #2DD4BF);
+  box-shadow: 0 0 8px var(--dc-accent, #2DD4BF);
+  flex-shrink: 0;
+}
+.av-range-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--dc-elevated, #1F2B42);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--dc-text, #EDF2FA);
+}
+.av-row--current td { background: var(--dc-accent-soft, rgba(45, 212, 191, 0.09)); }
+.av-row--current td:first-child { box-shadow: inset 3px 0 0 var(--dc-accent, #2DD4BF); }
+
+.av-empty-cell {
+  text-align: center;
+  color: var(--dc-text-3, #6E7E98) !important;
+  padding: 26px 12px !important;
+}
+.av-empty-cell svg { width: 15px; height: 15px; vertical-align: -2px; margin-right: 6px; opacity: 0.7; }
+
+/* Status pill tones (drive dcPrimitives .dc-pill --tone vars) */
+.av-pill--ok { --tone: var(--dc-info, #60A5FA); --tone-soft: var(--dc-info-soft, rgba(96, 165, 250, 0.13)); }
+.av-pill--blocked { --tone: var(--dc-danger, #F87171); --tone-soft: var(--dc-danger-soft, rgba(248, 113, 113, 0.14)); }
+
+/* ==========================================================================
+   AV-CALENDAR — purpose-built month calendar (replaces react-calendar)
+   Own grid → correct day placement, full theming, stretches to fill height.
+   ========================================================================== */
+.av-cal {
+  flex: 1;                 /* fill the stretched .av-cal-col height */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: var(--dc-surface, #131C2E);
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: 14px;
+  padding: 18px;
+  font-family: var(--dc-font, 'Inter', sans-serif);
+}
+
+.av-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+.av-cal-title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--dc-text, #EDF2FA);
+}
+.av-cal-navbtn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text, #EDF2FA);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.av-cal-navbtn svg { width: 20px; height: 20px; }
+.av-cal-navbtn:hover:not(:disabled) { border-color: var(--dc-accent, #2DD4BF); color: var(--dc-accent, #2DD4BF); }
+.av-cal-navbtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.av-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.av-cal-weekdays { flex-shrink: 0; margin-bottom: 8px; }
+.av-cal-wd {
+  text-align: center;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--dc-text-3, #6E7E98);
+  padding: 4px 0;
+}
+
+.av-cal-days {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-auto-rows: 1fr;    /* rows share the height → calendar conforms to the
+                             slots column height so both columns match */
+}
+
+.av-cal-day {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-/* Hour Blocks for Hour Mode */
-.hour-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.hour-slot {
-  width: 70px;
-  height: 36px;
-  border-radius: 4px;
   border: none;
-  outline: none;
-  font-size: 0.98em;
-  font-weight: 500;
-  margin: 2px 4px;
+  background: transparent;
+  border-radius: 10px;
+  color: var(--dc-text, #EDF2FA);
+  font-family: inherit;
+  font-size: 1.2rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.18s, color 0.18s, box-shadow 0.13s;
-  box-shadow: 0 1px 2px rgba(33,68,109,0.04);
+  transition: background 0.13s, color 0.13s, box-shadow 0.13s;
 }
-.hour-slot.available {
-  background: #1976d2;
-  color: #fff;
+.av-cal-day:hover:not(.is-disabled):not(.is-selected) {
+  background: var(--dc-surface-2, #1A2438);
 }
-.hour-slot.blocked {
-  background: #e53935;
-  color: #fff;
+.av-cal-day.is-today {
+  background: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+  color: var(--dc-text, #EDF2FA);
+  font-weight: 800;
 }
-
-/* Table Styles */
-.availability-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  font-size: 0.97em;
+.av-cal-day.is-selected {
+  background: var(--dc-accent, #2DD4BF);
+  color: var(--dc-accent-contrast, #06201C);
+  font-weight: 800;
+  box-shadow: 0 4px 14px var(--dc-accent-soft, rgba(45, 212, 191, 0.3));
 }
-
-.availability-table th,
-.availability-table td {
-  padding: 10px 8px;
-  border-bottom: 1px solid #e6e6e6;
-  text-align: left;
+.av-cal-day.is-disabled {
+  color: var(--dc-text-3, #6E7E98);
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.availability-table th {
-  background: #f0f7ff;
-  color: #21446d;
-  font-weight: 600;
+/* Block-indicator dot */
+.av-cal-daydot {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dc-danger, #F87171);
 }
+.av-cal-daydot--legend { position: static; transform: none; display: inline-block; }
 
-.availability-table tbody tr:last-child td {
-  border-bottom: none;
-}
-
-.availability-table td {
-  color: #2d5b91;
-}
-
-/* Status cell coloring */
-.availability-table td {
-  transition: color 0.12s;
-}
-.availability-table td[style*="red"] {
-  color: #e53935 !important;
-  font-weight: 600;
-}
-.availability-table td[style*="blue"] {
-  color: #1976d2 !important;
-  font-weight: 600;
-}
-
-/* Responsive styles */
-@media (max-width: 800px) {
-  .availability-manager-container {
-    padding: 10px 4vw;
-  }
-  .availability-form,
-  .calendar-controls {
-    gap: 7px;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .calendar-grid,
-  .calendar-grid-7day {
-    width: 94vw;
-    max-width: 350px;
-  }
-  .hour-grid {
-    width: 98vw;
-    max-width: 410px;
-  }
-}
-/* ...existing CSS above... */
-
-/* Hour Blocks for Hour Mode */
-.hour-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-/* Fix: Make button wide enough for 12-hour time labels to fit in one line */
-.hour-slot {
-  width: 90px;              /* <-- Increase width to fit "12:00 PM" comfortably */
-  min-width: 90px;          /* <-- Prevent shrinkage on small screens */
-  height: 36px;
-  border-radius: 4px;
-  border: none;
-  outline: none;
-  font-size: 1.04em;        /* <-- Slightly larger for readability */
-  font-weight: 500;
-  margin: 2px 4px;
-  cursor: pointer;
-  transition: background 0.18s, color 0.18s, box-shadow 0.13s;
-  box-shadow: 0 1px 2px rgba(33,68,109,0.04);
-  white-space: nowrap;      /* <-- Keep label on one line */
-  text-align: center;       /* <-- Center the label horizontally */
-  padding: 0 4px;           /* <-- Some horizontal padding */
-  overflow: hidden;         /* <-- Prevent overflow */
-}
-
-.hour-slot.available {
-  background: #1976d2;
-  color: #fff;
-}
-.hour-slot.blocked {
-  background: #e53935;
-  color: #fff;
-}
-
-/* ...rest of your CSS unchanged... */
-
-@media (max-width: 800px) {
-  /* Responsive: allow the slot buttons to shrink but keep labels visible */
-  .hour-grid {
-    width: 98vw;
-    max-width: 410px;
-  }
-  .hour-slot {
-    width: 24vw;
-    min-width: 70px; /* Don't go smaller than 70px */
-    font-size: 0.97em;
-    padding: 0 2px;
-  }
+/* ---------- Responsive ---------- */
+@media (max-width: 720px) {
+  .av-cols { flex-direction: column; }
+  .av-slots-col { min-width: 0; width: 100%; }
+  .av-cal-col { width: 100%; }
+  .av-stats { grid-template-columns: repeat(2, 1fr); }
 }

@@ -19,8 +19,7 @@ function Dentists({ clinicId }) {
   const [dentistToDelete, setDentistToDelete] = useState(null);
   const [deleteMode, setDeleteMode] = useState('none');
   const [futureAppointments, setFutureAppointments] = useState([]);
-  // Availability modal state
-  const [availabilityModalOpen, setAvailabilityModalOpen] = useState(false);
+  // Availability full-page view (swaps the list, same pattern as Patients profile)
   const [availabilityDentist, setAvailabilityDentist] = useState(null);
 
   useEffect(() => { 
@@ -31,13 +30,13 @@ function Dentists({ clinicId }) {
   }, [clinicId]);
 
   useEffect(() => {
-    if (modalOpen || addModalOpen || deleteModalOpen || availabilityModalOpen) {
+    if (modalOpen || addModalOpen || deleteModalOpen) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
     }
     return () => { document.body.style.overflow = ""; }
-  }, [modalOpen, addModalOpen, deleteModalOpen, availabilityModalOpen]);
+  }, [modalOpen, addModalOpen, deleteModalOpen]);
 
   // --- SORTING BY NAME (ASC) ---
   const fetchDentists = async () => {
@@ -298,15 +297,41 @@ function Dentists({ clinicId }) {
     setDeleteMode('none');
   };
 
-  // Availability Modal handlers
-  const openAvailabilityModal = (dentist) => {
-    setAvailabilityDentist(dentist);
-    setAvailabilityModalOpen(true);
-  };
-  const closeAvailabilityModal = () => {
-    setAvailabilityDentist(null);
-    setAvailabilityModalOpen(false);
-  };
+  // Availability full-page view handlers (like Patients openProfile/closeProfile)
+  const openAvailability = (dentist) => setAvailabilityDentist(dentist);
+  const closeAvailability = () => setAvailabilityDentist(null);
+
+  // ── Full-page availability workstation (replaces the old modal) ──
+  // Swaps the Dentists list for a full-viewport view, same pattern as clicking
+  // a patient's name → PatientProfile. .dc-page = shared breathing gutters.
+  if (availabilityDentist) {
+    const initial = (availabilityDentist.name || '?').trim().charAt(0).toUpperCase();
+    return (
+      <div className="dc-page">
+        <div className="dt-avail-page">
+          <div className="dt-avail-page-head">
+            <button type="button" className="dc-back-btn" onClick={closeAvailability}>
+              ← Back to Dentists
+            </button>
+            <div className="dt-avail-identity">
+              <div className="dt-avail-avatar">{initial}</div>
+              <div className="dt-avail-identity-text">
+                <h2 className="dt-avail-name">{availabilityDentist.name}</h2>
+                <div className="dt-avail-contact">
+                  {availabilityDentist.email && <span>✉️ {availabilityDentist.email}</span>}
+                  {availabilityDentist.phone && <span>📞 {availabilityDentist.phone}</span>}
+                  <span className="dt-avail-contact-dim">Manage availability &amp; blocked periods</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="dt-avail-page-body">
+            <DentistAvailabilityManager clinicId={clinicId} dentistId={availabilityDentist.id} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dc-page dt-page">
@@ -323,7 +348,7 @@ function Dentists({ clinicId }) {
         </div>
       </header>
 
-      {((error || success) && !modalOpen && !deleteModalOpen && !addModalOpen && !availabilityModalOpen) && (
+      {((error || success) && !modalOpen && !deleteModalOpen && !addModalOpen) && (
         <div className="dt-msg-row">
           {error && <div className="dc-banner dc-banner--err">{error}</div>}
           {success && <div className="dc-banner dc-banner--ok">{success}</div>}
@@ -362,7 +387,7 @@ function Dentists({ clinicId }) {
                 </td>
                 <td>
                   <div className="dc-table-actions">
-                    <button className="dc-icon-btn dc-icon-btn--accent" title="Manage Availability" aria-label="Manage availability" onClick={() => openAvailabilityModal(dentist)}>
+                    <button className="dc-icon-btn dc-icon-btn--accent" title="Manage Availability" aria-label="Manage availability" onClick={() => openAvailability(dentist)}>
                       <LuCalendarClock />
                     </button>
                     <button className="dc-icon-btn dc-icon-btn--accent" title="Edit" aria-label="Edit dentist" onClick={() => startEdit(dentist)}>
@@ -475,23 +500,6 @@ function Dentists({ clinicId }) {
         </div>
       )}
 
-      {/* ── Availability ── */}
-      {availabilityModalOpen && (
-        <div className="dc-overlay" onClick={closeAvailabilityModal}>
-          <div className="dc-modal dc-modal--wide dt-avail-modal" onClick={e => e.stopPropagation()}>
-            <div className="dt-avail-head">
-              <div>
-                <div className="dc-modal-title" style={{ margin: 0 }}>Dentist Availability</div>
-                <div className="dt-avail-sub">{availabilityDentist?.name || ''}</div>
-              </div>
-              <button className="dc-modal-close" onClick={closeAvailabilityModal} title="Close" aria-label="Close">×</button>
-            </div>
-            <div className="dt-avail-body">
-              <DentistAvailabilityManager clinicId={clinicId} dentistId={availabilityDentist?.id} />
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

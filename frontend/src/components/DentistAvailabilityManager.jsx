@@ -1,8 +1,7 @@
 import './DentistAvailabilityManager.css';
-import React, { useEffect, useState } from 'react';
-import Calendar from 'react-calendar';
-import 'react-calendar/dist/Calendar.css';
+import React, { useEffect, useMemo, useState } from 'react';
 import Swal from 'sweetalert2';
+import { LuTrash2, LuBan, LuLock, LuCoffee, LuSunrise, LuSunset, LuCircleCheck, LuCalendarClock, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { supabase } from '../supabaseClient';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -23,6 +22,90 @@ function formatHourTo12Hr(hourStr) {
 
 function stripSeconds(timeStr) {
   return timeStr ? timeStr.slice(0, 5) : "";
+}
+
+function formatRange(startStr, endStr) {
+  const s = stripSeconds(startStr);
+  const e = stripSeconds(endStr);
+  if (!s && !e) return "";
+  if (!e) return formatHourTo12Hr(s);
+  return `${formatHourTo12Hr(s)} – ${formatHourTo12Hr(e)}`;
+}
+
+const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// ── Purpose-built month calendar (replaces react-calendar) ──
+// Full control over grid/sizing/theming; disables past dates + Sundays (same
+// rules the old tileDisabled/minDate enforced) and marks days that have blocks.
+// Emits a native Date via onPick → the existing handleCalendarChange handler.
+function AvCalendar({ valueStr, onPick, hasBlocks }) {
+  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const selected = valueStr ? parseLocalDate(valueStr) : null;
+  const seed = selected || today;
+  const [view, setView] = useState({ y: seed.getFullYear(), m: seed.getMonth() });
+
+  const firstOfMonth = new Date(view.y, view.m, 1);
+  const startWeekday = firstOfMonth.getDay();
+  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+  const monthLabel = firstOfMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const canPrev = firstOfMonth > new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const sameDay = (a, b) =>
+    a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+  const cells = [];
+  for (let i = 0; i < startWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(view.y, view.m, d));
+
+  const step = (delta) => setView(v => {
+    const d = new Date(v.y, v.m + delta, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
+  return (
+    <div className="av-cal">
+      <div className="av-cal-nav">
+        <button type="button" className="av-cal-navbtn" onClick={() => step(-1)} disabled={!canPrev} aria-label="Previous month">
+          <LuChevronLeft />
+        </button>
+        <div className="av-cal-title">{monthLabel}</div>
+        <button type="button" className="av-cal-navbtn" onClick={() => step(1)} aria-label="Next month">
+          <LuChevronRight />
+        </button>
+      </div>
+      <div className="av-cal-grid av-cal-weekdays">
+        {WEEKDAY_LABELS.map(w => <div key={w} className="av-cal-wd">{w}</div>)}
+      </div>
+      <div className="av-cal-grid av-cal-days">
+        {cells.map((date, i) => {
+          if (!date) return <div key={`e${i}`} className="av-cal-empty" />;
+          const isSun = date.getDay() === 0;
+          const disabled = isSun || date < today;
+          const isSel = sameDay(date, selected);
+          const isToday = sameDay(date, today);
+          const cls = ['av-cal-day'];
+          if (disabled) cls.push('is-disabled');
+          if (isSel) cls.push('is-selected');
+          else if (isToday) cls.push('is-today');
+          return (
+            <button
+              type="button"
+              key={date.toISOString()}
+              className={cls.join(' ')}
+              disabled={disabled}
+              onClick={() => !disabled && onPick(date)}
+            >
+              {date.getDate()}
+              {hasBlocks(date) && !isSel && <span className="av-cal-daydot" />}
+            </button>
+          );
+        })}
+      </div>
+      <div className="av-cal-foot">
+        <span className="av-cal-daydot av-cal-daydot--legend" /> Day has blocked periods
+      </div>
+    </div>
+  );
 }
 
 function DentistAvailabilityManager({ clinicId, dentistId }) {
@@ -130,10 +213,6 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     setSlotStatus(status);
   }, [selectedDate, availability, appointments, selectedDentist]);
 
-  function tileDisabled({ date }) {
-    return date.getDay() === 0;
-  }
-
   function handleCalendarChange(dateObj) {
     const dateStr = dateObj.toLocaleDateString('sv-SE');
     setSelectedDate(dateStr);
@@ -194,6 +273,30 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
       newStatus[h] = h === LUNCH_HOUR ? false : (slotStatus[h] === 'booked' ? 'booked' : true);
     }
     setSlotStatus(newStatus);
+  }
+
+  // Block a half-day range (UI-state only — same category as Block All; the
+  // save/delete DB flow is untouched). Booked slots and lunch are preserved.
+  function blockPeriod(hoursSubset) {
+    setSlotStatus(prev => {
+      const next = { ...prev };
+      for (let h of hoursSubset) {
+        if (h === LUNCH_HOUR) continue;
+        if (next[h] === 'booked') continue;
+        next[h] = false;
+      }
+      return next;
+    });
+  }
+  const AM_HOURS = HOURS.filter(h => h < LUNCH_HOUR);
+  const PM_HOURS = HOURS.filter(h => h > LUNCH_HOUR);
+
+  // Does a calendar date already have blocked periods? (drives the tile dot)
+  function dateHasBlocks(dateObj) {
+    const key = dateObj.toLocaleDateString('sv-SE');
+    return availability.some(a =>
+      !a.is_available && parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE') === key
+    );
   }
 
   function showNotification(msg, type = 'info', timeout = 1800) {
@@ -362,52 +465,54 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
   }
 
   const renderAvailabilityTable = () => (
-    <table className="availability-table">
+    <table className="dc-table av-blocks-table">
       <thead>
         <tr>
-          <th>ID</th>
           <th>Date</th>
           <th>Day</th>
-          <th>Start</th>
-          <th>End</th>
+          <th>Time Range</th>
           <th>Status</th>
-          <th>Actions</th>
+          <th aria-label="Actions" />
         </tr>
       </thead>
       <tbody>
         {availability.length === 0 && (
           <tr>
-            <td colSpan={7} style={{ textAlign: 'center' }}>No blocks found</td>
+            <td colSpan={5} className="av-empty-cell">
+              <LuCalendarClock /> No blocks yet — this dentist is fully available.
+            </td>
           </tr>
         )}
         {availability.map(block => {
           const d = parseLocalDate(block.specific_date);
+          const dateKey = d ? d.toLocaleDateString('sv-SE') : '';
+          const isCurrent = dateKey && dateKey === selectedDate;
           return (
-            <tr key={block.id}>
-              <td>{block.id}</td>
-              <td>{d ? d.toLocaleDateString('sv-SE') : ''}</td>
-              <td>{d ? WEEKDAYS[d.getDay()] : ''}</td>
-              <td>{block.start_time}</td>
-              <td>{block.end_time}</td>
-              <td style={{color: block.is_available ? "blue":"red", fontWeight:600}}>
-                {block.is_available ? 'Available' : 'Blocked'}
+            <tr key={block.id} className={isCurrent ? 'av-row--current' : ''}>
+              <td>
+                <span className="av-date-cell">
+                  {isCurrent && <span className="av-current-dot" title="Selected date" />}
+                  {dateKey}
+                </span>
+              </td>
+              <td className="av-day-col">{d ? WEEKDAYS[d.getDay()] : ''}</td>
+              <td>
+                <span className="av-range-pill">{formatRange(block.start_time, block.end_time)}</span>
               </td>
               <td>
+                <span className={`dc-pill ${block.is_available ? 'av-pill--ok' : 'av-pill--blocked'}`}>
+                  {block.is_available ? 'Available' : 'Blocked'}
+                </span>
+              </td>
+              <td className="av-blocks-action">
                 <button
-                  className="availability-action-btn"
-                  style={{
-                    background:'#e53935',
-                    color:'#fff',
-                    border:'none',
-                    borderRadius:4,
-                    padding:'4px 12px',
-                    cursor:'pointer'
-                  }}
+                  className="dc-icon-btn dc-icon-btn--danger"
                   onClick={() => handleDelete(block.id)}
                   disabled={saving}
                   title="Delete this block"
+                  aria-label="Delete block"
                 >
-                  Delete
+                  <LuTrash2 />
                 </button>
               </td>
             </tr>
@@ -418,17 +523,26 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
   );
 
   const availableCount = Object.values(slotStatus).filter(v => v === true).length;
-  const blockedCount = Object.values(slotStatus).filter(v => v === false).length;
   const bookedCount = Object.values(slotStatus).filter(v => v === 'booked').length;
+  const hasLunch = slotStatus[LUNCH_HOUR] === false;           // lunch stored as false
+  const lunchCount = hasLunch ? 1 : 0;
+  // exclude the lunch slot from "blocked" so the meter/stats read true
+  const blockedCount = Math.max(0, Object.values(slotStatus).filter(v => v === false).length - lunchCount);
+  const workable = HOURS.length - 1;                            // bookable slots (minus lunch)
+  const openPct = workable ? Math.round((availableCount / workable) * 100) : 0;
+  const dayObj = parseLocalDate(selectedDate);
+  const prettyDate = dayObj
+    ? dayObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+    : '';
 
   return (
-    <div className="availability-manager-container" style={{display:'flex',flexDirection:'column',alignItems:'center'}}>
+    <div className="availability-manager-container">
       {/* Only show header/dropdown if NOT launched in modal for a specific dentist */}
       {!dentistId && (
-        <>
-          <h2 style={{textAlign: 'center'}}>Dentist Availability Manager</h2>
-          <label>
-            Dentist:&nbsp;
+        <div className="av-standalone-head">
+          <h2 className="av-title">Dentist Availability Manager</h2>
+          <label className="dc-field av-picker">
+            <span>Dentist</span>
             <select value={selectedDentist} onChange={e => setSelectedDentist(e.target.value)} required>
               <option value="">Select Dentist</option>
               {dentists.map(d => (
@@ -436,189 +550,123 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
               ))}
             </select>
           </label>
-        </>
+        </div>
       )}
 
       {selectedDentist && (
-        <div style={{
-          display:'flex',
-          gap:'32px',
-          alignItems:'flex-start',
-          marginBottom:'24px'
-        }}>
-          <div>
-            <Calendar
-              selectRange={false}
-              value={selectedDate ? parseLocalDate(selectedDate) : new Date()}
-              onChange={handleCalendarChange}
-              tileDisabled={tileDisabled}
-              locale="en-US"
-              minDate={new Date()}
-              allowPartialRange={false}
-              showNeighboringMonth={false}
-              showFixedNumberOfWeeks={false}
-              maxDetail="month"
-            />
+        <div className="av-workspace">
+          <div className="av-day-head">
+            <div className="av-day-date">{prettyDate}</div>
+            <div className="av-day-hint">Tap a slot to block or open it</div>
           </div>
-          <form onSubmit={handleSave} style={{minWidth:'320px'}}>
-            <div style={{fontWeight:600,marginBottom:'10px'}}>
-              Time Slots for {selectedDate} ({WEEKDAYS[parseLocalDate(selectedDate)?.getDay()]})
+
+          <div className="av-cols">
+            <form onSubmit={handleSave} className="av-slots-col">
+
+            {/* Day utilization meter — derived from the slot counts */}
+            <div className="av-meter">
+              <div className="av-meter-top">
+                <div className="av-meter-pct">{openPct}<span>%</span></div>
+                <div className="av-meter-cap">
+                  <div className="av-meter-cap-lead">Day Open</div>
+                  <div className="av-meter-cap-sub">{availableCount} of {workable} slots available</div>
+                </div>
+              </div>
+              <div className="av-meter-bar" role="img" aria-label={`${openPct}% of the day open`}>
+                <span className="av-seg av-seg--available" style={{ flexGrow: availableCount }} />
+                <span className="av-seg av-seg--blocked" style={{ flexGrow: blockedCount }} />
+                <span className="av-seg av-seg--booked" style={{ flexGrow: bookedCount }} />
+                <span className="av-seg av-seg--lunch" style={{ flexGrow: lunchCount }} />
+              </div>
             </div>
-            <div className="hour-grid" style={{
-              display:'grid',
-              gridTemplateColumns:'repeat(3,1fr)',
-              gap:'10px',
-              marginBottom:'16px',
-            }}>
+
+            {/* Stat chips (double as the legend) */}
+            <div className="av-stats">
+              <div className="av-stat av-stat--available"><b>{availableCount}</b><span>Open</span></div>
+              <div className="av-stat av-stat--blocked"><b>{blockedCount}</b><span>Blocked</span></div>
+              <div className="av-stat av-stat--booked"><b>{bookedCount}</b><span>Booked</span></div>
+              <div className="av-stat av-stat--lunch"><b>{lunchCount}</b><span>Lunch</span></div>
+            </div>
+
+            {/* Quick presets */}
+            <div className="av-quick">
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={handleBlockAll} disabled={saving}><LuBan /> Block All</button>
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={handleUnblockAll} disabled={saving}><LuCircleCheck /> Open All</button>
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={() => blockPeriod(AM_HOURS)} disabled={saving}><LuSunrise /> Block AM</button>
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={() => blockPeriod(PM_HOURS)} disabled={saving}><LuSunset /> Block PM</button>
+            </div>
+
+            <div className="av-hour-grid">
               {HOURS.map(hour => {
                 const slotType = slotStatus[hour];
-                let color = '#1976d2'; // available
-                let label = 'Available';
+                const isLunch = hour === LUNCH_HOUR;
+                let mod = 'available';
+                let label = 'Open';
                 let disabled = false;
+                let SlotIcon = null;
 
-                if (hour === LUNCH_HOUR) {
-                  color = '#FF9800'; // orange for lunch
-                  label = 'Lunch Break';
-                  disabled = true;
+                if (isLunch) {
+                  mod = 'lunch'; label = 'Lunch'; disabled = true; SlotIcon = LuCoffee;
                 } else if (slotType === false) {
-                  color = '#e53935'; // blocked
-                  label = 'Blocked';
-                  disabled = false;
+                  mod = 'blocked'; label = 'Blocked'; SlotIcon = LuBan;
                 } else if (slotType === 'booked') {
-                  color = '#757575'; // booked
-                  label = 'Booked';
-                  disabled = true;
+                  mod = 'booked'; label = 'Booked'; disabled = true; SlotIcon = LuLock;
                 }
 
                 return (
                   <button
                     type="button"
                     key={hour}
-                    className={`hour-slot ${slotType === true ? 'available' : slotType === false || hour === LUNCH_HOUR ? 'blocked' : 'booked'}`}
-                    style={{
-                      background: color,
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 4,
-                      height: 44,
-                      fontWeight:600,
-                      fontSize:'1em',
-                      cursor: disabled ? 'not-allowed' : 'pointer',
-                      boxShadow: slotType === true ? '0 2px 6px #1976d222' :
-                        ((slotType === false || hour === LUNCH_HOUR) ? '0 2px 6px #e5393522' : '0 2px 6px #75757522'),
-                      opacity: disabled ? 0.7 : 1
-                    }}
+                    className={`av-slot av-slot--${mod}`}
                     onClick={() => !disabled && handleSlotClick(hour)}
                     title={label}
                     disabled={saving || disabled}
                   >
-                    {formatHourTo12Hr(hour)}
+                    {SlotIcon && <SlotIcon className="av-slot-ico" />}
+                    <span className="av-slot-time">{formatHourTo12Hr(hour)}</span>
+                    <span className="av-slot-label">{label}</span>
                   </button>
                 );
               })}
             </div>
-            <div style={{marginBottom: '8px'}}>
-              <span style={{
-                display: 'inline-block',
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: '#1976d2',
-                verticalAlign: 'middle',
-                marginRight: 6,
-                border: '1px solid #bbb'
-              }} />
-              Available &nbsp;&nbsp;
-              <span style={{
-                display: 'inline-block',
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: '#e53935',
-                verticalAlign: 'middle',
-                marginRight: 6,
-                border: '1px solid #bbb'
-              }} />
-              Blocked &nbsp;&nbsp;
-              <span style={{
-                display: 'inline-block',
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: '#FF9800',
-                verticalAlign: 'middle',
-                marginRight: 6,
-                border: '1px solid #bbb'
-              }} />
-              Lunch Break &nbsp;&nbsp;
-              <span style={{
-                display: 'inline-block',
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                background: '#757575',
-                verticalAlign: 'middle',
-                marginRight: 6,
-                border: '1px solid #bbb'
-              }} />
-              Booked
-            </div>
-            <div style={{marginBottom:'12px', fontWeight:600}}>
-              <span>{availableCount} available, {blockedCount} blocked, {bookedCount} booked</span>
-            </div>
-            <div style={{display: 'flex', gap: '12px'}}>
-              <button
-                type="submit"
-                style={{
-                  background:'#43a047',
-                  color:'#fff',
-                  fontWeight:600,
-                  padding:'10px 24px',
-                  border:'none',
-                  borderRadius:4,
-                  cursor:'pointer'
-                }}
-                disabled={saving}
-              >
-                {saving ? "Saving..." : "Save"}
+
+            <div className="av-actions">
+              <button type="submit" className="dc-btn dc-btn--primary" disabled={saving}>
+                {saving ? 'Saving…' : 'Save Changes'}
               </button>
               <button
                 type="button"
-                style={{
-                  background:'#e53935',
-                  color:'#fff',
-                  fontWeight:600,
-                  padding:'10px 24px',
-                  border:'none',
-                  borderRadius:4,
-                  cursor:'pointer'
-                }}
+                className="dc-btn dc-btn--danger"
                 disabled={saving}
                 onClick={handleDeleteDate}
                 title="Delete all blocks for this date"
               >
-                Delete
+                Clear Day
               </button>
             </div>
-          </form>
+            </form>
+
+            <div className="av-cal-col">
+              <AvCalendar
+                valueStr={selectedDate}
+                onPick={handleCalendarChange}
+                hasBlocks={dateHasBlocks}
+              />
+            </div>
+          </div>
         </div>
       )}
 
-      <h3 style={{marginTop: 18, marginBottom: 6}}>Blocked Periods</h3>
-      {loading ? (
-        <div>Loading availability...</div>
-      ) : (
-        <div style={{
-          maxHeight: 210,
-          overflowY: 'auto',
-          border: '1px solid #eee',
-          borderRadius: 4,
-          background: "#fafbfc",
-          width: '100%' // or '90%', or '600px', etc.
-        }}>
-          {renderAvailabilityTable()}
-        </div>
-      )}
+      <div className="av-table-section">
+        <h3 className="av-section-title">Blocked Periods {availability.length > 0 && <span className="av-count">{availability.length}</span>}</h3>
+        {loading ? (
+          <div className="dc-loading">Loading availability…</div>
+        ) : (
+          <div className="dc-table-wrap av-table-wrap">
+            {renderAvailabilityTable()}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
