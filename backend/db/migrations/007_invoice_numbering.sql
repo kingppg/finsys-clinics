@@ -1,12 +1,15 @@
 -- ============================================================================
--- 007_invoice_numbering.sql
+-- 007_invoice_numbering.sql  (corrected)
 -- Formal invoice numbers: INV-YYYY-#### (zero-padded 4 digits), per clinic,
 -- reset each year. Assigned by a BEFORE INSERT trigger so BOTH manual invoices
 -- and trigger-created (appointment → Completed) invoices are numbered the same
 -- way — the DB owns the sequence (like it owns totals), no app-side races.
 --
--- The `invoices.invoice_number` column already exists (UNIQUE) and is currently
--- empty; this migration backfills existing rows and wires up the counter.
+-- IMPORTANT: invoice numbers are unique PER CLINIC, not globally — INV-2026-0001
+-- legitimately repeats across clinics. The original `invoice_number` column had a
+-- GLOBAL single-column UNIQUE (from 001), which made the cross-clinic backfill
+-- collide. This migration drops that global constraint and replaces it with a
+-- composite unique (clinic_id, invoice_number).
 --
 -- Idempotent — safe to re-run.
 -- ============================================================================
@@ -19,6 +22,29 @@ CREATE TABLE IF NOT EXISTS public.invoice_number_counters (
   PRIMARY KEY (clinic_id, year)
 );
 
+-- Drop any GLOBAL single-column UNIQUE on invoice_number (must be per-clinic).
+DO $$
+DECLARE cname text;
+BEGIN
+  SELECT con.conname INTO cname
+  FROM pg_constraint con
+  JOIN pg_class rel ON rel.oid = con.conrelid
+  JOIN pg_namespace ns ON ns.oid = rel.relnamespace
+  WHERE ns.nspname = 'public' AND rel.relname = 'invoices' AND con.contype = 'u'
+    AND array_length(con.conkey, 1) = 1
+    AND (SELECT attname FROM pg_attribute
+          WHERE attrelid = con.conrelid AND attnum = con.conkey[1]) = 'invoice_number'
+  LIMIT 1;
+  IF cname IS NOT NULL THEN
+    EXECUTE format('ALTER TABLE public.invoices DROP CONSTRAINT %I', cname);
+  END IF;
+END $$;
+
+-- Per-clinic uniqueness (nulls allowed until numbered).
+CREATE UNIQUE INDEX IF NOT EXISTS invoices_clinic_number_uq
+  ON public.invoices (clinic_id, invoice_number)
+  WHERE invoice_number IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION public.assign_invoice_number() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -26,7 +52,6 @@ DECLARE
   yr  integer;
   seq integer;
 BEGIN
-  -- Respect an explicitly supplied number (import / manual override).
   IF NEW.invoice_number IS NOT NULL AND NEW.invoice_number <> '' THEN
     RETURN NEW;
   END IF;
@@ -50,7 +75,6 @@ CREATE TRIGGER invoices_assign_number
   FOR EACH ROW EXECUTE FUNCTION public.assign_invoice_number();
 
 -- ---- One-time backfill of existing (unnumbered) invoices ----
--- Numbered per clinic + year in id order (chronological).
 WITH numbered AS (
   SELECT
     id,
@@ -71,8 +95,7 @@ UPDATE public.invoices i
   FROM numbered n
  WHERE i.id = n.id;
 
--- Seed the counters to the highest sequence now present per clinic + year,
--- so the trigger continues from the right number.
+-- Seed the counters to the highest sequence now present per clinic + year.
 INSERT INTO public.invoice_number_counters (clinic_id, year, last_seq)
 SELECT
   clinic_id,
