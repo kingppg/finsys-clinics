@@ -12,50 +12,18 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-.bills-container {
-  padding: 4px 24px 24px 24px;
-  background: var(--dc-bg, #f8fafc);
-  border: 1px solid var(--dc-border, #e2e8f0);
-  border-radius: 14px;
-  box-shadow: var(--dc-shadow, 0 4px 20px rgba(0, 0, 0, 0.04));
-  margin: 10px auto;
-  max-width: 1600px;
+/* The module now follows the standard full-page scaffold: the .dc-page wrapper
+   (shared) owns the centered 1600px gutters, and the module content sits
+   directly on the themed app canvas — no boxed outer panel — matching
+   Procedures/Patients/etc. Kept position:relative to anchor the sync overlay. */
+.bills-page {
+  position: relative;
   font-family: var(--dc-font, "Inter", "Segoe UI", Arial, sans-serif);
   color: var(--dc-text, #0f2340);
-  position: relative;
 }
 
-/* Sticky Header Panel Strategy */
-.bills-sticky-header {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  background: var(--dc-bg, #f8fafc);
-  padding: 20px 0 0 0;
-  border-bottom: 1px solid var(--dc-border, #e2e8f0);
-  margin-bottom: 24px;
-}
-
-.bills-header-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.bills-header-title h2 {
-  margin: 0;
-  font-size: 1.65rem;
-  font-weight: 700;
-  color: var(--dc-text, #0f2340);
-  letter-spacing: -0.5px;
-  line-height: 1.2;
-}
-
+/* Header subtitle stat row (lives inside .dc-page-subtitle) */
 .bills-header-meta {
-  margin-top: 4px;
-  font-size: 0.85rem;
-  color: var(--dc-text-2, #64748b);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -66,37 +34,72 @@
   color: var(--dc-text-3, #94a3b8);
 }
 
+.bills-stat-divider {
+  color: var(--dc-text-3, #94a3b8);
+}
+
 /* ==========================================================================
-   TAB NAVIGATION
+   KPI STRIP — headline finance metrics (Invoices tab)
+   Tone-aware cards: set --tone / --tone-soft inline per card.
    ========================================================================== */
-.bills-tabs-container {
+.bills-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.bills-kpi {
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--dc-surface, #fff);
+  border: 1px solid var(--dc-border, #e2e8f0);
+  border-left: 3px solid var(--tone, var(--dc-accent));
+}
+
+.bills-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding-top: 14px;
 }
 
-.bills-tab {
-  background: none;
-  border: none;
-  padding: 10px 16px;
-  font-family: inherit;
-  font-size: 0.92rem;
-  font-weight: 500;
+.bills-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
   color: var(--dc-text-3, #64748b);
-  cursor: pointer;
-  border-bottom: 2.5px solid transparent;
-  margin-bottom: -1px;
-  transition: color 0.2s ease, border-color 0.2s ease;
 }
 
-.bills-tab:hover {
+.bills-kpi-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tone-soft, var(--dc-accent-soft));
+  color: var(--tone, var(--dc-accent));
+}
+
+.bills-kpi-value {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   color: var(--dc-text, #0f2340);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  word-break: break-word;
 }
 
-.bills-tab.active {
-  color: var(--dc-accent, #0ea5e9);
-  border-bottom-color: var(--dc-accent, #0ea5e9);
-  font-weight: 600;
+.bills-kpi-sub {
+  font-size: 0.74rem;
+  color: var(--dc-text-3, #94a3b8);
 }
 
 /* ==========================================================================
@@ -104,26 +107,40 @@
    ========================================================================== */
 .bills-section-card {
   background: var(--dc-surface, #ffffff);
-  border-radius: var(--dc-radius, 12px);
+  border-radius: 14px;
   border: 1px solid var(--dc-border, #e2e8f0);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--dc-shadow, 0 1px 3px rgba(0, 0, 0, 0.08));
   overflow: hidden;
 }
 
 .bills-section-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 16px 20px;
+  gap: 9px;
+  padding: 15px 20px;
   border-bottom: 1px solid var(--dc-border, #e2e8f0);
   background: var(--dc-surface-2, #fafafa);
   color: var(--dc-text, #0f2340);
 }
 
+.bills-section-header > svg {
+  color: var(--dc-accent);
+  flex-shrink: 0;
+}
+
 .bills-section-title {
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   margin: 0;
+}
+
+.bills-section-sub {
+  margin-left: auto;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--dc-text-3, #94a3b8);
+  font-variant-numeric: tabular-nums;
 }
 
 .bills-table {
@@ -246,26 +263,6 @@
 /* ==========================================================================
    BUTTON ARCHITECTURE
    ========================================================================== */
-.bills-action-btn {
-  background: var(--dc-accent, #0f2340);
-  color: var(--dc-accent-contrast, #fff);
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-family: inherit;
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: background 0.2s;
-}
-
-.bills-action-btn:hover {
-  background: var(--dc-accent-hover, #1e3a63);
-}
-
 .bills-table-btn {
   background: var(--dc-accent, #0f2340);
   color: var(--dc-accent-contrast, #fff);
@@ -724,15 +721,17 @@
 
 .bills-table-loading {
   position: absolute;
-  top: 70px; left: 0; right: 0; bottom: 0;
-  background: rgba(11, 17, 32, 0.6);
+  inset: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--dc-bg, #0b1120) 62%, transparent);
+  backdrop-filter: blur(2px);
   z-index: 10;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   color: var(--dc-text, #0f2340);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 @keyframes bills-spin {
@@ -753,21 +752,15 @@
 /* ==========================================================================
    RESPONSIVE MEDIA SCREEN BREAKPOINTS
    ========================================================================== */
+@media (max-width: 980px) {
+  .bills-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 768px) {
-  .bills-container {
-    padding: 12px;
-  }
-  .bills-header-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-  .bills-action-btn {
-    width: 100%;
-    justify-content: center;
-  }
-  .bills-tabs-container {
-    overflow-x: auto;
+  .bills-kpis {
+    grid-template-columns: 1fr;
   }
   .bills-table th, .bills-table td {
     padding: 10px 12px;
@@ -1467,36 +1460,7 @@
   flex-wrap: wrap;
 }
 
-.bills-chip {
-  border: 1px solid var(--dc-border-strong, #cbd5e1);
-  background: transparent;
-  color: var(--dc-text-2, #475569);
-  border-radius: 9999px;
-  padding: 6px 12px;
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-
-.bills-chip:hover {
-  border-color: var(--dc-accent, #0f2340);
-  color: var(--dc-text, #0f2340);
-}
-
-.bills-chip.active {
-  background: var(--dc-accent, #0f2340);
-  border-color: var(--dc-accent, #0f2340);
-  color: var(--dc-accent-contrast, #fff);
-}
-
-.bills-chip-count {
-  opacity: 0.75;
-  font-weight: 700;
-  margin-left: 2px;
-}
+/* Status filter chips use the shared .dc-chip primitive (tone set inline). */
 
 /* Sortable column headers */
 .bills-th-sort {
@@ -1897,6 +1861,108 @@
   .pos-amount-input {
     font-size: 2.3rem;
   }
+}
+
+/* ==========================================================================
+   CREATE INVOICE MODAL — staged builder (patient/visit + line items + details)
+   Built on .dc-modal; overrides padding/overflow to pin a scrolling body
+   between a fixed header and footer.
+   ========================================================================== */
+.bills-create-modal {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  max-height: 90vh;
+  overflow: hidden;
+}
+
+.bills-create-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--dc-border, #e2e8f0);
+  background: var(--dc-surface-2, #f8fafc);
+  flex-shrink: 0;
+}
+
+.bills-create-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 750;
+  letter-spacing: -0.01em;
+  color: var(--dc-text, #0f2340);
+}
+
+.bills-create-sub {
+  margin: 3px 0 0;
+  font-size: 0.82rem;
+  color: var(--dc-text-3, #64748b);
+}
+
+.bills-create-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overscroll-behavior: contain;
+}
+
+.bills-create-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  padding: 16px;
+}
+
+/* Patient autocomplete field — spans the row; matches .dc-field label styling
+   without inheriting .dc-field input rules (its input is icon-padded). */
+.bills-create-patient {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  min-width: 0;
+}
+
+.bills-create-patient > span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--dc-text-2, #334155);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.bills-create-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--dc-border, #e2e8f0);
+  background: var(--dc-surface-2, #f8fafc);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* "Create & Record Payment" — ghost button tinted toward the accent */
+.bills-create-pay {
+  color: var(--dc-accent, #2DD4BF);
+  border-color: var(--dc-accent, #2DD4BF);
+}
+.bills-create-pay:hover:not(:disabled) {
+  background: var(--dc-accent-soft, rgba(45, 212, 191, 0.13));
+}
+
+@media (max-width: 680px) {
+  .bills-create-grid { grid-template-columns: 1fr; }
+  .bills-create-footer { justify-content: stretch; }
+  .bills-create-footer .dc-btn { flex: 1; }
 }
 
 /* Manage button in invoices table */

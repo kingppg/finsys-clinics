@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AddPaymentForm from './AddPaymentForm';
 import InvoiceManagementModal from './InvoiceManagementModal';
+import InvoiceLineItems from './billing/InvoiceLineItems';
 import { DcThemeProvider } from '../themes/DcThemeProvider';
 import { AgingAnalysis } from './billing/AgingAnalysis';
 import { CollectionsOverview } from './billing/CollectionsOverview';
@@ -29,11 +30,27 @@ const I = {
   eye:      ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
   print:    ["M6 9V2h12v7", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v8H6z"],
   settings: ["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"],
+  trendingUp: ["M23 6l-9.5 9.5-5-5L1 18", "M17 6h6v6"],
+  alert:    ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z", "M12 9v4", "M12 17h.01"],
+  banknote: ["M2 6h20v12H2z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M6 9v.01M18 15v.01"],
+  coins:    ["M12 8c-3.87 0-7-1.34-7-3s3.13-3 7-3 7 1.34 7 3-3.13 3-7 3z", "M5 5v6c0 1.66 3.13 3 7 3s7-1.34 7-3V5", "M5 11v6c0 1.66 3.13 3 7 3s7-1.34 7-3v-6"],
 };
 
+// One status color language for chips + KPIs (mirrors the table status badges).
+const TONE = {
+  accent:  { t: 'var(--dc-accent)',  s: 'var(--dc-accent-soft)' },
+  success: { t: 'var(--dc-success)', s: 'var(--dc-success-soft)' },
+  warning: { t: 'var(--dc-warning)', s: 'var(--dc-warning-soft)' },
+  danger:  { t: 'var(--dc-danger)',  s: 'var(--dc-danger-soft)' },
+  info:    { t: 'var(--dc-info)',    s: 'var(--dc-info-soft)' },
+  muted:   { t: 'var(--dc-text-3)',  s: 'var(--dc-surface-2)' },
+};
+const toneVars = (tone) => ({ '--tone': TONE[tone].t, '--tone-soft': TONE[tone].s });
+const CHIP_TONE = { all: 'accent', Unpaid: 'danger', Partial: 'warning', Overdue: 'danger', Paid: 'success', Voided: 'muted' };
+
 const swalConfig = {
-  confirmButtonColor: "#0f2340",
-  cancelButtonColor: "#64748b",
+  // Dialog colors come from the global swalTheme.css (app-wide SweetAlert theme);
+  // only geometry is set here via customClass.
   customClass: {
     confirmButton: "bills-swal-confirm-btn",
     cancelButton: "bills-swal-cancel-btn",
@@ -47,6 +64,7 @@ function BillsPayment() {
   const [payments, setPayments] = useState([]);
   const [patients, setPatients] = useState([]);
   const [dentists, setDentists] = useState([]);
+  const [procedures, setProcedures] = useState([]);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showAddPayment, setShowAddPayment] = useState(false);
   const [activeTab, setActiveTab] = useState('invoices'); // 'invoices' | 'aging' | 'collections'
@@ -67,11 +85,18 @@ function BillsPayment() {
   const [activeReceipt, setActiveReceipt] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
 
-  // Add Invoice Modal
+  // Create Invoice Modal (staged — invoice + line items committed atomically)
   const [showAddInvoice, setShowAddInvoice] = useState(false);
   const [addInvoicePatientSearch, setAddInvoicePatientSearch] = useState('');
   const [addInvoicePatientId, setAddInvoicePatientId] = useState('');
-  const [addInvoiceTotal, setAddInvoiceTotal] = useState('');
+  const [addInvoiceDentistId, setAddInvoiceDentistId] = useState('');
+  const [addInvoiceApptId, setAddInvoiceApptId] = useState('');
+  const [addInvoiceDate, setAddInvoiceDate] = useState('');
+  const [addInvoiceDue, setAddInvoiceDue] = useState('');
+  const [addInvoiceDiscount, setAddInvoiceDiscount] = useState('');
+  const [addInvoiceNotes, setAddInvoiceNotes] = useState('');
+  const [addLineItems, setAddLineItems] = useState([]);
+  const [patientAppointments, setPatientAppointments] = useState([]);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [filteredPatients, setFilteredPatients] = useState([]);
   const [patientDropdownVisible, setPatientDropdownVisible] = useState(false);
@@ -87,12 +112,14 @@ function BillsPayment() {
       supabase.from('payments').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }),
       supabase.from('patients').select('*').eq('clinic_id', clinicId),
       supabase.from('dentists').select('*').eq('clinic_id', clinicId),
+      supabase.from('procedures').select('*').eq('clinic_id', clinicId).order('name'),
     ])
-    .then(([invRes, payRes, patRes, denRes]) => {
+    .then(([invRes, payRes, patRes, denRes, procRes]) => {
       setInvoices(invRes.data || []);
       setPayments(payRes.data || []);
       setPatients(patRes.data || []);
       setDentists(denRes.data || []);
+      setProcedures(procRes.data || []);
     })
     .catch(err => console.error("Error syncing data:", err))
     .finally(() => setTableLoading(false));
@@ -201,6 +228,21 @@ function BillsPayment() {
     ];
   })();
 
+  // Practice-finance KPIs for the Invoices tab — computed from the ACTIVE ledger
+  // (voided excluded), independent of the current search/filter so the headline
+  // numbers stay stable while the user drills the table below.
+  const ledgerKpis = (() => {
+    let billed = 0, collected = 0, outstanding = 0, overdueAmt = 0, overdueCount = 0;
+    for (const r of enrichedInvoices) {
+      if (r.isCancelled) continue;
+      billed += parseFloat(r.inv.total || 0);
+      collected += r.paidAmount;
+      outstanding += r.balanceDue;
+      if (r.isOverdue) { overdueAmt += r.balanceDue; overdueCount += 1; }
+    }
+    return { billed, collected, outstanding, overdueAmt, overdueCount, rate: billed > 0 ? collected / billed : 0 };
+  })();
+
   const searchQ = invoiceSearch.trim().toLowerCase().replace(/^#/, '');
   const filteredRows = enrichedInvoices.filter(row => {
     if (statusFilter === 'all') {
@@ -291,11 +333,20 @@ function BillsPayment() {
     }
   };
 
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+
   const handleShowAddInvoice = () => {
     setShowAddInvoice(true);
     setAddInvoicePatientSearch('');
     setAddInvoicePatientId('');
-    setAddInvoiceTotal('');
+    setAddInvoiceDentistId('');
+    setAddInvoiceApptId('');
+    setAddInvoiceDate(todayStr());
+    setAddInvoiceDue('');
+    setAddInvoiceDiscount('');
+    setAddInvoiceNotes('');
+    setAddLineItems([]);
+    setPatientAppointments([]);
     setFilteredPatients([]);
     setPatientDropdownVisible(false);
   };
@@ -311,44 +362,137 @@ function BillsPayment() {
       setFilteredPatients([]);
       setPatientDropdownVisible(false);
     }
+    // Changing the patient resets the visit link + attending dentist.
     setAddInvoicePatientId('');
+    setAddInvoiceApptId('');
+    setPatientAppointments([]);
+  };
+
+  const fetchPatientAppointments = async (patientId) => {
+    const { data } = await supabase
+      .from('appointments')
+      .select('id, appointment_time, status, dentist_id, procedure_id, procedure_price, reason')
+      .eq('patient_id', patientId)
+      .eq('clinic_id', clinicId)
+      .neq('status', 'Cancelled')
+      .order('appointment_time', { ascending: false })
+      .limit(15);
+    setPatientAppointments(data || []);
   };
 
   const handleSelectPatient = (patient) => {
     setAddInvoicePatientSearch(patient.name);
     setAddInvoicePatientId(patient.id);
     setPatientDropdownVisible(false);
+    setAddInvoiceApptId('');
+    fetchPatientAppointments(patient.id);
   };
 
-  const handleAddInvoiceSubmit = async (e) => {
-    e.preventDefault();
+  // Linking a visit auto-fills the attending dentist + the invoice date AND
+  // prefills the appointment's procedure as a line item — so a manual invoice
+  // ends up as complete as the one the Completed-status trigger generates.
+  const handleSelectAppt = (apptId) => {
+    setAddInvoiceApptId(apptId);
+    const appt = patientAppointments.find(a => String(a.id) === String(apptId));
+    if (!appt) return;
+    if (appt.dentist_id) setAddInvoiceDentistId(appt.dentist_id);
+    if (appt.appointment_time) setAddInvoiceDate(appt.appointment_time.slice(0, 10));
+
+    // Prefill the booked procedure as a line item (deduped by procedure).
+    if (appt.procedure_id) {
+      const proc = procedures.find(p => String(p.id) === String(appt.procedure_id));
+      const price = parseFloat(appt.procedure_price ?? proc?.price ?? 0) || 0;
+      // Appointment `reason` is stored as "Procedure Name — Notes: ...";
+      // use the clean procedure name for the line description.
+      const desc = proc?.name || (appt.reason ? appt.reason.split(' — Notes:')[0].trim() : 'Procedure');
+      setAddLineItems(prev => {
+        if (prev.some(li => String(li.procedure_id) === String(appt.procedure_id))) return prev;
+        return [...prev, {
+          procedure_id: appt.procedure_id,
+          description: desc,
+          quantity: 1,
+          unit_price: price,
+          total: price,
+          _tmpId: `${Date.now()}-${Math.random()}`,
+        }];
+      });
+    }
+  };
+
+  // Staged line-item handlers (in-memory until the invoice is committed).
+  const addStagedItem = (item) => {
+    setAddLineItems(prev => [
+      ...prev,
+      { ...item, _tmpId: `${Date.now()}-${Math.random()}`, total: item.quantity * item.unit_price },
+    ]);
+  };
+  const removeStagedItem = (item) => {
+    setAddLineItems(prev => prev.filter(x => x !== item));
+  };
+
+  const addSubtotal = addLineItems.reduce((s, i) => s + parseFloat(i.total || 0), 0);
+  const addDiscountAmt = parseFloat(addInvoiceDiscount || 0) || 0;
+  const addTotal = Math.max(addSubtotal - addDiscountAmt, 0);
+
+  // Atomic create: insert the invoice, then its line items (DB triggers own the
+  // totals). Nothing is written until this runs, so cancelling leaves no orphan.
+  const handleCreateInvoice = async (thenPay = false) => {
     if (!addInvoicePatientId) {
-      Swal.fire({ ...swalConfig, title: "Validation Error", text: "Please pick a registered patient from the active search registry.", icon: "warning" });
+      Swal.fire({ ...swalConfig, title: 'Select a patient', text: 'Please pick a registered patient first.', icon: 'warning' });
       return;
     }
     setInvoiceLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data: inv, error } = await supabase
         .from('invoices')
         .insert([{
           patient_id: addInvoicePatientId,
-          total: parseFloat(addInvoiceTotal) || 0,
+          dentist_id: addInvoiceDentistId || null,
           clinic_id: clinicId,
           status: 'Unpaid',
-          invoice_date: new Date().toISOString().slice(0, 10),
+          invoice_date: addInvoiceDate || todayStr(),
+          due_date: addInvoiceDue || null,
+          discount: addDiscountAmt,
+          notes: addInvoiceNotes.trim() || null,
+          total: 0,
         }])
         .select()
         .single();
+      if (error) throw error;
 
-      if (error) {
-        Swal.fire({ ...swalConfig, title: "Query Error", text: error.message || "Failed to catalog invoice.", icon: "error" });
-      } else if (data) {
-        setInvoices(prev => [data, ...prev]);
-        setShowAddInvoice(false);
-        Swal.fire({ ...swalConfig, title: "Created", text: "Invoice created. Open it to add line items.", icon: "success", timer: 1800, showConfirmButton: false });
+      if (addLineItems.length > 0) {
+        const rows = addLineItems.map(li => ({
+          invoice_id: inv.id,
+          clinic_id: clinicId,
+          procedure_id: li.procedure_id || null,
+          description: li.description,
+          quantity: li.quantity,
+          unit_price: li.unit_price,
+        }));
+        const { error: itemsErr } = await supabase.from('invoice_items').insert(rows);
+        if (itemsErr) throw itemsErr;
+      }
+
+      await refreshData();
+      setShowAddInvoice(false);
+
+      if (thenPay) {
+        // Re-read so the DB-computed total drives the payment screen's balance.
+        const { data: fresh } = await supabase.from('invoices').select('*').eq('id', inv.id).single();
+        setSelectedInvoice(fresh || inv);
+        setShowAddPayment(true);
+      } else {
+        Swal.fire({
+          ...swalConfig,
+          title: 'Invoice created',
+          text: addLineItems.length ? 'Invoice and line items saved.' : 'Empty invoice created — open it to add line items.',
+          icon: 'success',
+          timer: 1600,
+          showConfirmButton: false,
+        });
       }
     } catch (err) {
-      Swal.fire({ ...swalConfig, title: "Network Interrupted", text: "Connection issues blocking database writes.", icon: "error" });
+      Swal.fire({ ...swalConfig, title: 'Failed to create', text: err.message || 'Could not create the invoice.', icon: 'error' });
     }
     setInvoiceLoading(false);
   };
@@ -378,46 +522,47 @@ function BillsPayment() {
 
   return (
     <DcThemeProvider>
-    <div className="bills-container">
-      {/* Header */}
-      <div className="bills-sticky-header no-print">
-        <div className="bills-header-row">
-          <div className="bills-header-title">
-            <h2>Bills & Payments Ledger</h2>
-            <div className="bills-header-meta">
-              <span className="bills-stat">{invoices.length} <em>invoices</em></span>
-              <span className="bills-stat-divider">·</span>
-              <span className="bills-stat">{payments.length} <em>processed payments</em></span>
-            </div>
+    <div className="dc-page bills-page">
+      {/* Standard module header */}
+      <header className="dc-page-header no-print">
+        <div className="dc-page-titlewrap">
+          <div className="dc-page-eyebrow">Clinic Finance</div>
+          <h1 className="dc-page-title">Billing &amp; Payments</h1>
+          <div className="dc-page-subtitle bills-header-meta">
+            <span className="bills-stat">{invoices.length} <em>invoices</em></span>
+            <span className="bills-stat-divider">·</span>
+            <span className="bills-stat">{payments.length} <em>payments recorded</em></span>
           </div>
+        </div>
+        <div className="dc-page-header-actions">
           {activeTab === 'invoices' && (
-            <button className="bills-action-btn" onClick={handleShowAddInvoice}>
-              <Icon d={I.plus} /> Add Invoice
+            <button className="dc-btn dc-btn--primary" onClick={handleShowAddInvoice}>
+              <Icon d={I.plus} size={16} /> Add Invoice
             </button>
           )}
         </div>
+      </header>
 
-        {/* Tabs Navigation */}
-        <div className="bills-tabs-container">
-          <button
-            className={`bills-tab ${activeTab === 'invoices' ? 'active' : ''}`}
-            onClick={() => setActiveTab('invoices')}
-          >
-            Invoices
-          </button>
-          <button
-            className={`bills-tab ${activeTab === 'aging' ? 'active' : ''}`}
-            onClick={() => setActiveTab('aging')}
-          >
-            Aging Analysis
-          </button>
-          <button
-            className={`bills-tab ${activeTab === 'collections' ? 'active' : ''}`}
-            onClick={() => setActiveTab('collections')}
-          >
-            Collections
-          </button>
-        </div>
+      {/* Tabs Navigation */}
+      <div className="dc-tabs no-print">
+        <button
+          className={`dc-tab ${activeTab === 'invoices' ? 'active' : ''}`}
+          onClick={() => setActiveTab('invoices')}
+        >
+          Invoices
+        </button>
+        <button
+          className={`dc-tab ${activeTab === 'aging' ? 'active' : ''}`}
+          onClick={() => setActiveTab('aging')}
+        >
+          Aging Analysis
+        </button>
+        <button
+          className={`dc-tab ${activeTab === 'collections' ? 'active' : ''}`}
+          onClick={() => setActiveTab('collections')}
+        >
+          Collections
+        </button>
       </div>
 
       {/* Main Body */}
@@ -427,11 +572,48 @@ function BillsPayment() {
         {/* INVOICES TAB */}
         {activeTab === 'invoices' && (
         <>
+        {/* KPI STRIP — headline finance metrics for the active ledger */}
+        <div className="bills-kpis">
+          <div className="bills-kpi" style={toneVars('warning')}>
+            <div className="bills-kpi-top">
+              <span className="bills-kpi-label">Outstanding</span>
+              <span className="bills-kpi-icon"><Icon d={I.wallet} size={16} /></span>
+            </div>
+            <div className="bills-kpi-value">{fmt(ledgerKpis.outstanding)}</div>
+            <div className="bills-kpi-sub">across active invoices</div>
+          </div>
+          <div className="bills-kpi" style={toneVars('success')}>
+            <div className="bills-kpi-top">
+              <span className="bills-kpi-label">Collected</span>
+              <span className="bills-kpi-icon"><Icon d={I.banknote} size={16} /></span>
+            </div>
+            <div className="bills-kpi-value">{fmt(ledgerKpis.collected)}</div>
+            <div className="bills-kpi-sub">of {fmt(ledgerKpis.billed)} billed</div>
+          </div>
+          <div className="bills-kpi" style={toneVars('danger')}>
+            <div className="bills-kpi-top">
+              <span className="bills-kpi-label">Overdue</span>
+              <span className="bills-kpi-icon"><Icon d={I.alert} size={16} /></span>
+            </div>
+            <div className="bills-kpi-value">{fmt(ledgerKpis.overdueAmt)}</div>
+            <div className="bills-kpi-sub">{ledgerKpis.overdueCount} invoice{ledgerKpis.overdueCount === 1 ? '' : 's'} past due</div>
+          </div>
+          <div className="bills-kpi" style={toneVars('accent')}>
+            <div className="bills-kpi-top">
+              <span className="bills-kpi-label">Collection Rate</span>
+              <span className="bills-kpi-icon"><Icon d={I.trendingUp} size={16} /></span>
+            </div>
+            <div className="bills-kpi-value">{(ledgerKpis.rate * 100).toFixed(1)}%</div>
+            <div className="bills-kpi-sub">collected vs billed</div>
+          </div>
+        </div>
+
         {/* INVOICES TABLE */}
         <div className="bills-section-card">
           <div className="bills-section-header">
             <Icon d={I.fileText} size={16} />
             <h3 className="bills-section-title">Active Invoices</h3>
+            <span className="bills-section-sub">{filteredRows.length} shown</span>
           </div>
 
           {/* Search + status filter toolbar */}
@@ -450,10 +632,11 @@ function BillsPayment() {
                 (chip.key !== 'Voided' || chip.count > 0) && (
                   <button
                     key={chip.key}
-                    className={`bills-chip${statusFilter === chip.key ? ' active' : ''}`}
+                    className={`dc-chip${statusFilter === chip.key ? ' active' : ''}`}
+                    style={toneVars(CHIP_TONE[chip.key] || 'accent')}
                     onClick={() => { setStatusFilter(chip.key); setInvoicePage(1); }}
                   >
-                    {chip.label} <span className="bills-chip-count">{chip.count}</span>
+                    {chip.label} <span className="dc-chip-count">{chip.count}</span>
                   </button>
                 )
               ))}
@@ -588,6 +771,7 @@ function BillsPayment() {
           <div className="bills-section-header">
             <Icon d={I.wallet} size={16} />
             <h3 className="bills-section-title">Payment Collections Audit</h3>
+            <span className="bills-section-sub">{payments.length} transaction{payments.length === 1 ? '' : 's'}</span>
           </div>
 
           <table className="bills-table bills-payments-table">
@@ -685,45 +869,124 @@ function BillsPayment() {
         />
       )}
 
-      {/* ADD INVOICE MODAL */}
+      {/* CREATE INVOICE MODAL — staged builder, atomic commit */}
       {showAddInvoice && (
-        <div className="bills-modal-overlay no-print" onClick={() => setShowAddInvoice(false)}>
-          <form onSubmit={handleAddInvoiceSubmit} className="bills-modal-form" autoComplete="off" onClick={e => e.stopPropagation()}>
-            <div className="bills-modal-header">
-              <h3>Create Patient Invoice</h3>
-              <p className="bills-modal-sub">A blank invoice will be created. Add line items after creation.</p>
+        <div className="dc-overlay no-print" onClick={() => setShowAddInvoice(false)}>
+          <div className="dc-modal dc-modal--wide bills-create-modal" onClick={e => e.stopPropagation()}>
+            <div className="bills-create-head">
+              <div>
+                <h3 className="bills-create-title">Create Invoice</h3>
+                <p className="bills-create-sub">Build the invoice and its line items, then create it in one step.</p>
+              </div>
+              <button className="dc-modal-close" onClick={() => setShowAddInvoice(false)} aria-label="Close">×</button>
             </div>
-            <div className="bills-modal-body">
-              <div className="bills-modal-row" ref={dropdownRef}>
-                <label>Select Patient</label>
-                <div className="bills-search-input-wrap">
-                  <span className="bills-input-icon"><Icon d={I.search} size={14} /></span>
-                  <input
-                    className="bills-modal-input bills-input-has-icon"
-                    type="text"
-                    value={addInvoicePatientSearch}
-                    onChange={handlePatientSearchChange}
-                    onFocus={() => addInvoicePatientSearch && setPatientDropdownVisible(true)}
-                    placeholder="Search patient registry by name..."
-                    required
-                  />
+
+            <div className="bills-create-body">
+              {/* PATIENT & VISIT */}
+              <div className="inv-mgmt-section">
+                <div className="inv-mgmt-section-title">Patient &amp; Visit</div>
+                <div className="bills-create-grid">
+                  <div className="bills-create-patient" ref={dropdownRef}>
+                    <span>Patient *</span>
+                    <div className="bills-search-input-wrap">
+                      <span className="bills-input-icon"><Icon d={I.search} size={14} /></span>
+                      <input
+                        className="bills-modal-input bills-input-has-icon"
+                        type="text"
+                        value={addInvoicePatientSearch}
+                        onChange={handlePatientSearchChange}
+                        onFocus={() => addInvoicePatientSearch && setPatientDropdownVisible(true)}
+                        placeholder="Search patient by name..."
+                      />
+                      {patientDropdownVisible && filteredPatients.length > 0 && (
+                        <ul className="bills-patient-dropdown">
+                          {filteredPatients.map(p => (
+                            <li key={p.id} onClick={() => handleSelectPatient(p)}>{p.name}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+
+                  <label className="dc-field">
+                    <span>Link Appointment</span>
+                    <select value={addInvoiceApptId} onChange={e => handleSelectAppt(e.target.value)} disabled={!addInvoicePatientId}>
+                      <option value="">{addInvoicePatientId ? '— None —' : 'Select a patient first'}</option>
+                      {patientAppointments.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {new Date(a.appointment_time).toLocaleDateString(currencyLocale, { month: 'short', day: 'numeric', year: 'numeric' })} · {a.status}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="dc-field">
+                    <span>Attending Dentist</span>
+                    <select value={addInvoiceDentistId} onChange={e => setAddInvoiceDentistId(e.target.value)}>
+                      <option value="">— None —</option>
+                      {dentists.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </label>
+
+                  <label className="dc-field">
+                    <span>Invoice Date</span>
+                    <input type="date" value={addInvoiceDate} onChange={e => setAddInvoiceDate(e.target.value)} />
+                  </label>
                 </div>
-                {patientDropdownVisible && filteredPatients.length > 0 && (
-                  <ul className="bills-patient-dropdown">
-                    {filteredPatients.map(p => (
-                      <li key={p.id} onClick={() => handleSelectPatient(p)}>{p.name}</li>
-                    ))}
-                  </ul>
+              </div>
+
+              {/* LINE ITEMS — shared builder (staged mode) */}
+              <InvoiceLineItems
+                items={addLineItems}
+                procedures={procedures}
+                onAddItem={addStagedItem}
+                onDeleteItem={removeStagedItem}
+                fmt={fmt}
+                currencySymbol={currencySymbol}
+              />
+
+              {/* DETAILS */}
+              <div className="inv-mgmt-section">
+                <div className="inv-mgmt-section-title">Invoice Details</div>
+                <div className="bills-create-grid">
+                  <label className="dc-field">
+                    <span>Discount ({currencySymbol})</span>
+                    <input type="number" min="0" step="0.01" value={addInvoiceDiscount}
+                      onChange={e => setAddInvoiceDiscount(e.target.value)} onFocus={e => e.target.select()} placeholder="0.00" />
+                  </label>
+                  <label className="dc-field">
+                    <span>Due Date</span>
+                    <input type="date" value={addInvoiceDue} onChange={e => setAddInvoiceDue(e.target.value)} />
+                  </label>
+                  <label className="dc-field dc-field--wide">
+                    <span>Notes</span>
+                    <textarea rows={2} value={addInvoiceNotes} onChange={e => setAddInvoiceNotes(e.target.value)}
+                      placeholder="Optional notes for this invoice..." />
+                  </label>
+                </div>
+              </div>
+
+              {/* TOTALS */}
+              <div className="inv-totals-block">
+                <div className="inv-totals-row"><span>Subtotal</span><span>{fmt(addSubtotal)}</span></div>
+                {addDiscountAmt > 0 && (
+                  <div className="inv-totals-row inv-totals-discount"><span>Discount</span><span>- {fmt(addDiscountAmt)}</span></div>
                 )}
+                <hr className="inv-totals-hr" />
+                <div className="inv-totals-row inv-totals-balance"><span>Total</span><span>{fmt(addTotal)}</span></div>
               </div>
             </div>
-            <div className="bills-modal-footer">
-              <button type="button" className="bills-btn-ghost" onClick={() => setShowAddInvoice(false)}>Cancel</button>
-              <button type="submit" className="bills-btn-confirm" disabled={invoiceLoading}>
-                {invoiceLoading ? <span className="bills-spinner-small" /> : <><Icon d={I.check} /> Create Invoice</>}
+
+            <div className="bills-create-footer">
+              <button className="dc-btn dc-btn--ghost" onClick={() => setShowAddInvoice(false)}>Cancel</button>
+              <button className="dc-btn dc-btn--ghost bills-create-pay" onClick={() => handleCreateInvoice(true)} disabled={invoiceLoading || !addInvoicePatientId}>
+                <Icon d={I.wallet} size={15} /> Create &amp; Record Payment
+              </button>
+              <button className="dc-btn dc-btn--primary" onClick={() => handleCreateInvoice(false)} disabled={invoiceLoading || !addInvoicePatientId}>
+                {invoiceLoading ? <span className="bills-spinner-small" /> : <><Icon d={I.check} size={16} /> Create Invoice</>}
               </button>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
