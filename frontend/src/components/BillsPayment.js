@@ -203,6 +203,11 @@ function BillsPayment() {
     return map;
   }, new Map());
 
+  // Invoice lookup — lets the payments audit show the ORIGINAL invoice date next
+  // to the payment date, so cross-period cash (a July payment on a May invoice)
+  // is obvious in the table itself.
+  const invoiceById = new Map(invoices.map(i => [i.id, i]));
+
   // ------- Period scoping -------
   // Invoices are scoped by invoice_date, payments by payment_date (cash in the
   // period). Balances still use ALL payments (paidByInvoice above) so a period
@@ -262,8 +267,13 @@ function BillsPayment() {
       outstanding += r.balanceDue;
       if (r.isOverdue) { overdueAmt += r.balanceDue; overdueCount += 1; }
     }
-    const collected = periodCollected;
-    return { billed, collected, outstanding, overdueAmt, overdueCount, activeCount, rate: billed > 0 ? collected / billed : 0 };
+    const collected = periodCollected; // cash received in the period (any invoice)
+    // Collection Rate is COHORT-based: what share of THIS period's own billings
+    // has been paid = (billed − still-outstanding) / billed. This avoids the
+    // misleading "100%" you get from dividing period-cash (which may settle old
+    // invoices) by period-billed. All-time, cohort == cash so it's unchanged.
+    const cohortPaid = Math.max(billed - outstanding, 0);
+    return { billed, collected, cohortPaid, outstanding, overdueAmt, overdueCount, activeCount, rate: billed > 0 ? cohortPaid / billed : 0 };
   })();
 
   const searchQ = invoiceSearch.trim().toLowerCase().replace(/^#/, '');
@@ -638,11 +648,11 @@ function BillsPayment() {
           </div>
           <div className="bills-kpi" style={toneVars('success')}>
             <div className="bills-kpi-top">
-              <span className="bills-kpi-label">Collected</span>
+              <span className="bills-kpi-label">Cash Collected</span>
               <span className="bills-kpi-icon"><Icon d={I.banknote} size={16} /></span>
             </div>
             <div className="bills-kpi-value">{fmt(ledgerKpis.collected)}</div>
-            <div className="bills-kpi-sub">{periodGran === 'all' ? `of ${fmt(ledgerKpis.billed)} billed` : 'cash received in period'}</div>
+            <div className="bills-kpi-sub">{periodGran === 'all' ? 'received all-time' : 'received in period (any invoice)'}</div>
           </div>
           <div className="bills-kpi" style={toneVars('danger')}>
             <div className="bills-kpi-top">
@@ -658,7 +668,7 @@ function BillsPayment() {
               <span className="bills-kpi-icon"><Icon d={I.trendingUp} size={16} /></span>
             </div>
             <div className="bills-kpi-value">{(ledgerKpis.rate * 100).toFixed(1)}%</div>
-            <div className="bills-kpi-sub">collected vs billed</div>
+            <div className="bills-kpi-sub">of this period's invoices paid</div>
           </div>
         </div>
 
@@ -837,17 +847,21 @@ function BillsPayment() {
                 <th>OR #</th>
                 <th>Method</th>
                 <th>Reference #</th>
+                <th>Invoice Date</th>
                 <th style={{ textAlign: "right" }}>Transaction Date</th>
               </tr>
             </thead>
             <tbody>
               {paymentsInPeriod.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="bills-no-data">No payments recorded in this period.</td>
+                  <td colSpan={8} className="bills-no-data">No payments recorded in this period.</td>
                 </tr>
               ) : (
                 paymentsInPeriod.map(pay => {
                   const patient = getPatientById(pay.patient_id);
+                  const srcInv = invoiceById.get(pay.invoice_id);
+                  const invDate = srcInv?.invoice_date;
+                  const isEarlier = periodRange.start && invDate && new Date(invDate) < periodRange.start;
                   return (
                     <tr key={pay.id}>
                       <td className="bills-td-id">#{pay.invoice_id}</td>
@@ -856,6 +870,10 @@ function BillsPayment() {
                       <td><code className="inv-or-num">{pay.or_number || '—'}</code></td>
                       <td><span className="bills-method-tag">{pay.method}</span></td>
                       <td><code className="bills-ref-num">{pay.reference_number || '—'}</code></td>
+                      <td className="bills-td-date">
+                        {invDate ? new Date(invDate).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
+                        {isEarlier && <span className="bills-earlier-tag" title="This payment settled an invoice billed before the selected period">earlier</span>}
+                      </td>
                       <td style={{ textAlign: "right" }} className="bills-td-date">
                         {pay.payment_date ? new Date(pay.payment_date).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}
                       </td>

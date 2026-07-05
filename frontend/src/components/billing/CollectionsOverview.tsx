@@ -65,9 +65,9 @@ export function CollectionsOverview({
       toneSoft: t.infoSoft,
     },
     {
-      label: 'Total Collected',
+      label: 'Cash Collected',
       value: fmt(data.totalCollected),
-      sub: `${data.paymentCount} payments`,
+      sub: `${data.paymentCount} payments received`,
       icon: <WalletIcon size={18} />,
       tone: t.success,
       toneSoft: t.successSoft,
@@ -146,14 +146,14 @@ export function CollectionsOverview({
       <div className="dcb-card">
         <div className="dcb-card-body">
           <div className="dcb-progress-head">
-            <span className="dcb-progress-title">Collection Progress</span>
+            <span className="dcb-progress-title">Collection Progress <span className="dcb-progress-note">· of this period's billings</span></span>
             <span className="dcb-progress-value">{(data.collectionRate * 100).toFixed(1)}%</span>
           </div>
           <div className="dcb-progress">
             <div className="dcb-progress-fill" style={{ width: `${ratePct}%` }} />
           </div>
           <div className="dcb-progress-foot">
-            <span>Collected: {fmt(data.totalCollected)}</span>
+            <span>Settled: {fmt(Math.max(data.totalBilled - data.outstanding, 0))}</span>
             <span>Billed: {fmt(data.totalBilled)}</span>
           </div>
         </div>

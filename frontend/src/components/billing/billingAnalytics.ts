@@ -243,7 +243,10 @@ export function computeCollections(
     (s, inv) => s + Math.max(num(inv.total) - (paidMap.get(Number(inv.id)) || 0), 0),
     0
   ); // cohort: unpaid balance of period invoices
-  const collectionRate = totalBilled > 0 ? totalCollected / totalBilled : 0;
+  // Cohort collection rate = share of THIS period's billings that are settled.
+  // (Not period-cash / period-billed, which is misleading when cash pays older
+  // invoices.) All-time, cohort == cash so the number is unchanged.
+  const collectionRate = totalBilled > 0 ? Math.max(totalBilled - outstanding, 0) / totalBilled : 0;
 
   // Charges vs discounts. invoice.total is stored NET of discount, so gross =
   // net + discount. Lets the practice see how much was discounted per period.

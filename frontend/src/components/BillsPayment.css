@@ -268,6 +268,22 @@
   color: var(--dc-text-3, #64748b);
 }
 
+/* "earlier" tag in the payments audit — flags cash that settled an invoice
+   billed before the selected period. */
+.bills-earlier-tag {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: var(--dc-warning-soft, #fffbeb);
+  color: var(--dc-warning, #d97706);
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
 .bills-no-data {
   color: var(--dc-text-3, #94a3b8);
   text-align: center;

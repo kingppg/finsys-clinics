@@ -435,6 +435,11 @@
   color: var(--dc-text-2);
 }
 
+.dcb-progress-note {
+  font-weight: 500;
+  color: var(--dc-text-3);
+}
+
 .dcb-progress-value {
   font-size: 0.95rem;
   font-weight: 700;
