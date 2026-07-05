@@ -291,6 +291,23 @@ Finished the theming rollout's last big config module AND converted the app's ha
 
 **Verification workflow used this round:** owner-approved live drive with Playwright (installed in the session scratchpad), logging in through the real login form and screenshotting `localhost:3000` (dev server on latest source via hot-reload). Migrations 004 + 005 must be run in Supabase **before** deploy — adding a column to `SAFE_CLINIC_COLUMNS` makes the Clinic Config load query error until the column exists.
 
+### m) Billing polish + complete invoice creation + accounting reflection — DEPLOYED 2026-07-05 (`5a1523e`, `7d8ad71`)
+Brought the Billing module (the theming pilot, predating the primitives/`.dc-page` standard) up to the app-wide premium bar AND finished the manual invoice-creation flow.
+
+**Premium theming pass (`5a1523e`):** dropped the boxed `.bills-container` outer panel → module now sits on the app canvas via `.dc-page` + the standard `.dc-page-header` (eyebrow **CLINIC FINANCE** → title **Billing & Payments**). Tabs → shared `.dc-tabs`; status filter chips → tone-aware `.dc-chip` (tones mirror the table status badges); added a **KPI strip** on the Invoices tab (Outstanding / Collected / Overdue / Collection Rate, tone cards computed from the active ledger); section-card headers gained right-aligned meta; Add Invoice button → `.dc-btn`; removed the navy SweetAlert overrides (global teal theme owns them). Dead CSS removed.
+
+**Complete staged invoice creation (`5a1523e`):** the old **+ Add Invoice** only created a ₱0 shell (patient-only; a dead `addInvoiceTotal` field). Replaced with a real **staged Create Invoice modal**: Patient (autocomplete) · **Link Appointment** · **Attending Dentist** · Invoice Date · **line items** (shared builder) · Discount · Due Date · Notes · **live totals** · **Create Invoice** / **Create & Record Payment**. Line items are staged in memory and the invoice + items are committed **atomically** on Create (DB triggers own totals) — **cancel writes nothing, so no more ₱0 orphan shells**. Linking an appointment auto-fills dentist + date AND **prefills the booked procedure as a line item** (reads `appointments.procedure_id` / `procedure_price` / `reason`), mirroring the Completed-status auto invoice.
+
+**Shared builder extraction (`5a1523e`):** the line-item builder (procedure-catalog search + custom item + qty/price + items table) was extracted from `InvoiceManagementModal` into **`billing/InvoiceLineItems.jsx`** (controlled: parent owns items + persistence). **Manage** modal consumes it in *persisted* mode (writes each item to the DB immediately — behavior verified identical); **Create** modal consumes it in *staged* mode (in-memory). So the two flows can't drift.
+
+**Accounting reflection — VERIFIED, not a bug (`7d8ad71`):** confirmed against live data that the existing totals trigger stores **`invoices.total` = Σ(line_items) − discount = NET** (e.g. #124: items 2000 − disc 250 = total 1750 = paid 1750 → balance 0 ✓; #140: 2200 − 200 = 2000 ✓). Discounts ARE reflected; payments settle the net; balances are correct. The **`subtotal` column was NULL on every invoice** (gross only recoverable as total + discount). Two upgrades:
+- **Collections "Charges & Discounts" strip** — Gross Charged − Discounts Given = Net Billed, from `invoice.total + invoice.discount` (no dependency on `subtotal`). Added to `billingAnalytics.computeCollections` + `CollectionsOverview`.
+- **Migration `006_invoice_subtotal.sql`** (⚠️ **RUN IN SUPABASE**): additive `set_invoice_subtotal()` trigger on `invoice_items` + one-time backfill → populates `invoices.subtotal` with the gross. **Does NOT touch the existing net-total trigger.** Idempotent.
+
+**Tally guide (standard):** day's income = actual cash = Σ`payments.amount` (Collections "Total Collected"); net revenue billed = Σ`invoice.total`; gross = Σ(total + discount); discounts given = Σ`discount`.
+
+**Still deferred (billing):** tax/VAT lines (`tax_rates` still unused), %-based or Senior/PWD-preset discounts, formal `invoice_number` sequence, persisting an `appointment_id` FK on invoices (column existence unconfirmed — the link autofills dentist/date/procedure only). Manage modal still uses `.bills-modal-overlay` (not `.dc-overlay`) — minor consistency follow-up.
+
 ### Local dev note
 A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
 
@@ -336,5 +353,7 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `21f9de7` | Clinic Config themed (settings-rail workspace) + AdminUsersRoles themed on primitives |
 | `1eeff4f` | SMS: clinic reminder template + sender-approval status (`/sms/sender-status`) + cost checker (`smsSegments.js`) + 429 retry; migration 004 |
 | `7eaaac5` | Templates: 6 clinic-editable status messages (`status_templates` jsonb) + emoji-free defaults + drop "See you soon!"; migration 005 |
+| `5a1523e` | Billing: premium theming pass (.dc-page/header/tabs/chips/KPIs) + complete staged invoice creation (appt link prefills procedure) + shared `<InvoiceLineItems>` builder |
+| `7d8ad71` | Billing: Collections "Charges & Discounts" (gross/net) + migration 006 populates `invoices.subtotal` (RUN IN SUPABASE) |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
