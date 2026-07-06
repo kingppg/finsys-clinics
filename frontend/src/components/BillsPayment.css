@@ -338,6 +338,11 @@
   color: var(--dc-danger, #dc2626);
 }
 
+.bills-status--overpaid {
+  background-color: var(--dc-info-soft, #eff6ff);
+  color: var(--dc-info, #2563eb);
+}
+
 .bills-method-tag {
   background: var(--dc-surface-2, #f1f5f9);
   color: var(--dc-text-2, #475569);
@@ -693,6 +698,7 @@
 .print-receipt-area .bills-status--unpaid { background-color: #fef2f2; color: #ef4444; border: 1px solid #fee2e2; }
 .print-receipt-area .bills-status--partial { background-color: #fffbeb; color: #d97706; border: 1px solid #fef3c7; }
 .print-receipt-area .bills-status--paid { background-color: #f0fdf4; color: #16a34a; border: 1px solid #dcfce7; }
+.print-receipt-area .bills-status--overpaid { background-color: #eff6ff; color: #2563eb; border: 1px solid #dbeafe; }
 .print-receipt-area .bills-method-tag { background: #f1f5f9; color: #475569; border: none; }
 
 .receipt-items-table {

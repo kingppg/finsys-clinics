@@ -125,7 +125,9 @@ function InvoiceManagementModal({
   const total = mgmtTotals.total;
   const isScPwd = mgmtTotals.isScPwd;
   const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
-  const balanceDue = Math.max(total - totalPaid, 0);
+  const rawBalance = total - totalPaid;               // negative when overpaid
+  const balanceDue = Math.max(rawBalance, 0);          // for "Record Payment" logic
+  const overpaid = rawBalance < -0.005;
 
   // Seed the custom value so an unchanged save preserves the amount.
   const openDiscountEdit = () => {
@@ -577,8 +579,8 @@ function InvoiceManagementModal({
                 </div>
                 <hr className="inv-totals-hr" />
                 <div className="inv-totals-row inv-totals-balance">
-                  <span>Balance Due</span>
-                  <span style={{ color: balanceDue > 0 ? 'var(--dc-danger, #dc2626)' : 'var(--dc-success, #16a34a)' }}>{fmt(balanceDue)}</span>
+                  <span>{overpaid ? 'Overpayment (credit)' : 'Balance Due'}</span>
+                  <span style={{ color: overpaid ? 'var(--dc-info, #2563eb)' : (balanceDue > 0 ? 'var(--dc-danger, #dc2626)' : 'var(--dc-success, #16a34a)') }}>{fmt(overpaid ? -rawBalance : balanceDue)}</span>
                 </div>
               </div>
             </>

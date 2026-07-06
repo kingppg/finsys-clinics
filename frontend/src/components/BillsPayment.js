@@ -245,10 +245,12 @@ function BillsPayment() {
     const currentStatus = inv.status || 'Unpaid';
     const isCancelled = currentStatus.toLowerCase() === 'cancelled';
     const paidAmount = paidByInvoice.get(inv.id) || 0;
-    const balanceDue = Math.max(parseFloat(inv.total || 0) - paidAmount, 0);
+    const rawBalance = parseFloat(inv.total || 0) - paidAmount;   // negative when overpaid
+    const balanceDue = Math.max(rawBalance, 0);
+    const overpaid = rawBalance < -0.005;
     const isOverdue = !isCancelled && inv.due_date && new Date(inv.due_date) < nowForOverdue && currentStatus !== 'Paid';
     const displayStatus = isCancelled ? 'Voided' : (isOverdue ? 'Overdue' : currentStatus);
-    return { inv, patient, patientName, currentStatus, isCancelled, isOverdue, paidAmount, balanceDue, displayStatus };
+    return { inv, patient, patientName, currentStatus, isCancelled, isOverdue, paidAmount, rawBalance, balanceDue, overpaid, displayStatus };
   });
 
   const chipDefs = (() => {
@@ -781,7 +783,7 @@ function BillsPayment() {
                 </tr>
               ) : (
                 pageRows.map(row => {
-                  const { inv, patient, currentStatus, isCancelled, isOverdue, paidAmount, balanceDue, displayStatus } = row;
+                  const { inv, patient, currentStatus, isCancelled, isOverdue, paidAmount, balanceDue, overpaid, rawBalance, displayStatus } = row;
 
                   return (
                     <tr key={inv.id} className={isCancelled ? 'bills-row-voided' : ''}>
@@ -807,12 +809,20 @@ function BillsPayment() {
                           : <span style={{ color: 'var(--dc-text-3)', fontWeight: 400 }}>—</span>}
                       </td>
                       <td style={{ textAlign: "right" }} className="bills-td-price">
-                        <span style={{ color: balanceDue > 0 ? (isOverdue ? 'var(--dc-danger)' : 'inherit') : 'var(--dc-text-3)' }}>
-                          {fmt(balanceDue)}
-                        </span>
+                        {overpaid ? (
+                          <span style={{ color: 'var(--dc-info, #2563eb)' }} title="Overpaid — credit / refund due">
+                            ({fmt(-rawBalance)})
+                          </span>
+                        ) : (
+                          <span style={{ color: balanceDue > 0 ? (isOverdue ? 'var(--dc-danger)' : 'inherit') : 'var(--dc-text-3)' }}>
+                            {fmt(balanceDue)}
+                          </span>
+                        )}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        <span className={`bills-status-badge bills-status--${displayStatus.toLowerCase()}`}>{displayStatus}</span>
+                        {overpaid && !isCancelled
+                          ? <span className="bills-status-badge bills-status--overpaid" title="Paid in full with a credit balance owed to the patient">Overpaid</span>
+                          : <span className={`bills-status-badge bills-status--${displayStatus.toLowerCase()}`}>{displayStatus}</span>}
                       </td>
                       <td style={{ textAlign: "right" }} className="bills-actions-cell">
                         <button className="bills-table-btn bills-btn-manage" onClick={() => handleManageInvoice(inv)}>
@@ -1199,7 +1209,9 @@ function BillsPayment() {
                     {dentist && <div style={{ fontSize: '12px', color: '#64748b' }}>Dr. {dentist.name}</div>}
                     {activeReceipt.invoice_date && <div style={{ fontSize: '12px', color: '#64748b' }}>Date: {new Date(activeReceipt.invoice_date).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })}</div>}
                     {activeReceipt.due_date && <div style={{ fontSize: '12px', color: '#64748b' }}>Due: {new Date(activeReceipt.due_date).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })}</div>}
-                    <span className={`bills-status-badge bills-status--${currentStatus.toLowerCase()}`}>{currentStatus}</span>
+                    {soaAmountDue - totalPaid < -0.005
+                      ? <span className="bills-status-badge bills-status--overpaid">Overpaid</span>
+                      : <span className={`bills-status-badge bills-status--${currentStatus.toLowerCase()}`}>{currentStatus}</span>}
                   </div>
                 </div>
 
@@ -1269,8 +1281,8 @@ function BillsPayment() {
                   </div>
                   <hr />
                   <div className="receipt-summary-line receipt-grand-total">
-                    <span>Remaining Balance Due:</span>
-                    <span>{fmt(soaBalance)}</span>
+                    <span>{soaAmountDue - totalPaid < -0.005 ? 'Overpayment (credit):' : 'Remaining Balance Due:'}</span>
+                    <span>{soaAmountDue - totalPaid < -0.005 ? fmt(totalPaid - soaAmountDue) : fmt(soaBalance)}</span>
                   </div>
                 </div>
 
