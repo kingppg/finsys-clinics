@@ -197,7 +197,7 @@ function InvoiceManagementModal({
   // Finalize (lock) the invoice. The Senior/PWD ID is captured with the invoice
   // (Create form / Details → Edit), so this is a simple confirm.
   const handleFinalize = async () => {
-    let msg = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed.';
+    let msg = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed. Make sure discounts and items are correct first. A finalized invoice can only be reopened while it has <b>no payments</b>.';
     if (isScPwd && !invoice.sc_pwd_id) {
       msg += '<br><br><b>No Senior/PWD ID recorded.</b> You can add it via <b>Edit</b> first (recommended for BIR), or finalize anyway.';
     }
@@ -215,6 +215,26 @@ function InvoiceManagementModal({
       await fetchData();
       onInvoiceUpdated && onInvoiceUpdated();
       Swal.fire({ ...swalConfig, icon: 'success', title: 'Invoice finalized & locked', timer: 1500, showConfirmButton: false });
+    }
+  };
+
+  // Reopen (unlock) a finalized invoice — only allowed while it has no payments
+  // (a premature manual lock on a draft is recoverable; paid invoices are not).
+  const handleReopen = async () => {
+    if (payments.length > 0) return;
+    const res = await Swal.fire({
+      ...swalConfig, title: 'Reopen this invoice?',
+      html: 'This <b>unlocks</b> the invoice so items and amounts can be edited again. Possible only because no payments are recorded.',
+      icon: 'question', showCancelButton: true, confirmButtonText: 'Reopen',
+    });
+    if (!res.isConfirmed) return;
+    const { error } = await supabase.from('invoices').update({ finalized_at: null }).eq('id', invoice.id);
+    if (error) {
+      Swal.fire({ ...swalConfig, icon: 'error', title: 'Cannot reopen', text: error.message });
+    } else {
+      await fetchData();
+      onInvoiceUpdated && onInvoiceUpdated();
+      Swal.fire({ ...swalConfig, icon: 'success', title: 'Invoice reopened', timer: 1300, showConfirmButton: false });
     }
   };
 
@@ -301,6 +321,11 @@ function InvoiceManagementModal({
                 <Icon d={I.lock} size={13} /> Finalize
               </button>
             )}
+            {isFinalized && payments.length === 0 && (
+              <button className="inv-mgmt-btn-print" onClick={handleReopen} title="Unlock this draft (no payments recorded)">
+                <Icon d={I.refresh} size={13} /> Reopen
+              </button>
+            )}
             <button className="inv-mgmt-btn-pay" onClick={onRecordPayment} disabled={balanceDue <= 0}>
               <Icon d={I.wallet} size={13} /> Record Payment
             </button>
@@ -319,7 +344,10 @@ function InvoiceManagementModal({
               {isFinalized && (
                 <div className="inv-lock-banner">
                   <Icon d={I.lock} size={14} />
-                  <span>This invoice was finalized on {new Date(invoice.finalized_at).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })} and is locked. Line items and amounts can no longer be changed.</span>
+                  <span>
+                    This invoice was finalized on {new Date(invoice.finalized_at).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })} and is locked — line items and amounts can no longer be changed.
+                    {payments.length === 0 ? ' Since no payment is recorded yet, you can Reopen it to edit.' : ''}
+                  </span>
                 </div>
               )}
               <InvoiceLineItems
