@@ -4,7 +4,12 @@ import Swal from 'sweetalert2';
 
 // POS-style payment entry: giant amount readout, on-screen numpad, big
 // tender buttons. Optimized for fast, error-free front-desk use — the
-// insert payload is unchanged (DB triggers own totals/status).
+// DB triggers still own totals/status.
+//
+// CASH is treated as a real tender: the input is "Cash Received"; we apply up
+// to the balance and hand back the rest as Change Due, so a cash payment can
+// never silently become a credit. Electronic methods record the amount as-is,
+// and paying over balance is an intentional advance credit.
 
 const METHOD_OPTIONS = [
   { value: 'cash', label: 'Cash' },
@@ -22,6 +27,13 @@ const REFERENCE_LABELS = {
 };
 
 const NUMPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
+const DENOMS = [1000, 500, 200, 100, 50, 20];
+
+// Local YYYY-MM-DD (not UTC) so the date picker matches the front desk's day.
+const localDateStr = (d = new Date()) => {
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 10);
+};
 
 function AddPaymentForm({
   invoice,
@@ -38,16 +50,30 @@ function AddPaymentForm({
   const [orNumber, setOrNumber] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
   const [notes, setNotes] = useState('');
+  const [paymentDate, setPaymentDate] = useState(localDateStr());
   const [loading, setLoading] = useState(false);
 
   const fmt = (n) => `${currencySymbol}${Number(n).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}`;
+  const fmt0 = (n) => `${currencySymbol}${Number(n).toLocaleString(currencyLocale)}`;
   const referenceLabel = REFERENCE_LABELS[method] || 'Reference # (optional)';
   const methodLabel = (METHOD_OPTIONS.find(m => m.value === method) || METHOD_OPTIONS[0]).label;
 
   const amountNum = parseFloat(amount) || 0;
   const hasBalance = typeof balanceDue === 'number' && isFinite(balanceDue);
-  const remaining = hasBalance ? Math.max(balanceDue - amountNum, 0) : null;
-  const overpay = hasBalance && balanceDue > 0 && amountNum > balanceDue + 0.004;
+  const isCash = method === 'cash';
+
+  // Cash: input = cash received (tendered). Apply up to balance, rest is change.
+  // Non-cash: input = amount recorded; over balance = intentional advance credit.
+  const tendered = amountNum;
+  const applied = isCash && hasBalance ? Math.min(tendered, balanceDue) : amountNum;
+  const changeDue = isCash && hasBalance ? Math.max(tendered - balanceDue, 0) : 0;
+  const recordedAmount = isCash ? applied : amountNum;
+  const remaining = hasBalance ? Math.max(balanceDue - recordedAmount, 0) : null;
+  const creditOver = !isCash && hasBalance && amountNum > balanceDue + 0.004;
+  const today = localDateStr();
+  const isBackdated = paymentDate && paymentDate < today;
+
+  const amountLabel = isCash ? 'Cash Received' : 'Payment Amount';
 
   // Numpad key press — keeps the value a clean money string (max 2 decimals)
   const pressKey = (key) => {
@@ -65,6 +91,11 @@ function AddPaymentForm({
     });
   };
 
+  // Denomination chip — stack bills onto the cash received
+  const addDenom = (d) => {
+    setAmount(prev => ((parseFloat(prev) || 0) + d).toFixed(2));
+  };
+
   // Direct keyboard typing — sanitize to digits + one dot, 2 decimals
   const handleAmountChange = (e) => {
     let val = e.target.value.replace(/[^\d.]/g, '');
@@ -79,20 +110,28 @@ function AddPaymentForm({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!amountNum || amountNum <= 0) {
+    if (!recordedAmount || recordedAmount <= 0) {
       Swal.fire({ title: 'Invalid amount', text: 'Please enter a valid payment amount.', icon: 'warning' });
       return;
     }
     setLoading(true);
 
+    // TIMESTAMPTZ column — send an ISO instant. Same-day keeps the real time;
+    // a back-dated entry lands at local noon so it can't slip a day in the
+    // period filters (which read payment_date).
+    const paymentInstant = (!paymentDate || paymentDate === today)
+      ? new Date().toISOString()
+      : new Date(`${paymentDate}T12:00:00`).toISOString();
+
     const payment = {
       patient_id: invoice.patient_id,
       invoice_id: invoice.id,
-      amount: amountNum,
+      amount: recordedAmount,
       method,
       or_number: orNumber.trim() || null,
       reference_number: referenceNumber.trim() || null,
       notes: notes.trim() || null,
+      payment_date: paymentInstant,
       clinic_id: clinicId,
     };
 
@@ -119,7 +158,7 @@ function AddPaymentForm({
           <div>
             <h3 className="pos-title">Record Payment</h3>
             <p className="pos-sub">
-              Invoice #{invoice.id}{patientName ? ` · ${patientName}` : ''}
+              {invoice.invoice_number || `#${invoice.id}`}{patientName ? ` · ${patientName}` : ''}
             </p>
           </div>
           {hasBalance && (
@@ -131,6 +170,7 @@ function AddPaymentForm({
         </div>
 
         {/* Giant amount readout */}
+        <span className="pos-amount-label">{amountLabel}</span>
         <div className="pos-amount-wrap">
           <span className="pos-amount-symbol">{currencySymbol}</span>
           <input
@@ -144,9 +184,17 @@ function AddPaymentForm({
           />
         </div>
         <div className="pos-amount-meta">
-          {overpay ? (
-            <span className="pos-warn">Overpayment: {fmt(amountNum - balanceDue)} above balance</span>
-          ) : remaining !== null ? (
+          {isCash ? (
+            changeDue > 0.004 ? (
+              <span className="pos-change">Applies {fmt(applied)} · Change Due <strong>{fmt(changeDue)}</strong></span>
+            ) : remaining !== null && remaining > 0.004 ? (
+              <span>Remaining after payment: <strong>{fmt(remaining)}</strong></span>
+            ) : recordedAmount > 0 ? (
+              <span className="pos-exact-note">Exact payment · no change</span>
+            ) : null
+          ) : creditOver ? (
+            <span className="pos-credit">Records {fmt(amountNum - balanceDue)} as advance credit</span>
+          ) : remaining !== null && remaining > 0.004 ? (
             <span>Remaining after payment: <strong>{fmt(remaining)}</strong></span>
           ) : null}
         </div>
@@ -162,6 +210,17 @@ function AddPaymentForm({
             Clear
           </button>
         </div>
+
+        {/* Cash denominations — stack bills onto the received total */}
+        {isCash && (
+          <div className="pos-denom-row">
+            {DENOMS.map(d => (
+              <button type="button" key={d} className="pos-denom-btn" onClick={() => addDenom(d)}>
+                +{fmt0(d)}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Numpad + payment method */}
         <div className="pos-grid">
@@ -188,6 +247,16 @@ function AddPaymentForm({
 
         {/* Compact detail fields */}
         <div className="pos-fields">
+          <div className="pos-field">
+            <label>Payment Date{isBackdated ? ' · back-dated' : ''}</label>
+            <input
+              className={`bills-modal-input${isBackdated ? ' pos-input-backdated' : ''}`}
+              type="date"
+              max={today}
+              value={paymentDate}
+              onChange={e => setPaymentDate(e.target.value)}
+            />
+          </div>
           <div className="pos-field">
             <label>Official Receipt (OR) #</label>
             <input
@@ -225,11 +294,11 @@ function AddPaymentForm({
           <button type="button" className="bills-btn-ghost pos-cancel" onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className="pos-confirm" disabled={loading || amountNum <= 0}>
+          <button type="submit" className="pos-confirm" disabled={loading || recordedAmount <= 0}>
             {loading
               ? <span className="bills-spinner-small" />
-              : amountNum > 0
-                ? `Record ${fmt(amountNum)} · ${methodLabel}`
+              : recordedAmount > 0
+                ? `Record ${fmt(recordedAmount)} · ${methodLabel}`
                 : 'Record Payment'}
           </button>
         </div>

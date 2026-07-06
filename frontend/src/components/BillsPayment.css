@@ -1886,10 +1886,72 @@ button.inv-elig-pill:hover { border-color: var(--dc-text-2, #64748b); }
   font-weight: 600;
 }
 
+.pos-amount-label {
+  display: block;
+  margin: 2px 2px 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--dc-text-3, #94a3b8);
+}
+
+.pos-change {
+  color: var(--dc-success, #16a34a);
+  font-weight: 600;
+}
+
+.pos-change strong {
+  font-size: 1.02rem;
+}
+
+.pos-credit {
+  color: var(--dc-info, #2563eb);
+  font-weight: 600;
+}
+
+.pos-exact-note {
+  color: var(--dc-text-3, #94a3b8);
+  font-weight: 600;
+}
+
 .pos-quick-row {
   display: flex;
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.pos-denom-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin: -4px 0 16px;
+}
+
+.pos-denom-btn {
+  padding: 9px 4px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-family: inherit;
+  border-radius: 8px;
+  border: 1.5px solid var(--dc-border-strong, #cbd5e1);
+  background: var(--dc-surface, transparent);
+  color: var(--dc-text-2, #475569);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.pos-denom-btn:hover {
+  border-color: var(--dc-accent, #0f2340);
+  background: var(--dc-accent-soft, #f1f5f9);
+  color: var(--dc-accent, #0f2340);
+}
+
+.pos-input-backdated {
+  border-color: var(--dc-warning, #d97706) !important;
+  color: var(--dc-warning, #d97706);
+  font-weight: 600;
 }
 
 .pos-quick-btn {
