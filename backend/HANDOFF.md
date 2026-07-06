@@ -338,6 +338,10 @@ The Billing module is now a complete, BIR-aware, audit-grade invoicing system. *
 
 **Also this session:** premium theming pass (`.dc-page`/header/tabs/chips/KPIs), complete staged invoice creation (appointment link prefills procedure), period picker (All/Annual/Monthly/Weekly/Daily, cohort collection rate), `INV-YYYY-####` numbering (007), configurable VAT (008, "VAT Registration" page — BIR wording), SOA VAT + Senior/PWD legal block, Procedures SC/PWD eligibility guide.
 
+**Overpayment display + POS modal (`2072c0f`, `0757d86`):**
+- **Overpaid invoices** no longer clamp to ₱0. List / Manage modal / SOA show **"Overpayment (credit)"** with the excess (info-blue; parens in the list Balance col) + a render-only **"Overpaid" pill** (`bills-status--overpaid`) that still counts/filters under Paid.
+- **POS payment modal (`AddPaymentForm.js`):** **Cash = real tender** — input is "Cash Received", auto-computes **Change Due**, records only `min(tendered, balance)` so cash never makes an accidental credit; denomination chips (+₱1000…+₱20) stack bills. **Electronic methods** record as-is, over-balance = intentional **advance credit** (labeled). Optional **back-dated Payment Date** (defaults today, capped today, amber when back-dated) sent as **local-noon ISO** so `payment_date` (TIMESTAMPTZ) period filters don't slip a day. Header shows formal `invoice_number`.
+
 **Migrations 007–013 ALL RUN ✅. Billing VAT/discount/finalize/refund work is COMPLETE — nothing deferred.** Only minor cosmetic follow-ups remain: persist `appointment_id` FK on invoices (column unconfirmed); Manage modal still on `.bills-modal-overlay` (not `.dc-overlay`); optional per-invoice VAT-rate snapshot.
 
 ### Local dev note
@@ -406,5 +410,7 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `5f2d9ee` | Polish: BIR-accurate "VAT Registration" page wording + Procedures SC/PWD guide callout |
 | `9486fdf` / `138bc47` | Migration 013 + Phase 4: reverse/refund a payment (offsetting entry, net-aware guards) |
 | `813dd1e` | Billing: partial refund amount (reverse-payment amount modal — overpayment in one step) |
+| `2072c0f` | Billing: show overpayment credit instead of clamped ₱0 balance (+ "Overpaid" pill) |
+| `0757d86` | Billing: POS modal — cash tender/change, denomination chips, back-dated date, formal invoice # |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
