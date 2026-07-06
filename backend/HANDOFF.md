@@ -320,6 +320,25 @@ Brought the Billing module (the theming pilot, predating the primitives/`.dc-pag
 
 **Still deferred (billing):** persisting an `appointment_id` FK on invoices (column existence unconfirmed); Manage modal still on `.bills-modal-overlay` (not `.dc-overlay`); optional per-invoice VAT-rate snapshot (currently the lock freezes tax_amount, and the SOA can derive the rate from stored values). The VAT/discount/finalize work (Phases 1–3) is otherwise complete.
 
+### n) BILLING — accounting system state (end of 2026-07-06 session) ⭐ read this first for billing
+The Billing module is now a complete, BIR-aware, audit-grade invoicing system. **All migrations 007–012 were RUN in Supabase and verified ✅** this session (frontend + DB in sync). Summary of the money model and the non-obvious rules:
+
+**Pricing/tax model — VAT-EXCLUSIVE (permanent, owner decision):** stored line prices are base amounts (no VAT baked in). `billing/discount.ts` **`computeInvoiceTotals()` is the ONE engine** and mirrors the DB total triggers exactly. Per invoice:
+- `subtotal` = Σ line items (gross, DB-owned via 006 trigger); `discount`; `tax_amount` (VAT); `total = (subtotal − discount) + vat`.
+- **Senior/PWD = 20% of the ELIGIBLE base only** (mixed invoices; per-line `invoice_items.sc_pwd_eligible`, catalog default `procedures.sc_pwd_eligible`). Eligible lines are VAT-exempt; non-eligible lines are VATable. **DB owns the SC/PWD discount** (recomputes as lines change).
+- **Regular VAT invoice = base + 12%** (additive). VAT only for `clinics.vat_registered` clinics. All clinics currently Non-VAT.
+- DB total triggers: `update_invoice_total_from_items` (AFTER on invoice_items) + `update_invoice_total_on_discount` (BEFORE UPDATE on invoices). VAT-aware, eligibility-aware, finalize-aware.
+
+**Finalize / lock rules (Phase 3):**
+- `invoices.finalized_at` = lock; `invoices.sc_pwd_id` = OSCA/PWD ID (captured in the invoice FORM, not a swal — swal2 inputs render display:none here).
+- **Fully paid → auto-finalizes** (payments trigger `autolock_on_full_payment`). **Manual Finalize button = zero-payment invoices only.** **Partial-paid is NEVER auto/manually locked → stays editable** (so a mid-payment senior discount recomputes from the ORIGINAL amount; the paid amount stands, balance = total − paid).
+- **Reopen** (unlock) = finalized invoices with **zero payments only** (DB-enforced by 012). Any payment (partial/full) → cannot reopen/void/re-apply. Finalized = DB-blocks item + amount changes.
+- The consistent principle: **any payment commits the amounts** for destructive actions (Void, Re-apply, Reopen, manual Finalize); **discount Edit stays open until finalization**; **full payment = hard lock**.
+
+**Also this session:** premium theming pass (`.dc-page`/header/tabs/chips/KPIs), complete staged invoice creation (appointment link prefills procedure), period picker (All/Annual/Monthly/Weekly/Daily, cohort collection rate), `INV-YYYY-####` numbering (007), configurable VAT (008, "VAT Registration" page — BIR wording), SOA VAT + Senior/PWD legal block, Procedures SC/PWD eligibility guide.
+
+**Only deferred billing item:** refund / reverse a payment (to correct a paid invoice) — "Phase 4", not built, nothing blocked without it. Minor: persist `appointment_id` FK (column unconfirmed); Manage modal still on `.bills-modal-overlay`.
+
 ### Local dev note
 A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
 
@@ -382,5 +401,7 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `b7fee4a` | Migration 011: invoice finalize/lock + Senior/PWD ID + DB immutability + auto-lock on full payment |
 | `75662f7`,`42b6488` | Billing Phase 3: finalize/lock UI + Senior/PWD ID capture + SOA legal block |
 | `95259a5` / `983f2d4` | Migration 012 + Reopen button (unlock finalized draft with zero payments; DB-enforced) |
+| `495e8a5` | Fix: manual Finalize allowed only on zero-payment invoices (partial-paid stays editable, locks via full payment) |
+| `5f2d9ee` | Polish: BIR-accurate "VAT Registration" page wording + Procedures SC/PWD guide callout |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
