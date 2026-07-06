@@ -31,7 +31,7 @@ const I = {
   search: ['M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z'],
 };
 
-function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, fmt, currencySymbol, busy = false }) {
+function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggleEligible, fmt, currencySymbol, busy = false }) {
   const [addMode, setAddMode] = useState(null); // 'procedure' | 'custom'
   const [procSearch, setProcSearch] = useState('');
   const [procDropdownVisible, setProcDropdownVisible] = useState(false);
@@ -40,6 +40,7 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, fmt, cur
   const [itemQty, setItemQty] = useState(1);
   const [itemUnitPrice, setItemUnitPrice] = useState('');
   const [itemDesc, setItemDesc] = useState('');
+  const [itemEligible, setItemEligible] = useState(true); // SC/PWD eligible
 
   const dropdownRef = useRef(null);
 
@@ -59,6 +60,7 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, fmt, cur
     setItemQty(1);
     setItemUnitPrice('');
     setItemDesc('');
+    setItemEligible(true);
     setFilteredProcs([]);
     setProcDropdownVisible(false);
   };
@@ -81,6 +83,7 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, fmt, cur
     setSelectedProc(proc);
     setProcSearch(proc.name);
     setItemUnitPrice(proc.price || '');
+    setItemEligible(proc.sc_pwd_eligible !== false); // inherit catalog eligibility
     setProcDropdownVisible(false);
     setFilteredProcs([]);
   };
@@ -108,6 +111,7 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, fmt, cur
       description: desc.trim(),
       quantity: qty,
       unit_price: price,
+      sc_pwd_eligible: itemEligible,
     });
 
     resetForm();
@@ -179,6 +183,13 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, fmt, cur
             </span>
           </div>
 
+          <div className="inv-add-row">
+            <label className="inv-elig-check">
+              <input type="checkbox" checked={itemEligible} onChange={e => setItemEligible(e.target.checked)} />
+              <span>Senior/PWD eligible <em>(uncheck for cosmetic / non-medical items)</em></span>
+            </label>
+          </div>
+
           <div className="inv-add-row inv-add-actions">
             <button type="button" className="inv-btn-ghost" onClick={() => { resetForm(); setAddMode(null); }}>Cancel</button>
             <button type="button" className="inv-btn-confirm" onClick={handleSubmit} disabled={busy}>
@@ -196,26 +207,44 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, fmt, cur
             <th style={{ textAlign: 'center' }}>Qty</th>
             <th style={{ textAlign: 'right' }}>Unit Price</th>
             <th style={{ textAlign: 'right' }}>Total</th>
+            <th style={{ textAlign: 'center', width: 110 }}>SC/PWD</th>
             <th style={{ width: 40 }}></th>
           </tr>
         </thead>
         <tbody>
           {items.length === 0 ? (
-            <tr><td colSpan={5} className="inv-no-items">No line items yet. Add a procedure or custom item above.</td></tr>
+            <tr><td colSpan={6} className="inv-no-items">No line items yet. Add a procedure or custom item above.</td></tr>
           ) : (
-            items.map(item => (
+            items.map(item => {
+              const eligible = item.sc_pwd_eligible !== false;
+              return (
               <tr key={item.id ?? item._tmpId}>
                 <td>{item.description}</td>
                 <td style={{ textAlign: 'center' }}>{item.quantity}</td>
                 <td style={{ textAlign: 'right' }}>{fmt(item.unit_price)}</td>
                 <td style={{ textAlign: 'right' }} className="inv-item-total">{fmt(item.total)}</td>
+                <td style={{ textAlign: 'center' }}>
+                  {onToggleEligible ? (
+                    <button
+                      type="button"
+                      className={`inv-elig-pill${eligible ? ' is-elig' : ''}`}
+                      onClick={() => onToggleEligible(item)}
+                      title={eligible ? 'Eligible for SC/PWD discount — click to exclude' : 'Not eligible — click to include'}
+                    >
+                      {eligible ? 'Eligible' : 'Excluded'}
+                    </button>
+                  ) : (
+                    <span className={`inv-elig-pill${eligible ? ' is-elig' : ''}`}>{eligible ? 'Eligible' : 'Excluded'}</span>
+                  )}
+                </td>
                 <td>
                   <button type="button" className="inv-delete-btn" onClick={() => onDeleteItem(item)}>
                     <Icon d={I.trash} size={13} />
                   </button>
                 </td>
               </tr>
-            ))
+              );
+            })
           )}
         </tbody>
       </table>

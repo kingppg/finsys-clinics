@@ -559,3 +559,34 @@
   border-radius: 8px !important;
   padding: 8px 18px !important;
 }
+
+/* SC/PWD eligibility — cosmetic badge + inline edit toggle */
+.CPM-cosmetic-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  background: var(--dc-warning-soft, rgba(251,191,36,0.13));
+  color: var(--dc-warning, #d97706);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+.CPM-elig-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--dc-text-2, #475569);
+  cursor: pointer;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.CPM-elig-toggle input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--dc-accent, #2DD4BF);
+  cursor: pointer;
+}

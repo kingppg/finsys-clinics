@@ -1366,6 +1366,43 @@
   padding: 20px !important;
 }
 
+/* SC/PWD eligibility — add-form checkbox + per-line pill */
+.inv-elig-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--dc-text-2, #475569);
+  cursor: pointer;
+}
+.inv-elig-check input[type="checkbox"] {
+  width: 16px; height: 16px;
+  accent-color: var(--dc-accent, #2DD4BF);
+  cursor: pointer; flex-shrink: 0;
+}
+.inv-elig-check em { font-style: normal; color: var(--dc-text-3, #94a3b8); }
+
+.inv-elig-pill {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border: 1px solid var(--dc-border-strong, #cbd5e1);
+  background: transparent;
+  color: var(--dc-text-3, #94a3b8);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+button.inv-elig-pill:hover { border-color: var(--dc-text-2, #64748b); }
+.inv-elig-pill.is-elig {
+  background: var(--dc-success-soft, rgba(74, 222, 128, 0.13));
+  color: var(--dc-success, #16a34a);
+  border-color: transparent;
+}
+
 /* Delete button */
 .inv-delete-btn {
   background: none;

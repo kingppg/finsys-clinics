@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import Swal from 'sweetalert2';
 import InvoiceLineItems from './billing/InvoiceLineItems';
-import { DISCOUNT_TYPES, computeDiscount, computeVat } from './billing/discount';
+import { DISCOUNT_TYPES, computeInvoiceTotals } from './billing/discount';
 
 const swalConfig = {
   confirmButtonColor: "#0f2340",
@@ -101,16 +101,23 @@ function InvoiceManagementModal({
   const subtotal = items.reduce((s, i) => s + parseFloat(i.total || 0), 0);
   const discLabelFor = (t) => t === 'senior' ? 'Senior Citizen 20%' : t === 'pwd' ? 'PWD 20%'
     : t === 'percent' ? 'Discount' : t === 'amount' ? 'Discount' : '';
-  const liveDiscount = discountEdit
-    ? computeDiscount({ subtotal, type: discountType, customValue: parseFloat(discountValue) || 0 })
-    : { amount: parseFloat(invoice.discount || 0), label: discLabelFor(invoice.discount_type) };
-  const discountAmt = liveDiscount.amount;
-  const activeDiscType = discountEdit ? discountType : invoice.discount_type;
-  const isScPwd = activeDiscType === 'senior' || activeDiscType === 'pwd';
-  // VAT-exclusive: add VAT to (subtotal − discount) for a regular VAT invoice;
-  // Senior/PWD is VAT-exempt.
-  const mgmtVat = computeVat({ taxableBase: subtotal - discountAmt, vatRegistered, exempt: isScPwd, vatRate });
-  const total = mgmtVat.total;
+  // While editing → live preview via the shared engine (per-line eligibility +
+  // additive VAT). Not editing → read the DB-authoritative stored snapshot.
+  const mgmtTotals = discountEdit
+    ? computeInvoiceTotals({ items, discountType, customValue: parseFloat(discountValue) || 0, vatRegistered, vatRate })
+    : {
+        subtotal: invoice.subtotal != null ? parseFloat(invoice.subtotal) : subtotal,
+        discount: parseFloat(invoice.discount || 0),
+        discountLabel: discLabelFor(invoice.discount_type),
+        isScPwd: invoice.discount_type === 'senior' || invoice.discount_type === 'pwd',
+        vat: parseFloat(invoice.tax_amount || 0),
+        vatRate,
+        total: parseFloat(invoice.total || 0),
+        nonEligibleBase: 0,
+      };
+  const discountAmt = mgmtTotals.discount;
+  const total = mgmtTotals.total;
+  const isScPwd = mgmtTotals.isScPwd;
   const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
   const balanceDue = Math.max(total - totalPaid, 0);
 
@@ -141,6 +148,7 @@ function InvoiceManagementModal({
       description: item.description,
       quantity: item.quantity,
       unit_price: item.unit_price,
+      sc_pwd_eligible: item.sc_pwd_eligible !== false,
     }]);
 
     if (error) {
@@ -150,6 +158,19 @@ function InvoiceManagementModal({
       onInvoiceUpdated && onInvoiceUpdated();
     }
     setAddingItem(false);
+  };
+
+  // Toggle a line's SC/PWD eligibility — the DB trigger recomputes discount+VAT.
+  const handleToggleEligible = async (item) => {
+    const { error } = await supabase.from('invoice_items')
+      .update({ sc_pwd_eligible: item.sc_pwd_eligible === false })
+      .eq('id', item.id);
+    if (error) {
+      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed', text: error.message });
+    } else {
+      await fetchData();
+      onInvoiceUpdated && onInvoiceUpdated();
+    }
   };
 
   // Delete line item
@@ -234,6 +255,7 @@ function InvoiceManagementModal({
                 procedures={procedures}
                 onAddItem={handleAddItem}
                 onDeleteItem={(item) => handleDeleteItem(item.id)}
+                onToggleEligible={handleToggleEligible}
                 fmt={fmt}
                 currencySymbol={currencySymbol}
                 busy={addingItem}
@@ -295,7 +317,7 @@ function InvoiceManagementModal({
                     {discountAmt > 0 && (
                       <div className="inv-meta-row-display">
                         <span>Discount</span>
-                        <span>{fmt(discountAmt)}{liveDiscount.label ? ` · ${liveDiscount.label}` : ''}</span>
+                        <span>{fmt(discountAmt)}{mgmtTotals.discountLabel ? ` · ${mgmtTotals.discountLabel}` : ''}</span>
                       </div>
                     )}
                     <div className="inv-meta-row-display">
@@ -349,15 +371,15 @@ function InvoiceManagementModal({
                 </div>
                 {discountAmt > 0 && (
                   <div className="inv-totals-row inv-totals-discount">
-                    <span>Discount{liveDiscount.label ? ` (${liveDiscount.label})` : ''}</span>
+                    <span>Discount{mgmtTotals.discountLabel ? ` (${mgmtTotals.discountLabel})` : ''}</span>
                     <span>- {fmt(discountAmt)}</span>
                   </div>
                 )}
                 {vatRegistered && isScPwd && (
-                  <div className="inv-totals-row"><span>VAT-Exempt Sale</span><span>—</span></div>
+                  <div className="inv-totals-row"><span>VAT-Exempt{mgmtTotals.vat > 0 ? ' (eligible items)' : ' Sale'}</span><span>—</span></div>
                 )}
-                {mgmtVat.vat > 0 && (
-                  <div className="inv-totals-row"><span>VAT ({mgmtVat.rate}%)</span><span>+ {fmt(mgmtVat.vat)}</span></div>
+                {mgmtTotals.vat > 0 && (
+                  <div className="inv-totals-row"><span>VAT ({mgmtTotals.vatRate}%)</span><span>+ {fmt(mgmtTotals.vat)}</span></div>
                 )}
                 <div className="inv-totals-row inv-totals-total">
                   <span>Total</span>

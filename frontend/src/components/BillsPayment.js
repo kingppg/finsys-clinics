@@ -6,7 +6,7 @@ import { DcThemeProvider } from '../themes/DcThemeProvider';
 import { AgingAnalysis } from './billing/AgingAnalysis';
 import { CollectionsOverview } from './billing/CollectionsOverview';
 import { GRANS, getPeriodRange, shiftAnchor, inRange, isCurrentOrFuture } from './billing/period';
-import { DISCOUNT_TYPES, computeDiscount, computeVat } from './billing/discount';
+import { DISCOUNT_TYPES, computeInvoiceTotals } from './billing/discount';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
@@ -471,25 +471,31 @@ function BillsPayment() {
   const addStagedItem = (item) => {
     setAddLineItems(prev => [
       ...prev,
-      { ...item, _tmpId: `${Date.now()}-${Math.random()}`, total: item.quantity * item.unit_price },
+      { ...item, _tmpId: `${Date.now()}-${Math.random()}`, total: item.quantity * item.unit_price, sc_pwd_eligible: item.sc_pwd_eligible !== false },
     ]);
   };
   const removeStagedItem = (item) => {
     setAddLineItems(prev => prev.filter(x => x !== item));
   };
+  const toggleStagedEligible = (item) => {
+    setAddLineItems(prev => prev.map(x => x === item ? { ...x, sc_pwd_eligible: x.sc_pwd_eligible === false } : x));
+  };
 
-  const addSubtotal = addLineItems.reduce((s, i) => s + parseFloat(i.total || 0), 0);
-  const addDiscount = computeDiscount({
-    subtotal: addSubtotal,
-    type: addDiscountType,
+  // Single source of truth (mirrors the DB triggers): per-line SC/PWD
+  // eligibility + additive VAT on the VAT-exclusive base.
+  const addTotals = computeInvoiceTotals({
+    items: addLineItems,
+    discountType: addDiscountType,
     customValue: parseFloat(addDiscountValue) || 0,
+    vatRegistered,
+    vatRate,
   });
-  const addDiscountAmt = addDiscount.amount;
-  const addIsScPwd = addDiscountType === 'senior' || addDiscountType === 'pwd';
-  // VAT-exclusive model: VAT is ADDED to the discounted base for a regular VAT
-  // invoice; Senior/PWD sales are VAT-exempt (no VAT charged).
-  const { vat: addVatAmt, total: addTotal, rate: addVatRate } =
-    computeVat({ taxableBase: addSubtotal - addDiscountAmt, vatRegistered, exempt: addIsScPwd, vatRate });
+  const addSubtotal = addTotals.subtotal;
+  const addDiscountAmt = addTotals.discount;
+  const addTotal = addTotals.total;
+  const addIsScPwd = addTotals.isScPwd;
+  const addVatAmt = addTotals.vat;
+  const addVatRate = addTotals.vatRate;
 
   // Atomic create: insert the invoice, then its line items (DB triggers own the
   // totals). Nothing is written until this runs, so cancelling leaves no orphan.
@@ -526,6 +532,7 @@ function BillsPayment() {
           description: li.description,
           quantity: li.quantity,
           unit_price: li.unit_price,
+          sc_pwd_eligible: li.sc_pwd_eligible !== false,
         }));
         const { error: itemsErr } = await supabase.from('invoice_items').insert(rows);
         if (itemsErr) throw itemsErr;
@@ -1057,6 +1064,7 @@ function BillsPayment() {
                 procedures={procedures}
                 onAddItem={addStagedItem}
                 onDeleteItem={removeStagedItem}
+                onToggleEligible={toggleStagedEligible}
                 fmt={fmt}
                 currencySymbol={currencySymbol}
               />
@@ -1096,12 +1104,12 @@ function BillsPayment() {
                 <div className="inv-totals-row"><span>Subtotal</span><span>{fmt(addSubtotal)}</span></div>
                 {addDiscountAmt > 0 && (
                   <div className="inv-totals-row inv-totals-discount">
-                    <span>Discount{addDiscount.label ? ` (${addDiscount.label})` : ''}</span>
+                    <span>Discount{addTotals.discountLabel ? ` (${addTotals.discountLabel})` : ''}</span>
                     <span>- {fmt(addDiscountAmt)}</span>
                   </div>
                 )}
                 {vatRegistered && addIsScPwd && (
-                  <div className="inv-totals-row"><span>VAT-Exempt Sale</span><span>—</span></div>
+                  <div className="inv-totals-row"><span>VAT-Exempt{addTotals.nonEligibleBase > 0 ? ' (eligible items)' : ' Sale'}</span><span>—</span></div>
                 )}
                 {addVatAmt > 0 && (
                   <div className="inv-totals-row"><span>VAT ({addVatRate}%)</span><span>+ {fmt(addVatAmt)}</span></div>
@@ -1132,13 +1140,14 @@ function BillsPayment() {
         const patient = getPatientById(activeReceipt.patient_id);
         const dentist = dentists.find(d => d.id === activeReceipt.dentist_id);
         const currentStatus = activeReceipt.status || 'Unpaid';
+        // Totals are DB-owned (VAT-aware triggers) — read the stored snapshot.
         const soaSubtotal = activeReceipt.subtotal != null
           ? parseFloat(activeReceipt.subtotal)
-          : parseFloat(activeReceipt.total || 0) + parseFloat(activeReceipt.discount || 0);
+          : parseFloat(activeReceipt.total || 0) + parseFloat(activeReceipt.discount || 0) - parseFloat(activeReceipt.tax_amount || 0);
         const soaDiscount = parseFloat(activeReceipt.discount || 0);
+        const soaVat = parseFloat(activeReceipt.tax_amount || 0);
         const soaIsScPwd = activeReceipt.discount_type === 'senior' || activeReceipt.discount_type === 'pwd';
-        const soaVatCalc = computeVat({ taxableBase: soaSubtotal - soaDiscount, vatRegistered, exempt: soaIsScPwd, vatRate });
-        const soaAmountDue = soaVatCalc.total; // VAT-exclusive base − discount, plus VAT when applicable
+        const soaAmountDue = parseFloat(activeReceipt.total || 0);
         const soaBalance = Math.max(soaAmountDue - totalPaid, 0);
         const soaDiscLabel = activeReceipt.discount_type === 'senior' ? 'Senior Citizen 20%'
           : activeReceipt.discount_type === 'pwd' ? 'PWD 20%' : 'Discount Applied';
@@ -1224,16 +1233,16 @@ function BillsPayment() {
                       <span style={{ color: '#16a34a' }}>(-) {fmt(soaDiscount)}</span>
                     </div>
                   )}
-                  {vatRegistered && soaIsScPwd && (
+                  {soaIsScPwd && (
                     <div className="receipt-summary-line">
-                      <span>VAT-Exempt Sale:</span>
+                      <span>VAT-Exempt{soaVat > 0 ? ' (eligible items)' : ' Sale'}:</span>
                       <span>—</span>
                     </div>
                   )}
-                  {soaVatCalc.vat > 0 && (
+                  {soaVat > 0 && (
                     <div className="receipt-summary-line">
-                      <span>VAT ({soaVatCalc.rate}%):</span>
-                      <span>(+) {fmt(soaVatCalc.vat)}</span>
+                      <span>VAT ({vatRate}%):</span>
+                      <span>(+) {fmt(soaVat)}</span>
                     </div>
                   )}
                   <div className="receipt-summary-line">

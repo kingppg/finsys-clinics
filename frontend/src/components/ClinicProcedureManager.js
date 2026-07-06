@@ -80,7 +80,12 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
             onChange={e => onEditChange("name", e.target.value)}
           />
         ) : (
-          <span className="CPM-proc-name">{proc.name}</span>
+          <span className="CPM-proc-name">
+            {proc.name}
+            {proc.sc_pwd_eligible === false && (
+              <span className="CPM-cosmetic-badge" title="Not eligible for the Senior/PWD 20% discount">Cosmetic</span>
+            )}
+          </span>
         )}
       </td>
       <td>
@@ -101,6 +106,11 @@ const SortableProcRow = ({ proc, isEditing, editData, onEdit, onSave, onCancel, 
       <td className="CPM-actions">
         {isEditing ? (
           <>
+            <label className="CPM-elig-toggle" title="Eligible for the Senior/PWD 20% discount">
+              <input type="checkbox" checked={editData.sc_pwd_eligible !== false}
+                onChange={e => onEditChange("sc_pwd_eligible", e.target.checked)} />
+              SC/PWD
+            </label>
             <button className="CPM-btn CPM-btn--confirm" onClick={onSave}><Icon d={I.check} /> Save</button>
             <button className="CPM-btn CPM-btn--ghost" onClick={onCancel}><Icon d={I.x} /> Cancel</button>
           </>
@@ -232,7 +242,7 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
   const [catName, setCatName]     = useState(category.name);
   const [editingProc, setEP]      = useState({});
   const [editData, setED]         = useState({});
-  const [newProc, setNewProc]     = useState({ name: "", price: "" });
+  const [newProc, setNewProc]     = useState({ name: "", price: "", sc_pwd_eligible: true });
   const [addingProc, setAdding]   = useState(false);
   const [showBulk, setShowBulk]   = useState(false);
   const [activeId, setActiveId]   = useState(null);
@@ -312,7 +322,7 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
 
   const startEdit = (proc) => {
     setEP(p => ({ ...p, [proc.id]: true }));
-    setED(p => ({ ...p, [proc.id]: { name: proc.name, price: proc.price } }));
+    setED(p => ({ ...p, [proc.id]: { name: proc.name, price: proc.price, sc_pwd_eligible: proc.sc_pwd_eligible ?? true } }));
   };
   const cancelEdit = (id) => {
     setEP(p => { const n={...p}; delete n[id]; return n; });
@@ -372,13 +382,14 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
     const { error } = await supabase.from("procedures").insert([{
       clinic_id: clinicId, category_id: category.id,
       name: newProc.name.trim(), price: newProc.price,
+      sc_pwd_eligible: newProc.sc_pwd_eligible !== false,
       sort_order: maxOrder + 1,
     }]);
     if (error) {
       Swal.fire({ ...swalConfig, title: "Error", text: "Could not add procedure.", icon: "error" });
       return;
     }
-    setNewProc({ name: "", price: "" });
+    setNewProc({ name: "", price: "", sc_pwd_eligible: true });
     setAdding(false);
     onRefresh();
   };
@@ -577,10 +588,15 @@ const CategoryCard = ({ category, isOpen, onToggle, onProceduresReorder, onRefre
                 onChange={e => setNewProc(p => ({ ...p, price: e.target.value }))}
                 onKeyDown={e => { if (e.key === "Enter") addProc(); if (e.key === "Escape") setAdding(false); }}
               />
+              <label className="CPM-elig-toggle" title="Eligible for the Senior/PWD 20% discount">
+                <input type="checkbox" checked={newProc.sc_pwd_eligible !== false}
+                  onChange={e => setNewProc(p => ({ ...p, sc_pwd_eligible: e.target.checked }))} />
+                SC/PWD
+              </label>
               <button className="CPM-btn CPM-btn--confirm" onClick={addProc} disabled={!newProc.name.trim() || !newProc.price}>
                 <Icon d={I.check} /> Add
               </button>
-              <button className="CPM-btn CPM-btn--ghost" onClick={() => { setAdding(false); setNewProc({ name: "", price: "" }); }}>
+              <button className="CPM-btn CPM-btn--ghost" onClick={() => { setAdding(false); setNewProc({ name: "", price: "", sc_pwd_eligible: true }); }}>
                 <Icon d={I.x} /> Cancel
               </button>
             </div>

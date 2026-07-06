@@ -17,61 +17,74 @@ export const SC_PWD_RATE = 0.20;
 
 const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export interface DiscountResult {
-  amount: number;   // peso amount to subtract from subtotal
-  label: string;    // human label for the SOA/summary (e.g. "Senior Citizen 20%")
+export interface LineLike {
+  total?: number | string | null;
+  sc_pwd_eligible?: boolean;
+  [key: string]: unknown;
 }
 
-/**
- * Compute the discount amount for an invoice.
- *
- * PERMANENT MODEL: line prices are stored VAT-EXCLUSIVE (base amounts). So the
- * statutory Senior/PWD 20% is applied to the base directly — regardless of the
- * clinic's VAT status (a senior/PWD is VAT-exempt; VAT is simply never charged
- * to them, handled by computeVat below). We do NOT divide by 1.12 — there is no
- * VAT embedded in a VAT-exclusive base to back out.
- */
-export function computeDiscount(opts: {
+const num = (v: unknown): number => {
+  const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
+  return Number.isFinite(n) ? n : 0;
+};
+
+export interface InvoiceTotals {
   subtotal: number;
-  type: DiscountType;
-  customValue?: number;      // % for 'percent', ₱ for 'amount'
-}): DiscountResult {
-  const { subtotal, type, customValue = 0 } = opts;
-  if (type === 'none' || !subtotal || subtotal <= 0) return { amount: 0, label: '' };
-
-  if (type === 'senior' || type === 'pwd') {
-    return {
-      amount: round2(subtotal * SC_PWD_RATE),
-      label: type === 'senior' ? 'Senior Citizen 20%' : 'PWD 20%',
-    };
-  }
-
-  if (type === 'percent') {
-    const pct = Math.max(0, Math.min(customValue, 100));
-    return { amount: round2(subtotal * (pct / 100)), label: pct ? `${pct}% discount` : '' };
-  }
-
-  // amount
-  const amt = Math.max(0, Math.min(customValue, subtotal));
-  return { amount: round2(amt), label: '' };
+  eligibleBase: number;
+  nonEligibleBase: number;
+  discount: number;
+  discountLabel: string;
+  isScPwd: boolean;
+  vat: number;
+  vatRate: number;
+  total: number;
 }
 
 /**
- * Add VAT to a VAT-EXCLUSIVE taxable base (additive, not backed out).
- * VAT is zero when the clinic isn't VAT-registered OR the sale is exempt
- * (Senior/PWD). Returns the VAT and the VAT-inclusive amount due.
- *   regular VAT: base 1000 → { vat: 120, total: 1120 }
- *   senior/exempt or non-VAT: → { vat: 0, total: base }
+ * The single source of truth for invoice money math — mirrors the DB total
+ * triggers (migration 010) exactly.
+ *
+ * PERMANENT MODEL: line prices are VAT-EXCLUSIVE base amounts.
+ *  • Senior/PWD → 20% of the ELIGIBLE base only (mixed invoices: cosmetic lines
+ *    marked sc_pwd_eligible=false are excluded). Eligible lines are VAT-exempt;
+ *    non-eligible lines are VATable for a VAT-registered clinic.
+ *  • Regular (none/percent/amount) → discount on the whole subtotal; VAT (if
+ *    registered) added to the discounted base.
+ *  • VAT is ADDED (never divided/backed-out).
  */
-export function computeVat(opts: {
-  taxableBase: number;
-  vatRegistered: boolean;
-  exempt: boolean;
+export function computeInvoiceTotals(opts: {
+  items: LineLike[];
+  discountType: DiscountType;
+  customValue?: number;      // % for 'percent', ₱ for 'amount'
+  vatRegistered?: boolean;
   vatRate?: number;
-}): { vat: number; total: number; rate: number } {
-  const { taxableBase, vatRegistered, exempt, vatRate = 12 } = opts;
-  const base = Math.max(taxableBase, 0);
-  if (!vatRegistered || exempt) return { vat: 0, total: round2(base), rate: vatRate };
-  const vat = round2(base * (vatRate / 100));
-  return { vat, total: round2(base + vat), rate: vatRate };
+}): InvoiceTotals {
+  const { items, discountType, customValue = 0, vatRegistered = false, vatRate = 12 } = opts;
+  const list = items || [];
+
+  const subtotal = round2(list.reduce((s, i) => s + num(i.total), 0));
+  const eligibleBase = round2(list.reduce((s, i) => s + (i.sc_pwd_eligible === false ? 0 : num(i.total)), 0));
+  const nonEligibleBase = round2(subtotal - eligibleBase);
+  const isScPwd = discountType === 'senior' || discountType === 'pwd';
+
+  let discount = 0;
+  let discountLabel = '';
+  if (isScPwd) {
+    discount = round2(eligibleBase * SC_PWD_RATE);
+    discountLabel = discountType === 'senior' ? 'Senior Citizen 20%' : 'PWD 20%';
+  } else if (discountType === 'percent') {
+    const pct = Math.max(0, Math.min(customValue, 100));
+    discount = round2(subtotal * (pct / 100));
+    discountLabel = pct ? `${pct}% discount` : '';
+  } else if (discountType === 'amount') {
+    discount = round2(Math.max(0, Math.min(customValue, subtotal)));
+  }
+
+  // Eligible SC/PWD lines are VAT-exempt → only non-eligible lines are VATable.
+  // For non-SC/PWD, the whole discounted base is VATable.
+  const vatBase = isScPwd ? nonEligibleBase : Math.max(subtotal - discount, 0);
+  const vat = (vatRegistered && vatBase > 0) ? round2(vatBase * (vatRate / 100)) : 0;
+  const total = round2(Math.max(subtotal - discount, 0) + vat);
+
+  return { subtotal, eligibleBase, nonEligibleBase, discount, discountLabel, isScPwd, vat, vatRate, total };
 }
