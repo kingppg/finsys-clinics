@@ -61,6 +61,8 @@ function InvoiceManagementModal({
   const [discountValue, setDiscountValue] = useState(''); // seeded when Edit opens
   const [scPwdIdEdit, setScPwdIdEdit] = useState(invoice.sc_pwd_id || '');
   const [discountEdit, setDiscountEdit] = useState(false);
+  const [refundFor, setRefundFor] = useState(null);   // payment being refunded
+  const [refundAmount, setRefundAmount] = useState(''); // ₱, editable (partial refunds)
   const [dueDate, setDueDate] = useState(invoice.due_date || '');
   const [notes, setNotes] = useState(invoice.notes || '');
   const [savingMeta, setSavingMeta] = useState(false);
@@ -239,18 +241,29 @@ function InvoiceManagementModal({
     }
   };
 
-  // Reverse (refund) a payment — records an OFFSETTING negative entry (the
-  // original stays for audit) and marks the original reversed. Net paid drops,
-  // so a fully-reversed invoice can then be reopened/edited.
-  const handleReversePayment = async (p) => {
+  // Reverse / refund a payment — opens the amount modal (default = full amount;
+  // reduce it for a partial refund, e.g. an overpayment).
+  const handleReversePayment = (p) => {
     const amt = parseFloat(p.amount || 0);
     if (amt <= 0 || p.reversed_at) return;
-    const res = await Swal.fire({
-      ...swalConfig, title: 'Reverse this payment?',
-      html: `Records a <b>refund / reversal</b> of ${fmt(amt)} (${p.method}${p.or_number ? ', OR ' + p.or_number : ''}). The original payment stays in the record for audit; an offsetting reversal entry is added.`,
-      icon: 'warning', showCancelButton: true, confirmButtonText: 'Reverse payment',
-    });
-    if (!res.isConfirmed) return;
+    setRefundFor(p);
+    setRefundAmount(String(amt));
+  };
+
+  // Records an OFFSETTING negative entry (the original stays for audit). A FULL
+  // refund also marks the original reversed_at; a partial one leaves it open.
+  // Net paid drops, so a fully-reversed invoice becomes reopenable/editable.
+  const confirmRefund = async () => {
+    const p = refundFor;
+    if (!p) return;
+    const payAmt = parseFloat(p.amount || 0);
+    const maxRefund = Math.min(payAmt, totalPaid);
+    const amt = parseFloat(refundAmount);
+    if (!amt || amt <= 0 || amt > maxRefund + 0.005) {
+      Swal.fire({ ...swalConfig, icon: 'warning', title: 'Invalid amount', text: `Enter an amount between ${fmt(0)} and ${fmt(maxRefund)} (net collected).`, timer: 2600, showConfirmButton: false });
+      return;
+    }
+    const isFull = amt >= payAmt - 0.005;
     const { error: e1 } = await supabase.from('payments').insert([{
       patient_id: p.patient_id || invoice.patient_id,
       invoice_id: invoice.id,
@@ -258,16 +271,20 @@ function InvoiceManagementModal({
       amount: -amt,
       method: 'Reversal',
       payment_date: new Date().toISOString(),
-      notes: `Reversal of ${p.method} payment${p.or_number ? ' OR ' + p.or_number : ''} (${fmt(amt)})`,
+      notes: `${isFull ? 'Reversal' : 'Partial refund'} of ${p.method} payment${p.or_number ? ' OR ' + p.or_number : ''} (${fmt(amt)}${isFull ? '' : ' of ' + fmt(payAmt)})`,
     }]);
     if (e1) {
-      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to reverse', text: e1.message });
+      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to refund', text: e1.message });
       return;
     }
-    await supabase.from('payments').update({ reversed_at: new Date().toISOString() }).eq('id', p.id);
+    if (isFull) {
+      await supabase.from('payments').update({ reversed_at: new Date().toISOString() }).eq('id', p.id);
+    }
+    setRefundFor(null);
+    setRefundAmount('');
     await fetchData();
     onInvoiceUpdated && onInvoiceUpdated();
-    Swal.fire({ ...swalConfig, icon: 'success', title: 'Payment reversed', timer: 1400, showConfirmButton: false });
+    Swal.fire({ ...swalConfig, icon: 'success', title: isFull ? 'Payment reversed' : 'Partial refund recorded', timer: 1400, showConfirmButton: false });
   };
 
   // Toggle a line's SC/PWD eligibility — the DB trigger recomputes discount+VAT.
@@ -328,6 +345,7 @@ function InvoiceManagementModal({
   };
 
   return (
+    <>
     <div className="bills-modal-overlay" onClick={onClose}>
       <div className="inv-mgmt-modal" onClick={e => e.stopPropagation()}>
 
@@ -568,6 +586,30 @@ function InvoiceManagementModal({
         </div>
       </div>
     </div>
+
+    {refundFor && (
+      <div className="dc-overlay" onClick={() => setRefundFor(null)}>
+        <div className="dc-modal dc-modal--sm" onClick={e => e.stopPropagation()}>
+          <h3 className="dc-modal-title">Reverse / refund payment</h3>
+          <p style={{ margin: '0 0 14px' }}>
+            Payment: <b>{fmt(refundFor.amount)}</b> · {refundFor.method}{refundFor.or_number ? ` · OR ${refundFor.or_number}` : ''}
+          </p>
+          <label className="dc-field">
+            <span>Refund amount ({currencySymbol})</span>
+            <input type="number" min="0" step="0.01" value={refundAmount}
+              onChange={e => setRefundAmount(e.target.value)} onFocus={e => e.target.select()} autoFocus />
+          </label>
+          <p style={{ fontSize: '0.78rem', color: 'var(--dc-text-3)', marginTop: 8, lineHeight: 1.5 }}>
+            Max <b>{fmt(Math.min(parseFloat(refundFor.amount || 0), totalPaid))}</b> (net collected). A full refund marks the payment reversed; a partial refund (e.g. an overpayment) just reduces the paid amount.
+          </p>
+          <div className="dc-modal-actions">
+            <button className="dc-btn dc-btn--ghost" onClick={() => setRefundFor(null)}>Cancel</button>
+            <button className="dc-btn dc-btn--danger-solid" onClick={confirmRefund}>Record refund</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
