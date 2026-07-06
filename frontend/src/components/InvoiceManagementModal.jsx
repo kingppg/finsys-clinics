@@ -197,6 +197,7 @@ function InvoiceManagementModal({
   // Finalize (lock) the invoice. The Senior/PWD ID is captured with the invoice
   // (Create form / Details → Edit), so this is a simple confirm.
   const handleFinalize = async () => {
+    if (payments.length > 0) return; // partially-paid invoices lock only via full payment
     let msg = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed. Make sure discounts and items are correct first. A finalized invoice can only be reopened while it has <b>no payments</b>.';
     if (isScPwd && !invoice.sc_pwd_id) {
       msg += '<br><br><b>No Senior/PWD ID recorded.</b> You can add it via <b>Edit</b> first (recommended for BIR), or finalize anyway.';
@@ -316,7 +317,7 @@ function InvoiceManagementModal({
             <button className="inv-mgmt-btn-print" onClick={onPrintSOA}>
               <Icon d={I.print} size={13} /> Print SOA
             </button>
-            {!isFinalized && items.length > 0 && (
+            {!isFinalized && items.length > 0 && payments.length === 0 && (
               <button className="inv-mgmt-btn-print" onClick={handleFinalize} title="Lock this invoice as a final record">
                 <Icon d={I.lock} size={13} /> Finalize
               </button>
