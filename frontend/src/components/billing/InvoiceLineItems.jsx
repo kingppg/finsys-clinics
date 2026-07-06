@@ -31,7 +31,7 @@ const I = {
   search: ['M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z'],
 };
 
-function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggleEligible, fmt, currencySymbol, busy = false }) {
+function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggleEligible, headerAction, fmt, currencySymbol, busy = false }) {
   const [addMode, setAddMode] = useState(null); // 'procedure' | 'custom'
   const [procSearch, setProcSearch] = useState('');
   const [procDropdownVisible, setProcDropdownVisible] = useState(false);
@@ -123,6 +123,7 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggle
       <div className="inv-mgmt-section-title">
         Line Items
         <div className="inv-mgmt-add-btns">
+          {headerAction}
           <button type="button" className="inv-add-btn" onClick={() => { resetForm(); setAddMode('procedure'); }}>
             <Icon d={I.search} size={12} /> From Procedures
           </button>

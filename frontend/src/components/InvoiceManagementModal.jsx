@@ -27,6 +27,7 @@ const I = {
   wallet:   ["M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3", "M3 10h18", "M16 14h.01"],
   search:   ["M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"],
   edit:     ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7", "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"],
+  refresh:  ["M23 4v6h-6", "M1 20v-6h6", "M3.51 9a9 9 0 0 1 14.85-3.36L23 10", "M1 14l4.64 4.36A9 9 0 0 0 20.49 15"],
 };
 
 function InvoiceManagementModal({
@@ -160,6 +161,35 @@ function InvoiceManagementModal({
     setAddingItem(false);
   };
 
+  // Re-apply catalog eligibility — refresh every procedure-linked line against
+  // the CURRENT Procedures settings, then the DB triggers recompute. Guarded to
+  // unpaid invoices (a draft) so finalized/paid records stay immutable.
+  const handleReapplyEligibility = async () => {
+    if (payments.length > 0) return;
+    const procMap = new Map((procedures || []).map(p => [p.id, p.sc_pwd_eligible !== false]));
+    const stale = items.filter(it =>
+      it.procedure_id != null && procMap.has(it.procedure_id) &&
+      (it.sc_pwd_eligible !== false) !== procMap.get(it.procedure_id)
+    );
+    if (stale.length === 0) {
+      Swal.fire({ ...swalConfig, icon: 'info', title: 'Already in sync', text: 'All catalog-linked items match the current Procedures settings.', timer: 2000, showConfirmButton: false });
+      return;
+    }
+    const { isConfirmed } = await Swal.fire({
+      ...swalConfig,
+      title: 'Re-apply catalog eligibility?',
+      html: `<b>${stale.length}</b> line item${stale.length === 1 ? '' : 's'} will be updated to match current Procedures settings, and the Senior/PWD discount will recompute.`,
+      icon: 'question', showCancelButton: true, confirmButtonText: 'Yes, re-apply',
+    });
+    if (!isConfirmed) return;
+    for (const it of stale) {
+      await supabase.from('invoice_items').update({ sc_pwd_eligible: procMap.get(it.procedure_id) }).eq('id', it.id);
+    }
+    await fetchData();
+    onInvoiceUpdated && onInvoiceUpdated();
+    Swal.fire({ ...swalConfig, icon: 'success', title: 'Eligibility updated', timer: 1400, showConfirmButton: false });
+  };
+
   // Toggle a line's SC/PWD eligibility — the DB trigger recomputes discount+VAT.
   const handleToggleEligible = async (item) => {
     const { error } = await supabase.from('invoice_items')
@@ -256,6 +286,12 @@ function InvoiceManagementModal({
                 onAddItem={handleAddItem}
                 onDeleteItem={(item) => handleDeleteItem(item.id)}
                 onToggleEligible={handleToggleEligible}
+                headerAction={payments.length === 0 && items.some(it => it.procedure_id != null) ? (
+                  <button type="button" className="inv-add-btn" onClick={handleReapplyEligibility}
+                    title="Update all catalog-linked lines to match current Procedures eligibility settings">
+                    <Icon d={I.refresh} size={12} /> Re-apply eligibility
+                  </button>
+                ) : null}
                 fmt={fmt}
                 currencySymbol={currencySymbol}
                 busy={addingItem}
