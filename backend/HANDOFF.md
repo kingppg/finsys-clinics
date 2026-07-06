@@ -333,7 +333,7 @@ The Billing module is now a complete, BIR-aware, audit-grade invoicing system. *
 - `invoices.finalized_at` = lock; `invoices.sc_pwd_id` = OSCA/PWD ID (captured in the invoice FORM, not a swal — swal2 inputs render display:none here).
 - **Fully paid → auto-finalizes** (payments trigger `autolock_on_full_payment`). **Manual Finalize button = zero-payment invoices only.** **Partial-paid is NEVER auto/manually locked → stays editable** (so a mid-payment senior discount recomputes from the ORIGINAL amount; the paid amount stands, balance = total − paid).
 - **Reopen** (unlock) = finalized invoices with **zero NET payments** (DB-enforced by 012/013). Guards key off **net paid (Σ amount)**, not row count. Finalized = DB-blocks item + amount changes.
-- **Phase 4 — reverse/refund a payment (migration 013):** Payment History "Reverse" records an OFFSETTING negative `Reversal` payment (original kept + marked `payments.reversed_at`) — audit-safe, `SUM(amount)` nets. Correction workflow for a paid invoice: **Reverse payment(s) → net 0 → Reopen → edit → re-finalize → re-collect**. Refunds shown red/parens.
+- **Phase 4 — reverse/refund a payment (migration 013 + `813dd1e`):** Payment History "Reverse" opens an **amount modal** (default full, editable, capped at net collected → supports **partial refunds** e.g. a ₱200 overpayment in one step). Records an OFFSETTING negative `Reversal` payment (original kept; `payments.reversed_at` set only on a FULL refund) — audit-safe, `SUM(amount)` nets. Correction workflow for a paid invoice: **Reverse payment(s) → net 0 → Reopen → edit → re-finalize → re-collect**. Refunds shown red/parens. NOTE: reversing a payment does NOT auto-unlock a finalized invoice (status recomputes to Unpaid but finalized_at stays until you Reopen).
 - The consistent principle: **net payment commits the amounts** for destructive actions (Void, Re-apply, Reopen, manual Finalize); **discount Edit stays open until finalization**; **full payment = hard lock**.
 
 **Also this session:** premium theming pass (`.dc-page`/header/tabs/chips/KPIs), complete staged invoice creation (appointment link prefills procedure), period picker (All/Annual/Monthly/Weekly/Daily, cohort collection rate), `INV-YYYY-####` numbering (007), configurable VAT (008, "VAT Registration" page — BIR wording), SOA VAT + Senior/PWD legal block, Procedures SC/PWD eligibility guide.
@@ -405,5 +405,6 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `495e8a5` | Fix: manual Finalize allowed only on zero-payment invoices (partial-paid stays editable, locks via full payment) |
 | `5f2d9ee` | Polish: BIR-accurate "VAT Registration" page wording + Procedures SC/PWD guide callout |
 | `9486fdf` / `138bc47` | Migration 013 + Phase 4: reverse/refund a payment (offsetting entry, net-aware guards) |
+| `813dd1e` | Billing: partial refund amount (reverse-payment amount modal — overpayment in one step) |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
