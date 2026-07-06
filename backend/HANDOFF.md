@@ -310,7 +310,9 @@ Brought the Billing module (the theming pilot, predating the primitives/`.dc-pag
 
 **Invoice numbering (`5e629ab`) — DONE:** `INV-YYYY-####` per clinic, yearly reset. **Migration `007_invoice_numbering.sql`** (⚠️ **RUN IN SUPABASE**): `invoice_number_counters` table + `BEFORE INSERT` trigger `assign_invoice_number()` on `invoices` (respects an explicit number; numbers BOTH manual and auto/Completed invoices) + one-time backfill + counter seed. Frontend shows `invoice_number` in the invoices table, payments audit, Manage header, SOA + PDF filename, and searches it; falls back to `#id` when absent (safe pre-migration).
 
-**Still deferred (billing):** tax/VAT lines (`tax_rates` still unused — **blocked on: is the clinic VAT-registered 12% or VAT-exempt?**), Senior/PWD 20% + VAT-exempt preset (depends on tax), persisting an `appointment_id` FK on invoices (column existence unconfirmed — the link autofills dentist/date/procedure only). Manage modal still uses `.bills-modal-overlay` (not `.dc-overlay`) — minor consistency follow-up.
+**VAT + statutory Senior/PWD (`3a83794`) — DONE:** **Migration `008_vat_config.sql`** (RUN IN SUPABASE ✅): `clinics.vat_registered` (default **false** = Non-VAT), `clinics.vat_rate` (12), `invoices.discount_type` + column grants. **Clinic Config → Billing & Tax** rail section: per-clinic VAT toggle + rate. **Invoice Create + Manage** now have a **Discount Type** selector (None / Senior 20% / PWD 20% / Custom % / Custom ₱) storing `discount` + `discount_type`; pure engine in `billing/discount.ts`. Senior/PWD is the **PH statutory** computation — VAT-exempt (strip VAT) then 20% when VAT-registered, else flat 20%. SOA + modal totals show a VAT breakdown (VATable Sales + VAT) on regular VAT invoices and "VAT-Exempt Sale" for SC/PWD; SOA subtotal reads the stored gross. **Billing reads VAT config FRESH on each mount** (own `clinics` fetch) so a toggle takes effect on next open — the app clinic-context is cached at login. Verified live: Non-VAT senior 1000→800; VAT senior 1000→821.43 (−178.57); VAT regular → VATable 892.86 + VAT 107.14.
+
+**Still deferred (billing):** persisting an `appointment_id` FK on invoices (column existence unconfirmed — the link autofills dentist/date/procedure only); the 12%-VAT-inclusive assumption (line prices treated VAT-inclusive — revisit if a clinic prices VAT-exclusive); recording OSCA/PWD ID numbers on SC/PWD invoices (BIR bookkeeping, not built). Manage modal still uses `.bills-modal-overlay` (not `.dc-overlay`) — minor consistency follow-up.
 
 ### Local dev note
 A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
@@ -363,5 +365,8 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `ce938c0` | Billing: cohort-based period Collection Rate (fixes misleading 100%) + "Cash Collected" rename + Invoice Date column ("earlier" tag) in payments audit |
 | `a3aca32` | Billing: actionable empty-invoices state (Show all) + reset filter on period-granularity change |
 | `5e629ab` | Billing: formal invoice numbers `INV-YYYY-####` (migration 007 trigger+backfill; frontend display+search) |
+| `e6398a0` | Fix migration 007: invoice numbers unique PER CLINIC (drop global unique → composite) |
+| `20b66c5` | Migration 008: per-clinic VAT config + invoice discount_type (schema) |
+| `3a83794` | Billing: configurable VAT + statutory Senior/PWD discounts (Clinic Config toggle, discount-type selector, VAT SOA breakdown) |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
