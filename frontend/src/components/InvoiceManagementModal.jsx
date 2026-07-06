@@ -59,6 +59,7 @@ function InvoiceManagementModal({
     invoice.discount_type || (parseFloat(invoice.discount || 0) > 0 ? 'amount' : 'none')
   );
   const [discountValue, setDiscountValue] = useState(''); // seeded when Edit opens
+  const [scPwdIdEdit, setScPwdIdEdit] = useState(invoice.sc_pwd_id || '');
   const [discountEdit, setDiscountEdit] = useState(false);
   const [dueDate, setDueDate] = useState(invoice.due_date || '');
   const [notes, setNotes] = useState(invoice.notes || '');
@@ -134,6 +135,7 @@ function InvoiceManagementModal({
     } else {
       setDiscountValue('');
     }
+    setScPwdIdEdit(invoice.sc_pwd_id || '');
     setDiscountEdit(true);
   };
 
@@ -192,27 +194,20 @@ function InvoiceManagementModal({
     Swal.fire({ ...swalConfig, icon: 'success', title: 'Eligibility updated', timer: 1400, showConfirmButton: false });
   };
 
-  // Finalize (lock) the invoice — captures the Senior/PWD ID for the audit trail.
+  // Finalize (lock) the invoice. The Senior/PWD ID is captured with the invoice
+  // (Create form / Details → Edit), so this is a simple confirm.
   const handleFinalize = async () => {
-    let scId = invoice.sc_pwd_id || '';
-    const lockNote = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed.';
-    if (isScPwd) {
-      const res = await Swal.fire({
-        ...swalConfig, title: 'Finalize invoice?', html: lockNote, icon: 'warning',
-        input: 'text', inputLabel: 'Senior / PWD ID No. (OSCA / PWD ID)', inputValue: scId,
-        inputPlaceholder: 'e.g. OSCA-000-1234', showCancelButton: true, confirmButtonText: 'Finalize & lock',
-      });
-      if (!res.isConfirmed) return;
-      scId = (res.value || '').trim();
-    } else {
-      const res = await Swal.fire({
-        ...swalConfig, title: 'Finalize invoice?', html: lockNote, icon: 'warning',
-        showCancelButton: true, confirmButtonText: 'Finalize & lock',
-      });
-      if (!res.isConfirmed) return;
+    let msg = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed.';
+    if (isScPwd && !invoice.sc_pwd_id) {
+      msg += '<br><br><b>No Senior/PWD ID recorded.</b> You can add it via <b>Edit</b> first (recommended for BIR), or finalize anyway.';
     }
+    const res = await Swal.fire({
+      ...swalConfig, title: 'Finalize invoice?', html: msg, icon: 'warning',
+      showCancelButton: true, confirmButtonText: 'Finalize & lock',
+    });
+    if (!res.isConfirmed) return;
     const { error } = await supabase.from('invoices')
-      .update({ finalized_at: new Date().toISOString(), sc_pwd_id: scId || null })
+      .update({ finalized_at: new Date().toISOString() })
       .eq('id', invoice.id);
     if (error) {
       Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to finalize', text: error.message });
@@ -260,9 +255,11 @@ function InvoiceManagementModal({
   // Save invoice meta (discount, due_date, notes)
   const handleSaveMeta = async () => {
     setSavingMeta(true);
+    const isScPwdSave = discountType === 'senior' || discountType === 'pwd';
     const { error } = await supabase.from('invoices').update({
       discount: discountAmt,
       discount_type: discountType === 'none' ? null : discountType,
+      sc_pwd_id: isScPwdSave ? (scPwdIdEdit.trim() || null) : null,
       due_date: dueDate || null,
       notes: notes || null,
     }).eq('id', invoice.id);
@@ -371,10 +368,16 @@ function InvoiceManagementModal({
                       </div>
                     )}
                     {(discountType === 'senior' || discountType === 'pwd') && (
-                      <div className="inv-meta-row">
-                        <label>Computed</label>
-                        <span className="inv-line-total">{fmt(discountAmt)}{vatRegistered ? ' (VAT-exempt + 20%)' : ' (20%)'}</span>
-                      </div>
+                      <>
+                        <div className="inv-meta-row">
+                          <label>Computed</label>
+                          <span className="inv-line-total">{fmt(discountAmt)}{vatRegistered ? ' (VAT-exempt + 20%)' : ' (20%)'}</span>
+                        </div>
+                        <div className="inv-meta-row">
+                          <label>Senior/PWD ID</label>
+                          <input className="inv-input" value={scPwdIdEdit} onChange={e => setScPwdIdEdit(e.target.value)} placeholder="OSCA / PWD ID No." />
+                        </div>
+                      </>
                     )}
                     <div className="inv-meta-row">
                       <label>Due Date</label>
@@ -388,7 +391,7 @@ function InvoiceManagementModal({
                         placeholder="Optional notes for this invoice..." rows={2} />
                     </div>
                     <div className="inv-add-actions">
-                      <button className="inv-btn-ghost" onClick={() => { setDiscountEdit(false); setDiscountType(invoice.discount_type || (parseFloat(invoice.discount || 0) > 0 ? 'amount' : 'none')); setDueDate(invoice.due_date || ''); setNotes(invoice.notes || ''); }}>Cancel</button>
+                      <button className="inv-btn-ghost" onClick={() => { setDiscountEdit(false); setDiscountType(invoice.discount_type || (parseFloat(invoice.discount || 0) > 0 ? 'amount' : 'none')); setScPwdIdEdit(invoice.sc_pwd_id || ''); setDueDate(invoice.due_date || ''); setNotes(invoice.notes || ''); }}>Cancel</button>
                       <button className="inv-btn-confirm" onClick={handleSaveMeta} disabled={savingMeta}>
                         {savingMeta ? <span className="bills-spinner-small" /> : <><Icon d={I.check} size={12} /> Save</>}
                       </button>
