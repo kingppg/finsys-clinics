@@ -431,7 +431,12 @@ app.use((req, res, next) => {
 app.use('/appointments', requireAuth, sameClinic(req => req.query.clinic_id), remindersRouter);
 app.use('/status-notifications', requireAuth, sameClinic(req => req.body?.clinic_id), statusNotificationsRouter);
 app.use('/webhook', webhookRouter);
-app.use('/api/billing', billingRoutes);
+// SECURITY (C1): the /api/billing router runs on the SERVICE key (bypasses RLS)
+// and had NO auth middleware — a public bypass of the database's row-level
+// security. The frontend does not use this router (it reads Supabase directly),
+// so it is unmounted. To re-enable as a real API, gate it exactly like the SMS
+// routes above: app.use('/api/billing', requireAuth, sameClinic(req => req.query.clinic_id), billingRoutes);
+// app.use('/api/billing', billingRoutes);
 
 server.listen(PORT, () => {
   console.log(`Server started on http://localhost:${PORT}`);

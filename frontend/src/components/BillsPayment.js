@@ -7,6 +7,7 @@ import { AgingAnalysis } from './billing/AgingAnalysis';
 import { CollectionsOverview } from './billing/CollectionsOverview';
 import { GRANS, getPeriodRange, shiftAnchor, inRange, isCurrentOrFuture } from './billing/period';
 import { DISCOUNT_TYPES, computeInvoiceTotals } from './billing/discount';
+import { isInvoiceOverdue } from './billing/billingAnalytics';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
@@ -248,7 +249,10 @@ function BillsPayment() {
     const rawBalance = parseFloat(inv.total || 0) - paidAmount;   // negative when overpaid
     const balanceDue = Math.max(rawBalance, 0);
     const overpaid = rawBalance < -0.005;
-    const isOverdue = !isCancelled && inv.due_date && new Date(inv.due_date) < nowForOverdue && currentStatus !== 'Paid';
+    // Shared overdue rule (same helper the Aging tab uses) so the two agree —
+    // "due today" is NOT overdue, and the local-day compare fixes the old
+    // UTC-parse that flipped invoices overdue on the morning of the due date.
+    const isOverdue = isInvoiceOverdue(inv, paidAmount, nowForOverdue);
     const displayStatus = isCancelled ? 'Voided' : (isOverdue ? 'Overdue' : currentStatus);
     return { inv, patient, patientName, currentStatus, isCancelled, isOverdue, paidAmount, rawBalance, balanceDue, overpaid, displayStatus };
   });
@@ -508,6 +512,21 @@ function BillsPayment() {
       Swal.fire({ ...swalConfig, title: 'Select a patient', text: 'Please pick a registered patient first.', icon: 'warning' });
       return;
     }
+    // Double-billing guard (H2): the DB auto-creates an invoice when an
+    // appointment is marked Completed. If this visit is already invoiced (auto
+    // or manual), warn before creating a second one for the same appointment.
+    if (addInvoiceApptId) {
+      const existing = invoices.find(i => String(i.appointment_id) === String(addInvoiceApptId));
+      if (existing) {
+        const { isConfirmed } = await Swal.fire({
+          ...swalConfig,
+          title: 'Appointment already invoiced',
+          html: `This visit already has invoice <b>${existing.invoice_number || '#' + existing.id}</b>. Creating another will bill it twice. Continue anyway?`,
+          icon: 'warning', showCancelButton: true, confirmButtonText: 'Create anyway',
+        });
+        if (!isConfirmed) return;
+      }
+    }
     setInvoiceLoading(true);
     try {
       const { data: inv, error } = await supabase
@@ -516,11 +535,18 @@ function BillsPayment() {
           patient_id: addInvoicePatientId,
           dentist_id: addInvoiceDentistId || null,
           clinic_id: clinicId,
+          // Link the visit so the Completed-appointment auto-invoice trigger
+          // dedups against this manual invoice instead of creating a 2nd one (H2).
+          appointment_id: addInvoiceApptId || null,
           status: 'Unpaid',
           invoice_date: addInvoiceDate || todayStr(),
           due_date: addInvoiceDue || null,
           discount: addDiscountAmt,
           discount_type: addDiscountType === 'none' ? null : addDiscountType,
+          // Raw input kept so the DB can re-derive a % discount as items change
+          // (migration 017). Null for senior/pwd/none (those are DB-owned / N/A).
+          discount_value: (addDiscountType === 'percent' || addDiscountType === 'amount')
+            ? (parseFloat(addDiscountValue) || 0) : null,
           sc_pwd_id: addIsScPwd ? (addScPwdId.trim() || null) : null,
           notes: addInvoiceNotes.trim() || null,
           total: 0,

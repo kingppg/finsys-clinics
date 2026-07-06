@@ -129,6 +129,26 @@ export function sumPaymentsByInvoice(payments: PaymentLike[]): Map<number, numbe
   return map;
 }
 
+/**
+ * The ONE overdue rule, shared by the invoices table and the Aging tab so they
+ * can never disagree. An invoice is overdue when it still owes money AND its due
+ * date is STRICTLY BEFORE today (local day granularity). "Due today" is NOT
+ * overdue — the patient has until the day ends. Paid/cancelled or no-due-date
+ * invoices are never overdue.
+ */
+export function isInvoiceOverdue(
+  invoice: InvoiceLike,
+  paid: number,
+  today: Date = new Date()
+): boolean {
+  const status = normStatus(invoice.status);
+  if (status === 'paid' || status === 'cancelled') return false;
+  if (num(invoice.total) - paid <= 0.005) return false; // nothing owed
+  const due = parseDay(invoice.due_date);
+  if (!due) return false; // no due date -> never overdue
+  return due.getTime() < startOfDay(today).getTime();
+}
+
 // ---------------------------------------------------------------------------
 // AGING
 // ---------------------------------------------------------------------------
@@ -254,9 +274,13 @@ export function computeCollections(
   const netBilled = totalBilled;
   const grossCharged = netBilled + discountsGiven;
 
-  // Payment method mix — cash received in the period.
+  // Payment method mix — money that came IN, by method. Reversals (method
+  // 'Reversal', negative amount) are money OUT, not an inflow method, so they
+  // are excluded here (they would otherwise draw a negative donut slice). They
+  // still net correctly into totalCollected above.
   const methodMap = new Map<string, MethodSlice>();
   for (const p of paymentsPeriod) {
+    if (normStatus(p.method) === 'reversal' || num(p.amount) < 0) continue;
     const label = methodLabel(p.method);
     const slice = methodMap.get(label) || { method: normStatus(p.method), label, amount: 0, count: 0 };
     slice.amount += num(p.amount);

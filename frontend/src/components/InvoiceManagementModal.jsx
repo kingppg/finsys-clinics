@@ -132,10 +132,16 @@ function InvoiceManagementModal({
   // Seed the custom value so an unchanged save preserves the amount.
   const openDiscountEdit = () => {
     const d = parseFloat(invoice.discount || 0);
+    const rawVal = invoice.discount_value; // stored raw input (migration 017)
     if (discountType === 'amount' || (!invoice.discount_type && d > 0)) {
-      setDiscountValue(d ? String(d) : '');
-    } else if (discountType === 'percent' && subtotal > 0) {
-      setDiscountValue(String(Math.round((d / subtotal) * 10000) / 100));
+      setDiscountValue(rawVal != null ? String(rawVal) : (d ? String(d) : ''));
+    } else if (discountType === 'percent') {
+      // Prefer the stored percentage; fall back to back-deriving it (pre-017 rows).
+      setDiscountValue(
+        rawVal != null ? String(rawVal)
+        : subtotal > 0 ? String(Math.round((d / subtotal) * 10000) / 100)
+        : ''
+      );
     } else {
       setDiscountValue('');
     }
@@ -266,21 +272,20 @@ function InvoiceManagementModal({
       return;
     }
     const isFull = amt >= payAmt - 0.005;
-    const { error: e1 } = await supabase.from('payments').insert([{
-      patient_id: p.patient_id || invoice.patient_id,
-      invoice_id: invoice.id,
-      clinic_id: clinicId,
-      amount: -amt,
-      method: 'Reversal',
-      payment_date: new Date().toISOString(),
-      notes: `${isFull ? 'Reversal' : 'Partial refund'} of ${p.method} payment${p.or_number ? ' OR ' + p.or_number : ''} (${fmt(amt)}${isFull ? '' : ' of ' + fmt(payAmt)})`,
-    }]);
-    if (e1) {
-      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to refund', text: e1.message });
+    const note = `${isFull ? 'Reversal' : 'Partial refund'} of ${p.method} payment${p.or_number ? ' OR ' + p.or_number : ''} (${fmt(amt)}${isFull ? '' : ' of ' + fmt(payAmt)})`;
+    // Atomic reversal (migration 015): one RPC inserts the offsetting entry AND
+    // — for a full refund — marks the original reversed_at in a single
+    // transaction. Replaces the old two-write flow (no double-reversal race),
+    // and re-validates the net-collected cap SERVER-side against live data.
+    const { error } = await supabase.rpc('reverse_payment', {
+      p_payment_id: p.id,
+      p_clinic_id: clinicId,
+      p_amount: amt,
+      p_note: note,
+    });
+    if (error) {
+      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to refund', text: error.message });
       return;
-    }
-    if (isFull) {
-      await supabase.from('payments').update({ reversed_at: new Date().toISOString() }).eq('id', p.id);
     }
     setRefundFor(null);
     setRefundAmount('');
@@ -330,6 +335,10 @@ function InvoiceManagementModal({
     const { error } = await supabase.from('invoices').update({
       discount: discountAmt,
       discount_type: discountType === 'none' ? null : discountType,
+      // Raw input kept so the DB re-derives a % discount as items change
+      // (migration 017). Null for senior/pwd/none (DB-owned / N/A).
+      discount_value: (discountType === 'percent' || discountType === 'amount')
+        ? (parseFloat(discountValue) || 0) : null,
       sc_pwd_id: isScPwdSave ? (scPwdIdEdit.trim() || null) : null,
       due_date: dueDate || null,
       notes: notes || null,
