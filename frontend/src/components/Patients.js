@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { fetchAllRows } from '../api/fetchAllRows';
 import PatientProfile from './patients/PatientProfile'; // full-page profile: history, odontogram, files (TS)
 import { LuSquarePen, LuTrash2, LuSearch, LuUserPlus } from 'react-icons/lu';
 import './Patients.css';
@@ -119,11 +120,11 @@ function Patients({ setModalContent, clinicId }) {
   const fetchPatients = async () => {
     try {
       setError('');
-      const { data, error } = await supabase
-        .from('patients').select('*')
-        .eq('clinic_id', clinicId).eq('deleted', false)
-        .order('name', { ascending: true });
-      if (error) throw error;
+      // Paged past the 1000-row cap so a large clinic never silently loses patients.
+      const data = await fetchAllRows((from, to) =>
+        supabase.from('patients').select('*')
+          .eq('clinic_id', clinicId).eq('deleted', false)
+          .order('name', { ascending: true }).range(from, to));
       setPatients(data || []);
     } catch (err) { setError('Failed to fetch patients'); setPatients([]); console.error(err); }
   };
@@ -131,10 +132,10 @@ function Patients({ setModalContent, clinicId }) {
   const fetchAppointments = async () => {
     try {
       setError('');
-      const { data, error } = await supabase
-        .from('appointments').select('*')
-        .eq('clinic_id', clinicId).order('appointment_time', { ascending: false });
-      if (error) throw error;
+      // Paged so the has-appointments indicator reflects EVERY appointment.
+      const data = await fetchAllRows((from, to) =>
+        supabase.from('appointments').select('*')
+          .eq('clinic_id', clinicId).order('appointment_time', { ascending: false }).range(from, to));
       setAppointments(data || []);
     } catch (err) { setError('Failed to fetch appointments'); setAppointments([]); console.error(err); }
   };

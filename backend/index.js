@@ -407,6 +407,59 @@ app.post('/api/keep-alive', (req, res) => {
   res.json({ ok: true });
 });
 
+// --- PUBLIC QUEUE DISPLAY (token-scoped) ---
+// The waiting-room TV has NO login, so it cannot read the RLS-protected
+// patients/appointments tables with the anon key. This endpoint serves the
+// minimal queue (first names only) using the SERVICE key, scoped by the clinic's
+// queue_token — the token IS the credential. Read-only; no PII beyond a first name.
+const firstNameOf = (n) => (String(n || '').trim().split(/\s+/)[0] || '');
+app.get('/api/queue/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) return res.status(400).json({ error: 'Missing token' });
+
+    const { data: clinic, error: cErr } = await supabase
+      .from('clinics')
+      .select('id, name, queue_stations')
+      .eq('queue_token', token)
+      .single();
+    if (cErr || !clinic) return res.status(404).json({ error: 'Invalid token' });
+
+    const { data: appts } = await supabase
+      .from('appointments')
+      .select('id, patient_id, checked_in_at, clinic_id')
+      .eq('clinic_id', clinic.id)
+      .eq('deleted', false)
+      .eq('status', 'Checked-In')
+      .order('checked_in_at', { ascending: true });
+
+    const ids = [...new Set((appts || []).map(a => a.patient_id).filter(Boolean))];
+    let names = {};
+    if (ids.length) {
+      const { data: pts } = await supabase.from('patients').select('id, name').in('id', ids);
+      names = Object.fromEntries((pts || []).map(p => [p.id, p.name]));
+    }
+
+    const queue = (appts || []).map(a => ({
+      id: a.id,
+      clinic_id: a.clinic_id,
+      status: 'Checked-In',
+      checked_in_at: a.checked_in_at,
+      first_name: firstNameOf(names[a.patient_id]),
+    }));
+
+    res.json({
+      clinic_id: clinic.id,
+      clinic_name: clinic.name,
+      stations: clinic.queue_stations || 1,
+      queue,
+    });
+  } catch (err) {
+    console.error('[GET /api/queue/:token]', err.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // --- SOCKET.IO SETUP ---
 const server = http.createServer(app);
 const io = socketio(server, {

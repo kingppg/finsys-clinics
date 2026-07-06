@@ -318,35 +318,6 @@ async function sendRemindersForClinic(clinicArg) {
   }
 }
 
-function getCronStringUTC(reminderTime, timeZone) {
-  const parts = reminderTime.split(':');
-  const localHour = parseInt(parts[0], 10);
-  const localMinute = parseInt(parts[1] || '0', 10);
-
-  const now = new Date();
-  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(now);
-
-  const naiveUTC = new Date(`${todayStr}T${String(localHour).padStart(2, '0')}:${String(localMinute).padStart(2, '0')}:00Z`);
-
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour: 'numeric',
-    minute: 'numeric',
-    hour12: false,
-  });
-  const localParts = formatter.formatToParts(naiveUTC);
-  const displayedHour = parseInt(localParts.find(p => p.type === 'hour').value, 10);
-  const displayedMinute = parseInt(localParts.find(p => p.type === 'minute').value, 10);
-
-  const diffMinutes = (localHour * 60 + localMinute) - (displayedHour * 60 + displayedMinute);
-  const correctUTC = new Date(naiveUTC.getTime() + diffMinutes * 60 * 1000);
-  const utcHour = correctUTC.getUTCHours();
-  const utcMinute = correctUTC.getUTCMinutes();
-
-  console.log(`[ReminderScheduler] Clinic TZ: ${timeZone} | Local reminder time: ${reminderTime} | UTC cron: ${utcMinute} ${utcHour} * * *`);
-  return `${utcMinute} ${utcHour} * * *`;
-}
-
 // --- HOT-RELOAD SCHEDULER ---
 const scheduledJobs = new Map();
 
@@ -372,14 +343,18 @@ async function rescheduleJobs() {
   for (const clinic of clinics) {
     if (!scheduledJobs.has(clinic.id)) {
       const timeZone = clinic.time_zone || 'Asia/Manila';
-      const cronStr = getCronStringUTC(clinic.reminder_time, timeZone);
+      // Let node-cron own the timezone: it fires the CLINIC-LOCAL "HH:MM" in the
+      // clinic's zone, handling DST and removing any dependency on the server
+      // clock being UTC. (Replaces the old manual local→UTC conversion.)
+      const [rh, rm] = String(clinic.reminder_time || '9:00').split(':');
+      const cronStr = `${parseInt(rm || '0', 10)} ${parseInt(rh, 10)} * * *`;
       const job = cron.schedule(cronStr, async () => {
         try {
           await sendRemindersForClinic(clinic);
         } catch (err) {
           console.error(`[ReminderScheduler][${clinic.name}] Error in scheduled reminder:`, err.stack || err);
         }
-      });
+      }, { timezone: timeZone });
       scheduledJobs.set(clinic.id, {
         job,
         reminder_time: clinic.reminder_time,
@@ -389,7 +364,7 @@ async function rescheduleJobs() {
         sms_api_key: clinic.sms_api_key,
         name: clinic.name
       });
-      console.log(`[ReminderScheduler] Scheduled reminders for clinic "${clinic.name}" (ID ${clinic.id}) at ${clinic.reminder_time} ${timeZone} (UTC cron: ${cronStr})`);
+      console.log(`[ReminderScheduler] Scheduled reminders for clinic "${clinic.name}" (ID ${clinic.id}) at ${clinic.reminder_time} local (cron "${cronStr}" in ${timeZone})`);
     }
   }
 }

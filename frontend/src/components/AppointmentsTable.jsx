@@ -9,6 +9,7 @@ import './MainSection.css';
 import Swal from 'sweetalert2';
 import socket from '../socket';
 import { useClinic } from './ClinicContext';
+import { fetchAllRows } from '../api/fetchAllRows';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
@@ -158,15 +159,21 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
     const preload = async () => {
       setLoading(true);
       try {
-        const [denRes, patRes, appRes] = await Promise.all([
+        const [denRes, patRes, appAll] = await Promise.all([
           supabase.from('dentists').select('*').eq('clinic_id', clinicId),
           supabase.from('patients').select('*').eq('clinic_id', clinicId).eq('deleted', false),
-          supabase.from('appointments').select('*').eq('clinic_id', clinicId).eq('deleted', false),
+          // Paged so the Year dropdown reflects EVERY year, not just the first
+          // 1000 appointments (PostgREST's silent cap).
+          fetchAllRows((from, to) =>
+            supabase.from('appointments').select('*')
+              .eq('clinic_id', clinicId).eq('deleted', false)
+              .order('id', { ascending: true }).range(from, to)
+          ),
         ]);
         setDentists(denRes.data || []);
         setPatients(patRes.data || []);
-        
-        const years = getYearList(appRes.data || []);
+
+        const years = getYearList(appAll || []);
         const currentYear = String(new Date().getFullYear());
         if (!selectedYear && !jumpDate) {
           if (years.includes(Number(currentYear))) {
@@ -394,13 +401,17 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
 
     setLoading(true);
     try {
-      let { data: arr, error } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('clinic_id', clinicId)
-        .eq('deleted', false);
-
-      if (error) throw error;
+      // Paged fetch so views never silently drop the oldest appointments once a
+      // clinic passes PostgREST's 1000-row cap. JS date-filtering below unchanged.
+      let arr = await fetchAllRows((from, to) =>
+        supabase
+          .from('appointments')
+          .select('*')
+          .eq('clinic_id', clinicId)
+          .eq('deleted', false)
+          .order('id', { ascending: true })
+          .range(from, to)
+      );
 
       let filtered = [];
       if (viewMode === 'monthly' && selectedYear && selectedMonth) {

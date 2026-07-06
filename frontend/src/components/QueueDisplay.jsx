@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { supabase } from '../supabaseClient';
 import socket from '../socket';
 import './QueueDisplay.css';
+
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 function getTokenFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -18,10 +19,6 @@ function isTodayCheckedIn(appt) {
     d.getUTCMonth()    === now.getUTCMonth()    &&
     d.getUTCDate()     === now.getUTCDate()
   );
-}
-
-function firstName(fullName = '') {
-  return fullName.trim().split(/\s+/)[0] || fullName;
 }
 
 function useClockTick() {
@@ -49,100 +46,51 @@ function QueueDisplay() {
   const [clinicName, setClinicName] = useState('');
   const [stations, setStations]     = useState(1);
   const [queue, setQueue]           = useState([]);
-  const [patients, setPatients]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [invalid, setInvalid]       = useState(false);
   const now                         = useClockTick();
 
-  // ── resolve token → clinic ─────────────────────────────────────────────────
-  useEffect(() => {
+  // Load the queue from the PUBLIC, token-scoped endpoint. The TV has no login,
+  // so it can't read the RLS-protected patients/appointments tables directly —
+  // the backend serves the minimal queue (first names only) with the service key.
+  const loadQueue = useCallback(async () => {
     if (!token) { setInvalid(true); setLoading(false); return; }
-    supabase
-      .from('clinics')
-      .select('id, name, queue_stations')
-      .eq('queue_token', token)
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) { setInvalid(true); setLoading(false); return; }
-        setClinicId(data.id);
-        setClinicName(data.name);
-        setStations(data.queue_stations || 1);
-      });
+    try {
+      const res = await fetch(`${API_BASE}/api/queue/${encodeURIComponent(token)}`);
+      if (!res.ok) { setInvalid(true); setLoading(false); return; }
+      const data = await res.json();
+      setClinicId(data.clinic_id);
+      setClinicName(data.clinic_name || '');
+      setStations(data.stations || 1);
+      setQueue((data.queue || [])
+        .filter(isTodayCheckedIn)
+        .sort((a, b) => new Date(a.checked_in_at) - new Date(b.checked_in_at)));
+      setInvalid(false);
+    } catch {
+      setInvalid(true);
+    } finally {
+      setLoading(false);
+    }
   }, [token]);
 
-  // ── poll stations every 30s (so TV reflects changes without refresh) ───────
+  useEffect(() => { loadQueue(); }, [loadQueue]);
+
+  // Poll so the TV stays fresh even if the socket connection drops.
   useEffect(() => {
-    if (!clinicId) return;
-    const interval = setInterval(() => {
-      supabase
-        .from('clinics')
-        .select('queue_stations')
-        .eq('id', clinicId)
-        .single()
-        .then(({ data }) => {
-          if (data?.queue_stations) setStations(data.queue_stations);
-        });
-    }, 30000);
+    const interval = setInterval(loadQueue, 20000);
     return () => clearInterval(interval);
-  }, [clinicId]);
+  }, [loadQueue]);
 
-  // ── fetch patients ─────────────────────────────────────────────────────────
-  const fetchPatients = useCallback(async () => {
-    if (!clinicId) return;
-    const { data } = await supabase
-      .from('patients')
-      .select('id, name')
-      .eq('clinic_id', clinicId)
-      .eq('deleted', false);
-    setPatients(data || []);
-  }, [clinicId]);
-
-  useEffect(() => { fetchPatients(); }, [fetchPatients]);
-
-  // ── fetch queue ────────────────────────────────────────────────────────────
-  const fetchQueue = useCallback(async () => {
-    if (!clinicId) return;
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('id, patient_id, status, checked_in_at, clinic_id')
-      .eq('clinic_id', clinicId)
-      .eq('deleted', false)
-      .eq('status', 'Checked-In')
-      .order('checked_in_at', { ascending: true });
-
-    if (!error && data) setQueue(data.filter(isTodayCheckedIn));
-    setLoading(false);
-  }, [clinicId]);
-
-  useEffect(() => { fetchQueue(); }, [fetchQueue]);
-
-  // ── socket ─────────────────────────────────────────────────────────────────
+  // Live refresh on any appointment change for this clinic.
   useEffect(() => {
     if (!clinicId) return;
     function handleUpdated(updatedRow) {
-      if (String(updatedRow.clinic_id) !== String(clinicId)) return;
-      if (isTodayCheckedIn(updatedRow)) {
-        setQueue(prev => {
-          const exists = prev.some(a => a.id === updatedRow.id);
-          const next = exists
-            ? prev.map(a => a.id === updatedRow.id ? { ...a, ...updatedRow } : a)
-            : [...prev, updatedRow];
-          return [...next].sort((a, b) => new Date(a.checked_in_at) - new Date(b.checked_in_at));
-        });
-        fetchPatients();
-      } else {
-        setQueue(prev => prev.filter(a => a.id !== updatedRow.id));
-      }
+      if (String(updatedRow?.clinic_id) !== String(clinicId)) return;
+      loadQueue();
     }
     socket.on('appointment-updated', handleUpdated);
     return () => socket.off('appointment-updated', handleUpdated);
-  }, [clinicId, fetchPatients]);
-
-  // ── derived ────────────────────────────────────────────────────────────────
-  const getPatientFirstName = (patientId) => {
-    const p = patients.find(p => String(p.id) === String(patientId));
-    return p ? firstName(p.name) : '—';
-  };
+  }, [clinicId, loadQueue]);
 
   const nowServingList = queue.slice(0, stations);
   const waitingList    = queue.slice(stations);
@@ -200,7 +148,7 @@ function QueueDisplay() {
                     <div className="qd-queue-badge">Station {idx + 1}</div>
                     <div className="qd-serving-center">
                       <div className="qd-serving-number">{idx + 1}</div>
-                      <div className="qd-serving-name">{getPatientFirstName(appt.patient_id)}</div>
+                      <div className="qd-serving-name">{appt.first_name || '—'}</div>
                     </div>
                     <div className="qd-serving-live"><span className="qd-serving-live-dot" /> Now Serving</div>
                   </div>
@@ -235,7 +183,7 @@ function QueueDisplay() {
               waitingList.map((appt, idx) => (
                 <div className={`qd-waiting-item${idx === 0 ? ' qd-up-next' : ''}`} key={appt.id}>
                   <div className="qd-waiting-num">{stations + idx + 1}</div>
-                  <div className="qd-waiting-name">{getPatientFirstName(appt.patient_id)}</div>
+                  <div className="qd-waiting-name">{appt.first_name || '—'}</div>
                   {idx === 0 && <span className="qd-up-next-chip">Up next</span>}
                 </div>
               ))

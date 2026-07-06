@@ -8,6 +8,7 @@ import { CollectionsOverview } from './billing/CollectionsOverview';
 import { GRANS, getPeriodRange, shiftAnchor, inRange, isCurrentOrFuture } from './billing/period';
 import { DISCOUNT_TYPES, computeInvoiceTotals } from './billing/discount';
 import { isInvoiceOverdue } from './billing/billingAnalytics';
+import { fetchAllRows } from '../api/fetchAllRows';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
@@ -127,16 +128,19 @@ function BillsPayment() {
     if (!clinicId) return;
     setTableLoading(true);
     Promise.all([
-      supabase.from('invoices').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }),
-      supabase.from('payments').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }),
+      // Invoices & payments paged past the 1000-row cap (they grow without bound);
+      // balances/aging/collections all read these, so a silent truncation would
+      // corrupt the numbers. Returned as plain arrays by fetchAllRows.
+      fetchAllRows((from, to) => supabase.from('invoices').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }).range(from, to)),
+      fetchAllRows((from, to) => supabase.from('payments').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }).range(from, to)),
       supabase.from('patients').select('*').eq('clinic_id', clinicId),
       supabase.from('dentists').select('*').eq('clinic_id', clinicId),
       supabase.from('procedures').select('*').eq('clinic_id', clinicId).order('name'),
       supabase.from('clinics').select('vat_registered, vat_rate').eq('id', clinicId).single(),
     ])
-    .then(([invRes, payRes, patRes, denRes, procRes, clinicRes]) => {
-      setInvoices(invRes.data || []);
-      setPayments(payRes.data || []);
+    .then(([invAll, payAll, patRes, denRes, procRes, clinicRes]) => {
+      setInvoices(invAll || []);
+      setPayments(payAll || []);
       setPatients(patRes.data || []);
       setDentists(denRes.data || []);
       setProcedures(procRes.data || []);
@@ -160,16 +164,16 @@ function BillsPayment() {
 
   const refreshData = async () => {
     if (!clinicId) return;
-    const [invRes, payRes] = await Promise.all([
-      supabase.from('invoices').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }),
-      supabase.from('payments').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }),
+    const [invAll, payAll] = await Promise.all([
+      fetchAllRows((from, to) => supabase.from('invoices').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }).range(from, to)),
+      fetchAllRows((from, to) => supabase.from('payments').select('*').eq('clinic_id', clinicId).order('id', { ascending: false }).range(from, to)),
     ]);
-    setInvoices(invRes.data || []);
-    setPayments(payRes.data || []);
+    setInvoices(invAll || []);
+    setPayments(payAll || []);
 
     // Also refresh managing invoice if open
     if (managingInvoice) {
-      const fresh = (invRes.data || []).find(i => i.id === managingInvoice.id);
+      const fresh = (invAll || []).find(i => i.id === managingInvoice.id);
       if (fresh) setManagingInvoice(fresh);
     }
   };

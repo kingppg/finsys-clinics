@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { fetchAllRows } from '../api/fetchAllRows';
 import DentistAvailabilityManager from './DentistAvailabilityManager';
 import { LuUserPlus, LuCalendarClock, LuSquarePen, LuTrash2, LuInfo } from 'react-icons/lu';
 import './Dentists.css';
@@ -63,11 +64,10 @@ function Dentists({ clinicId }) {
 
   const fetchAppointments = async () => {
     try {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*')
-        .eq('clinic_id', clinicId);
-      if (error) throw error;
+      // Paged past the 1000-row cap so per-dentist counts/stats stay accurate.
+      const data = await fetchAllRows((from, to) =>
+        supabase.from('appointments').select('*')
+          .eq('clinic_id', clinicId).order('id', { ascending: true }).range(from, to));
       setAppointments(data);
     } catch (err) {
       setError('Failed to fetch appointments');
@@ -77,11 +77,9 @@ function Dentists({ clinicId }) {
 
   const fetchPatients = async () => {
     try {
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*')
-        .eq('clinic_id', clinicId);
-      if (error) throw error;
+      const data = await fetchAllRows((from, to) =>
+        supabase.from('patients').select('*')
+          .eq('clinic_id', clinicId).order('id', { ascending: true }).range(from, to));
       setPatients(data);
     } catch (err) {
       setPatients([]);
