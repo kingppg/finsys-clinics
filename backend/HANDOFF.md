@@ -332,12 +332,13 @@ The Billing module is now a complete, BIR-aware, audit-grade invoicing system. *
 **Finalize / lock rules (Phase 3):**
 - `invoices.finalized_at` = lock; `invoices.sc_pwd_id` = OSCA/PWD ID (captured in the invoice FORM, not a swal — swal2 inputs render display:none here).
 - **Fully paid → auto-finalizes** (payments trigger `autolock_on_full_payment`). **Manual Finalize button = zero-payment invoices only.** **Partial-paid is NEVER auto/manually locked → stays editable** (so a mid-payment senior discount recomputes from the ORIGINAL amount; the paid amount stands, balance = total − paid).
-- **Reopen** (unlock) = finalized invoices with **zero payments only** (DB-enforced by 012). Any payment (partial/full) → cannot reopen/void/re-apply. Finalized = DB-blocks item + amount changes.
-- The consistent principle: **any payment commits the amounts** for destructive actions (Void, Re-apply, Reopen, manual Finalize); **discount Edit stays open until finalization**; **full payment = hard lock**.
+- **Reopen** (unlock) = finalized invoices with **zero NET payments** (DB-enforced by 012/013). Guards key off **net paid (Σ amount)**, not row count. Finalized = DB-blocks item + amount changes.
+- **Phase 4 — reverse/refund a payment (migration 013):** Payment History "Reverse" records an OFFSETTING negative `Reversal` payment (original kept + marked `payments.reversed_at`) — audit-safe, `SUM(amount)` nets. Correction workflow for a paid invoice: **Reverse payment(s) → net 0 → Reopen → edit → re-finalize → re-collect**. Refunds shown red/parens.
+- The consistent principle: **net payment commits the amounts** for destructive actions (Void, Re-apply, Reopen, manual Finalize); **discount Edit stays open until finalization**; **full payment = hard lock**.
 
 **Also this session:** premium theming pass (`.dc-page`/header/tabs/chips/KPIs), complete staged invoice creation (appointment link prefills procedure), period picker (All/Annual/Monthly/Weekly/Daily, cohort collection rate), `INV-YYYY-####` numbering (007), configurable VAT (008, "VAT Registration" page — BIR wording), SOA VAT + Senior/PWD legal block, Procedures SC/PWD eligibility guide.
 
-**Only deferred billing item:** refund / reverse a payment (to correct a paid invoice) — "Phase 4", not built, nothing blocked without it. Minor: persist `appointment_id` FK (column unconfirmed); Manage modal still on `.bills-modal-overlay`.
+**Migrations 007–013 ALL RUN ✅. Billing VAT/discount/finalize/refund work is COMPLETE — nothing deferred.** Only minor cosmetic follow-ups remain: persist `appointment_id` FK on invoices (column unconfirmed); Manage modal still on `.bills-modal-overlay` (not `.dc-overlay`); optional per-invoice VAT-rate snapshot.
 
 ### Local dev note
 A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
@@ -403,5 +404,6 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `95259a5` / `983f2d4` | Migration 012 + Reopen button (unlock finalized draft with zero payments; DB-enforced) |
 | `495e8a5` | Fix: manual Finalize allowed only on zero-payment invoices (partial-paid stays editable, locks via full payment) |
 | `5f2d9ee` | Polish: BIR-accurate "VAT Registration" page wording + Procedures SC/PWD guide callout |
+| `9486fdf` / `138bc47` | Migration 013 + Phase 4: reverse/refund a payment (offsetting entry, net-aware guards) |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
