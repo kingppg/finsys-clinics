@@ -25,24 +25,23 @@ export interface DiscountResult {
 /**
  * Compute the discount amount for an invoice.
  *
- * Senior / PWD is the PH statutory computation: the sale is VAT-EXEMPT, so when
- * the clinic is VAT-registered we strip the VAT first, THEN take 20% of the
- * VAT-exempt (net) base. Non-VAT clinics have no VAT to strip → plain 20% off.
+ * PERMANENT MODEL: line prices are stored VAT-EXCLUSIVE (base amounts). So the
+ * statutory Senior/PWD 20% is applied to the base directly — regardless of the
+ * clinic's VAT status (a senior/PWD is VAT-exempt; VAT is simply never charged
+ * to them, handled by computeVat below). We do NOT divide by 1.12 — there is no
+ * VAT embedded in a VAT-exclusive base to back out.
  */
 export function computeDiscount(opts: {
   subtotal: number;
   type: DiscountType;
   customValue?: number;      // % for 'percent', ₱ for 'amount'
-  vatRegistered?: boolean;
-  vatRate?: number;          // e.g. 12
 }): DiscountResult {
-  const { subtotal, type, customValue = 0, vatRegistered = false, vatRate = 12 } = opts;
+  const { subtotal, type, customValue = 0 } = opts;
   if (type === 'none' || !subtotal || subtotal <= 0) return { amount: 0, label: '' };
 
   if (type === 'senior' || type === 'pwd') {
-    const base = vatRegistered ? subtotal / (1 + vatRate / 100) : subtotal;
     return {
-      amount: round2(base * SC_PWD_RATE),
+      amount: round2(subtotal * SC_PWD_RATE),
       label: type === 'senior' ? 'Senior Citizen 20%' : 'PWD 20%',
     };
   }
@@ -57,15 +56,22 @@ export function computeDiscount(opts: {
   return { amount: round2(amt), label: '' };
 }
 
-export interface VatBreakdown {
-  net: number;   // VAT-exempt / VATable sales (price ÷ 1+rate)
-  vat: number;   // the VAT portion
-  rate: number;
-}
-
-/** Back out the VAT portion of a VAT-inclusive amount (null when not registered). */
-export function vatBreakdown(grossInclusive: number, vatRegistered: boolean, vatRate = 12): VatBreakdown | null {
-  if (!vatRegistered || !grossInclusive) return null;
-  const net = grossInclusive / (1 + vatRate / 100);
-  return { net: round2(net), vat: round2(grossInclusive - net), rate: vatRate };
+/**
+ * Add VAT to a VAT-EXCLUSIVE taxable base (additive, not backed out).
+ * VAT is zero when the clinic isn't VAT-registered OR the sale is exempt
+ * (Senior/PWD). Returns the VAT and the VAT-inclusive amount due.
+ *   regular VAT: base 1000 → { vat: 120, total: 1120 }
+ *   senior/exempt or non-VAT: → { vat: 0, total: base }
+ */
+export function computeVat(opts: {
+  taxableBase: number;
+  vatRegistered: boolean;
+  exempt: boolean;
+  vatRate?: number;
+}): { vat: number; total: number; rate: number } {
+  const { taxableBase, vatRegistered, exempt, vatRate = 12 } = opts;
+  const base = Math.max(taxableBase, 0);
+  if (!vatRegistered || exempt) return { vat: 0, total: round2(base), rate: vatRate };
+  const vat = round2(base * (vatRate / 100));
+  return { vat, total: round2(base + vat), rate: vatRate };
 }

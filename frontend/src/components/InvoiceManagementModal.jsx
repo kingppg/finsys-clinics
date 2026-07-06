@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import Swal from 'sweetalert2';
 import InvoiceLineItems from './billing/InvoiceLineItems';
-import { DISCOUNT_TYPES, computeDiscount, vatBreakdown } from './billing/discount';
+import { DISCOUNT_TYPES, computeDiscount, computeVat } from './billing/discount';
 
 const swalConfig = {
   confirmButtonColor: "#0f2340",
@@ -102,15 +102,17 @@ function InvoiceManagementModal({
   const discLabelFor = (t) => t === 'senior' ? 'Senior Citizen 20%' : t === 'pwd' ? 'PWD 20%'
     : t === 'percent' ? 'Discount' : t === 'amount' ? 'Discount' : '';
   const liveDiscount = discountEdit
-    ? computeDiscount({ subtotal, type: discountType, customValue: parseFloat(discountValue) || 0, vatRegistered, vatRate })
+    ? computeDiscount({ subtotal, type: discountType, customValue: parseFloat(discountValue) || 0 })
     : { amount: parseFloat(invoice.discount || 0), label: discLabelFor(invoice.discount_type) };
   const discountAmt = liveDiscount.amount;
-  const total = Math.max(subtotal - discountAmt, 0);
-  const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
-  const balanceDue = Math.max(total - totalPaid, 0);
   const activeDiscType = discountEdit ? discountType : invoice.discount_type;
   const isScPwd = activeDiscType === 'senior' || activeDiscType === 'pwd';
-  const mgmtVat = (vatRegistered && !isScPwd) ? vatBreakdown(total, vatRegistered, vatRate) : null;
+  // VAT-exclusive: add VAT to (subtotal − discount) for a regular VAT invoice;
+  // Senior/PWD is VAT-exempt.
+  const mgmtVat = computeVat({ taxableBase: subtotal - discountAmt, vatRegistered, exempt: isScPwd, vatRate });
+  const total = mgmtVat.total;
+  const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const balanceDue = Math.max(total - totalPaid, 0);
 
   // Seed the custom value so an unchanged save preserves the amount.
   const openDiscountEdit = () => {
@@ -351,14 +353,11 @@ function InvoiceManagementModal({
                     <span>- {fmt(discountAmt)}</span>
                   </div>
                 )}
-                {vatRegistered && isScPwd && discountAmt > 0 && (
+                {vatRegistered && isScPwd && (
                   <div className="inv-totals-row"><span>VAT-Exempt Sale</span><span>—</span></div>
                 )}
-                {mgmtVat && (
-                  <>
-                    <div className="inv-totals-row"><span>VATable Sales</span><span>{fmt(mgmtVat.net)}</span></div>
-                    <div className="inv-totals-row"><span>VAT ({mgmtVat.rate}%)</span><span>{fmt(mgmtVat.vat)}</span></div>
-                  </>
+                {mgmtVat.vat > 0 && (
+                  <div className="inv-totals-row"><span>VAT ({mgmtVat.rate}%)</span><span>+ {fmt(mgmtVat.vat)}</span></div>
                 )}
                 <div className="inv-totals-row inv-totals-total">
                   <span>Total</span>

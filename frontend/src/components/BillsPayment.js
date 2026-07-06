@@ -6,7 +6,7 @@ import { DcThemeProvider } from '../themes/DcThemeProvider';
 import { AgingAnalysis } from './billing/AgingAnalysis';
 import { CollectionsOverview } from './billing/CollectionsOverview';
 import { GRANS, getPeriodRange, shiftAnchor, inRange, isCurrentOrFuture } from './billing/period';
-import { DISCOUNT_TYPES, computeDiscount, vatBreakdown } from './billing/discount';
+import { DISCOUNT_TYPES, computeDiscount, computeVat } from './billing/discount';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
@@ -483,15 +483,13 @@ function BillsPayment() {
     subtotal: addSubtotal,
     type: addDiscountType,
     customValue: parseFloat(addDiscountValue) || 0,
-    vatRegistered,
-    vatRate,
   });
   const addDiscountAmt = addDiscount.amount;
-  const addTotal = Math.max(addSubtotal - addDiscountAmt, 0);
   const addIsScPwd = addDiscountType === 'senior' || addDiscountType === 'pwd';
-  // VAT breakdown shows only on a regular VAT invoice; Senior/PWD sales are
-  // VAT-exempt (the discount already removed the VAT).
-  const addVat = (vatRegistered && !addIsScPwd) ? vatBreakdown(addTotal, vatRegistered, vatRate) : null;
+  // VAT-exclusive model: VAT is ADDED to the discounted base for a regular VAT
+  // invoice; Senior/PWD sales are VAT-exempt (no VAT charged).
+  const { vat: addVatAmt, total: addTotal, rate: addVatRate } =
+    computeVat({ taxableBase: addSubtotal - addDiscountAmt, vatRegistered, exempt: addIsScPwd, vatRate });
 
   // Atomic create: insert the invoice, then its line items (DB triggers own the
   // totals). Nothing is written until this runs, so cancelling leaves no orphan.
@@ -1102,14 +1100,11 @@ function BillsPayment() {
                     <span>- {fmt(addDiscountAmt)}</span>
                   </div>
                 )}
-                {vatRegistered && addIsScPwd && addDiscountAmt > 0 && (
+                {vatRegistered && addIsScPwd && (
                   <div className="inv-totals-row"><span>VAT-Exempt Sale</span><span>—</span></div>
                 )}
-                {addVat && (
-                  <>
-                    <div className="inv-totals-row"><span>VATable Sales</span><span>{fmt(addVat.net)}</span></div>
-                    <div className="inv-totals-row"><span>VAT ({addVat.rate}%)</span><span>{fmt(addVat.vat)}</span></div>
-                  </>
+                {addVatAmt > 0 && (
+                  <div className="inv-totals-row"><span>VAT ({addVatRate}%)</span><span>+ {fmt(addVatAmt)}</span></div>
                 )}
                 <hr className="inv-totals-hr" />
                 <div className="inv-totals-row inv-totals-balance"><span>Total</span><span>{fmt(addTotal)}</span></div>
@@ -1142,7 +1137,9 @@ function BillsPayment() {
           : parseFloat(activeReceipt.total || 0) + parseFloat(activeReceipt.discount || 0);
         const soaDiscount = parseFloat(activeReceipt.discount || 0);
         const soaIsScPwd = activeReceipt.discount_type === 'senior' || activeReceipt.discount_type === 'pwd';
-        const soaVat = (vatRegistered && !soaIsScPwd) ? vatBreakdown(parseFloat(activeReceipt.total || 0), vatRegistered, vatRate) : null;
+        const soaVatCalc = computeVat({ taxableBase: soaSubtotal - soaDiscount, vatRegistered, exempt: soaIsScPwd, vatRate });
+        const soaAmountDue = soaVatCalc.total; // VAT-exclusive base − discount, plus VAT when applicable
+        const soaBalance = Math.max(soaAmountDue - totalPaid, 0);
         const soaDiscLabel = activeReceipt.discount_type === 'senior' ? 'Senior Citizen 20%'
           : activeReceipt.discount_type === 'pwd' ? 'PWD 20%' : 'Discount Applied';
 
@@ -1221,33 +1218,27 @@ function BillsPayment() {
                     <span>Subtotal:</span>
                     <span>{fmt(soaSubtotal)}</span>
                   </div>
-                  {soaVat && (
-                    <>
-                      <div className="receipt-summary-line">
-                        <span>VATable Sales:</span>
-                        <span>{fmt(soaVat.net)}</span>
-                      </div>
-                      <div className="receipt-summary-line">
-                        <span>VAT ({soaVat.rate}%):</span>
-                        <span>{fmt(soaVat.vat)}</span>
-                      </div>
-                    </>
-                  )}
-                  {vatRegistered && soaIsScPwd && soaDiscount > 0 && (
-                    <div className="receipt-summary-line">
-                      <span>VAT-Exempt Sale:</span>
-                      <span>—</span>
-                    </div>
-                  )}
                   {soaDiscount > 0 && (
                     <div className="receipt-summary-line">
                       <span>{soaDiscLabel}:</span>
                       <span style={{ color: '#16a34a' }}>(-) {fmt(soaDiscount)}</span>
                     </div>
                   )}
+                  {vatRegistered && soaIsScPwd && (
+                    <div className="receipt-summary-line">
+                      <span>VAT-Exempt Sale:</span>
+                      <span>—</span>
+                    </div>
+                  )}
+                  {soaVatCalc.vat > 0 && (
+                    <div className="receipt-summary-line">
+                      <span>VAT ({soaVatCalc.rate}%):</span>
+                      <span>(+) {fmt(soaVatCalc.vat)}</span>
+                    </div>
+                  )}
                   <div className="receipt-summary-line">
                     <span>Total Amount Due:</span>
-                    <span>{fmt(activeReceipt.total || 0)}</span>
+                    <span>{fmt(soaAmountDue)}</span>
                   </div>
                   <div className="receipt-summary-line">
                     <span>Total Amount Paid:</span>
@@ -1256,7 +1247,7 @@ function BillsPayment() {
                   <hr />
                   <div className="receipt-summary-line receipt-grand-total">
                     <span>Remaining Balance Due:</span>
-                    <span>{fmt(balanceDue > 0 ? balanceDue : 0)}</span>
+                    <span>{fmt(soaBalance)}</span>
                   </div>
                 </div>
 
