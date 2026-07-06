@@ -1389,6 +1389,19 @@
   padding: 20px !important;
 }
 
+/* Reversed-payment tag (Payment History) */
+.inv-reversed-tag {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background: var(--dc-surface-2, #f1f5f9);
+  color: var(--dc-text-3, #94a3b8);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* Finalized/locked invoice — header badge + body banner */
 .inv-locked-badge {
   display: inline-flex;

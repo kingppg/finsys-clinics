@@ -915,7 +915,11 @@ function BillsPayment() {
                     <tr key={pay.id}>
                       <td className="bills-td-id">{srcInv?.invoice_number || `#${pay.invoice_id}`}</td>
                       <td><span className="bills-patient-name">{patient ? patient.name : `ID: ${pay.patient_id}`}</span></td>
-                      <td style={{ textAlign: "right" }} className="bills-td-price">{fmt(pay.amount || 0)}</td>
+                      <td style={{ textAlign: "right" }} className="bills-td-price">
+                        {parseFloat(pay.amount || 0) < 0
+                          ? <span style={{ color: 'var(--dc-danger)' }}>({fmt(-parseFloat(pay.amount))})</span>
+                          : fmt(pay.amount || 0)}
+                      </td>
                       <td><code className="inv-or-num">{pay.or_number || '—'}</code></td>
                       <td><span className="bills-method-tag">{pay.method}</span></td>
                       <td><code className="bills-ref-num">{pay.reference_number || '—'}</code></td>

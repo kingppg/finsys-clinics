@@ -197,8 +197,8 @@ function InvoiceManagementModal({
   // Finalize (lock) the invoice. The Senior/PWD ID is captured with the invoice
   // (Create form / Details → Edit), so this is a simple confirm.
   const handleFinalize = async () => {
-    if (payments.length > 0) return; // partially-paid invoices lock only via full payment
-    let msg = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed. Make sure discounts and items are correct first. A finalized invoice can only be reopened while it has <b>no payments</b>.';
+    if (totalPaid > 0.005) return; // partially-paid invoices lock only via full payment
+    let msg = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed. Make sure discounts and items are correct first. A finalized invoice can only be reopened while it has <b>no net payments</b>.';
     if (isScPwd && !invoice.sc_pwd_id) {
       msg += '<br><br><b>No Senior/PWD ID recorded.</b> You can add it via <b>Edit</b> first (recommended for BIR), or finalize anyway.';
     }
@@ -222,10 +222,10 @@ function InvoiceManagementModal({
   // Reopen (unlock) a finalized invoice — only allowed while it has no payments
   // (a premature manual lock on a draft is recoverable; paid invoices are not).
   const handleReopen = async () => {
-    if (payments.length > 0) return;
+    if (totalPaid > 0.005) return;
     const res = await Swal.fire({
       ...swalConfig, title: 'Reopen this invoice?',
-      html: 'This <b>unlocks</b> the invoice so items and amounts can be edited again. Possible only because no payments are recorded.',
+      html: 'This <b>unlocks</b> the invoice so items and amounts can be edited again. Possible only because it has no net payments (unpaid, or all payments reversed).',
       icon: 'question', showCancelButton: true, confirmButtonText: 'Reopen',
     });
     if (!res.isConfirmed) return;
@@ -237,6 +237,37 @@ function InvoiceManagementModal({
       onInvoiceUpdated && onInvoiceUpdated();
       Swal.fire({ ...swalConfig, icon: 'success', title: 'Invoice reopened', timer: 1300, showConfirmButton: false });
     }
+  };
+
+  // Reverse (refund) a payment — records an OFFSETTING negative entry (the
+  // original stays for audit) and marks the original reversed. Net paid drops,
+  // so a fully-reversed invoice can then be reopened/edited.
+  const handleReversePayment = async (p) => {
+    const amt = parseFloat(p.amount || 0);
+    if (amt <= 0 || p.reversed_at) return;
+    const res = await Swal.fire({
+      ...swalConfig, title: 'Reverse this payment?',
+      html: `Records a <b>refund / reversal</b> of ${fmt(amt)} (${p.method}${p.or_number ? ', OR ' + p.or_number : ''}). The original payment stays in the record for audit; an offsetting reversal entry is added.`,
+      icon: 'warning', showCancelButton: true, confirmButtonText: 'Reverse payment',
+    });
+    if (!res.isConfirmed) return;
+    const { error: e1 } = await supabase.from('payments').insert([{
+      patient_id: p.patient_id || invoice.patient_id,
+      invoice_id: invoice.id,
+      clinic_id: clinicId,
+      amount: -amt,
+      method: 'Reversal',
+      payment_date: new Date().toISOString(),
+      notes: `Reversal of ${p.method} payment${p.or_number ? ' OR ' + p.or_number : ''} (${fmt(amt)})`,
+    }]);
+    if (e1) {
+      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to reverse', text: e1.message });
+      return;
+    }
+    await supabase.from('payments').update({ reversed_at: new Date().toISOString() }).eq('id', p.id);
+    await fetchData();
+    onInvoiceUpdated && onInvoiceUpdated();
+    Swal.fire({ ...swalConfig, icon: 'success', title: 'Payment reversed', timer: 1400, showConfirmButton: false });
   };
 
   // Toggle a line's SC/PWD eligibility — the DB trigger recomputes discount+VAT.
@@ -317,13 +348,13 @@ function InvoiceManagementModal({
             <button className="inv-mgmt-btn-print" onClick={onPrintSOA}>
               <Icon d={I.print} size={13} /> Print SOA
             </button>
-            {!isFinalized && items.length > 0 && payments.length === 0 && (
+            {!isFinalized && items.length > 0 && totalPaid <= 0.005 && (
               <button className="inv-mgmt-btn-print" onClick={handleFinalize} title="Lock this invoice as a final record">
                 <Icon d={I.lock} size={13} /> Finalize
               </button>
             )}
-            {isFinalized && payments.length === 0 && (
-              <button className="inv-mgmt-btn-print" onClick={handleReopen} title="Unlock this draft (no payments recorded)">
+            {isFinalized && totalPaid <= 0.005 && (
+              <button className="inv-mgmt-btn-print" onClick={handleReopen} title="Unlock this draft (no net payments)">
                 <Icon d={I.refresh} size={13} /> Reopen
               </button>
             )}
@@ -347,7 +378,7 @@ function InvoiceManagementModal({
                   <Icon d={I.lock} size={14} />
                   <span>
                     This invoice was finalized on {new Date(invoice.finalized_at).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })} and is locked — line items and amounts can no longer be changed.
-                    {payments.length === 0 ? ' Since no payment is recorded yet, you can Reopen it to edit.' : ''}
+                    {totalPaid <= 0.005 ? ' Since it has no net payment, you can Reopen it to edit.' : ''}
                   </span>
                 </div>
               )}
@@ -358,7 +389,7 @@ function InvoiceManagementModal({
                 onAddItem={handleAddItem}
                 onDeleteItem={(item) => handleDeleteItem(item.id)}
                 onToggleEligible={handleToggleEligible}
-                headerAction={!isFinalized && payments.length === 0 && items.some(it => it.procedure_id != null) ? (
+                headerAction={!isFinalized && totalPaid <= 0.005 && items.some(it => it.procedure_id != null) ? (
                   <button type="button" className="inv-add-btn" onClick={handleReapplyEligibility}
                     title="Update all catalog-linked lines to match current Procedures eligibility settings">
                     <Icon d={I.refresh} size={12} /> Re-apply eligibility
@@ -466,18 +497,35 @@ function InvoiceManagementModal({
                         <th>Method</th>
                         <th>Ref #</th>
                         <th style={{ textAlign: 'right' }}>Amount</th>
+                        <th style={{ width: 40 }}></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {payments.map(p => (
+                      {payments.map(p => {
+                        const amt = parseFloat(p.amount || 0);
+                        const isReversal = amt < 0;
+                        return (
                         <tr key={p.id}>
                           <td>{p.payment_date ? new Date(p.payment_date).toLocaleDateString(currencyLocale, { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
                           <td><code className="inv-or-num">{p.or_number || '—'}</code></td>
                           <td><span className="bills-method-tag">{p.method}</span></td>
                           <td><code className="bills-ref-num">{p.reference_number || '—'}</code></td>
-                          <td style={{ textAlign: 'right' }} className="inv-item-total">{fmt(p.amount)}</td>
+                          <td style={{ textAlign: 'right' }} className="inv-item-total">
+                            {isReversal
+                              ? <span style={{ color: 'var(--dc-danger, #dc2626)' }}>({fmt(-amt)})</span>
+                              : fmt(amt)}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {amt > 0 && !p.reversed_at && (
+                              <button type="button" className="inv-delete-btn" onClick={() => handleReversePayment(p)} title="Reverse / refund this payment">
+                                <Icon d={I.refresh} size={13} />
+                              </button>
+                            )}
+                            {p.reversed_at && <span className="inv-reversed-tag">Reversed</span>}
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
