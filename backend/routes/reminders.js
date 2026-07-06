@@ -171,6 +171,7 @@ router.post('/:id/send-reminder', async (req, res) => {
     `)
     .eq('id', appointmentId)
     .eq('clinic_id', clinicId)
+    .eq('deleted', false)
     .single();
 
   if (apptErr || !appt) return res.status(404).json({ error: 'Appointment not found for this clinic' });

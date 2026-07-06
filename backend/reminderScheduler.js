@@ -185,7 +185,22 @@ async function logReminder({ appointment_id, daysAhead, messenger_id, reminderTe
   }
 }
 
-async function sendRemindersForClinic(clinic) {
+async function sendRemindersForClinic(clinicArg) {
+  // Re-fetch the clinic FRESH each run so config edits (reminder_template,
+  // sms_sender, sms_api_secret, token, etc.) take effect on the next send. The
+  // scheduled job closure can hold a STALE snapshot: rescheduleJobs only rebuilds
+  // a job when reminder_time / token / time_zone / sms_provider / sms_api_key
+  // change, so any OTHER field would never refresh until a process restart.
+  // Falls back to the captured snapshot if the refetch fails. (Fires ~once/day
+  // per clinic, so the extra read is negligible.)
+  let clinic = clinicArg;
+  const { data: freshClinic } = await supabase
+    .from('clinics')
+    .select('id, name, fb_page_access_token, reminder_time, time_zone, sms_provider, sms_api_key, sms_api_secret, sms_sender, reminder_template')
+    .eq('id', clinicArg.id)
+    .single();
+  if (freshClinic) clinic = freshClinic;
+
   const clinic_id = clinic.id;
   const page_access_token = clinic.fb_page_access_token;
   const clinic_name = clinic.name;
