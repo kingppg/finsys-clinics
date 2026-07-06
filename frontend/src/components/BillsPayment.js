@@ -111,6 +111,7 @@ function BillsPayment() {
   const [addInvoiceDue, setAddInvoiceDue] = useState('');
   const [addDiscountType, setAddDiscountType] = useState('none'); // none|senior|pwd|percent|amount
   const [addDiscountValue, setAddDiscountValue] = useState(''); // % or ₱ for custom types
+  const [addScPwdId, setAddScPwdId] = useState(''); // OSCA/PWD ID for SC/PWD invoices
   const [addInvoiceNotes, setAddInvoiceNotes] = useState('');
   const [addLineItems, setAddLineItems] = useState([]);
   const [patientAppointments, setPatientAppointments] = useState([]);
@@ -355,7 +356,7 @@ function BillsPayment() {
   // Void = soft cancel. Record is kept for audit; analytics and default view
   // exclude it. Only invoices with ZERO payments can be voided.
   const handleVoidInvoice = async (row) => {
-    if (row.paidAmount > 0) return;
+    if (row.paidAmount > 0 || row.inv.finalized_at) return;
     const { isConfirmed } = await Swal.fire({
       ...swalConfig,
       title: `Void Invoice #${row.inv.id}?`,
@@ -392,6 +393,7 @@ function BillsPayment() {
     setAddInvoiceDue('');
     setAddDiscountType('none');
     setAddDiscountValue('');
+    setAddScPwdId('');
     setAddInvoiceNotes('');
     setAddLineItems([]);
     setPatientAppointments([]);
@@ -517,6 +519,7 @@ function BillsPayment() {
           due_date: addInvoiceDue || null,
           discount: addDiscountAmt,
           discount_type: addDiscountType === 'none' ? null : addDiscountType,
+          sc_pwd_id: addIsScPwd ? (addScPwdId.trim() || null) : null,
           notes: addInvoiceNotes.trim() || null,
           total: 0,
         }])
@@ -825,8 +828,8 @@ function BillsPayment() {
                           <button
                             className="bills-table-btn bills-btn-void"
                             onClick={() => handleVoidInvoice(row)}
-                            disabled={paidAmount > 0}
-                            title={paidAmount > 0 ? 'Cannot void — payments are recorded on this invoice' : 'Void this invoice'}
+                            disabled={paidAmount > 0 || !!inv.finalized_at}
+                            title={inv.finalized_at ? 'Cannot void — invoice is finalized' : paidAmount > 0 ? 'Cannot void — payments are recorded on this invoice' : 'Void this invoice'}
                           >
                             <Icon d={I.x} size={12} /> Void
                           </button>
@@ -1087,6 +1090,13 @@ function BillsPayment() {
                         placeholder={addDiscountType === 'percent' ? '0' : '0.00'} />
                     </label>
                   )}
+                  {addIsScPwd && (
+                    <label className="dc-field">
+                      <span>Senior/PWD ID No.</span>
+                      <input type="text" value={addScPwdId} onChange={e => setAddScPwdId(e.target.value)}
+                        placeholder="OSCA / PWD ID (optional)" />
+                    </label>
+                  )}
                   <label className="dc-field">
                     <span>Due Date</span>
                     <input type="date" value={addInvoiceDue} onChange={e => setAddInvoiceDue(e.target.value)} />
@@ -1259,6 +1269,15 @@ function BillsPayment() {
                     <span>{fmt(soaBalance)}</span>
                   </div>
                 </div>
+
+                {soaIsScPwd && (
+                  <div className="receipt-scpwd-block">
+                    <div className="receipt-label">SENIOR CITIZEN / PWD</div>
+                    <div className="receipt-scpwd-row"><span>Name:</span> <span>{patient ? patient.name : '________________________'}</span></div>
+                    <div className="receipt-scpwd-row"><span>OSCA / PWD ID No.:</span> <span>{activeReceipt.sc_pwd_id || '________________________'}</span></div>
+                    <div className="receipt-scpwd-row"><span>Signature:</span> <span>________________________</span></div>
+                  </div>
+                )}
 
                 {activeReceipt.notes && (
                   <div style={{ margin: '16px 0', padding: '12px', background: '#f8fafc', borderRadius: 6, fontSize: '13px', color: '#475569' }}>

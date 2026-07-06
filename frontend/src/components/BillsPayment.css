@@ -778,6 +778,29 @@
   color: #0f2340;
 }
 
+/* Senior/PWD legal block on the paper receipt (BIR) */
+.receipt-scpwd-block {
+  margin-top: 24px;
+  padding: 12px 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #334155;
+}
+.receipt-scpwd-block .receipt-label {
+  margin-bottom: 8px;
+}
+.receipt-scpwd-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+}
+.receipt-scpwd-row span:first-child {
+  font-weight: 600;
+  color: #64748b;
+  min-width: 130px;
+}
+
 .receipt-footer-signoff {
   text-align: center;
   margin-top: 40px;
@@ -1365,6 +1388,36 @@
   font-style: italic;
   padding: 20px !important;
 }
+
+/* Finalized/locked invoice — header badge + body banner */
+.inv-locked-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border-radius: 9999px;
+  background: var(--dc-warning-soft, #fffbeb);
+  color: var(--dc-warning, #d97706);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+.inv-lock-banner {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border-radius: var(--dc-radius, 12px);
+  background: var(--dc-warning-soft, #fffbeb);
+  color: var(--dc-warning, #b45309);
+  border: 1px solid var(--dc-warning, #d97706);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+.inv-lock-banner svg { flex-shrink: 0; }
 
 /* SC/PWD eligibility — add-form checkbox + per-line pill */
 .inv-elig-check {

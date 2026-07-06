@@ -28,6 +28,7 @@ const I = {
   search:   ["M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"],
   edit:     ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7", "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"],
   refresh:  ["M23 4v6h-6", "M1 20v-6h6", "M3.51 9a9 9 0 0 1 14.85-3.36L23 10", "M1 14l4.64 4.36A9 9 0 0 0 20.49 15"],
+  lock:     ["M5 11h14v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z", "M8 11V7a4 4 0 0 1 8 0v4"],
 };
 
 function InvoiceManagementModal({
@@ -65,6 +66,7 @@ function InvoiceManagementModal({
 
   const patient = patients.find(p => p.id === invoice.patient_id);
   const dentist = dentists?.find(d => d.id === invoice.dentist_id);
+  const isFinalized = !!invoice.finalized_at;
 
   useEffect(() => {
     fetchData();
@@ -190,6 +192,37 @@ function InvoiceManagementModal({
     Swal.fire({ ...swalConfig, icon: 'success', title: 'Eligibility updated', timer: 1400, showConfirmButton: false });
   };
 
+  // Finalize (lock) the invoice — captures the Senior/PWD ID for the audit trail.
+  const handleFinalize = async () => {
+    let scId = invoice.sc_pwd_id || '';
+    const lockNote = 'Once finalized, this invoice is <b>locked</b> — its line items and amounts can no longer be changed.';
+    if (isScPwd) {
+      const res = await Swal.fire({
+        ...swalConfig, title: 'Finalize invoice?', html: lockNote, icon: 'warning',
+        input: 'text', inputLabel: 'Senior / PWD ID No. (OSCA / PWD ID)', inputValue: scId,
+        inputPlaceholder: 'e.g. OSCA-000-1234', showCancelButton: true, confirmButtonText: 'Finalize & lock',
+      });
+      if (!res.isConfirmed) return;
+      scId = (res.value || '').trim();
+    } else {
+      const res = await Swal.fire({
+        ...swalConfig, title: 'Finalize invoice?', html: lockNote, icon: 'warning',
+        showCancelButton: true, confirmButtonText: 'Finalize & lock',
+      });
+      if (!res.isConfirmed) return;
+    }
+    const { error } = await supabase.from('invoices')
+      .update({ finalized_at: new Date().toISOString(), sc_pwd_id: scId || null })
+      .eq('id', invoice.id);
+    if (error) {
+      Swal.fire({ ...swalConfig, icon: 'error', title: 'Failed to finalize', text: error.message });
+    } else {
+      await fetchData();
+      onInvoiceUpdated && onInvoiceUpdated();
+      Swal.fire({ ...swalConfig, icon: 'success', title: 'Invoice finalized & locked', timer: 1500, showConfirmButton: false });
+    }
+  };
+
   // Toggle a line's SC/PWD eligibility — the DB trigger recomputes discount+VAT.
   const handleToggleEligible = async (item) => {
     const { error } = await supabase.from('invoice_items')
@@ -254,6 +287,7 @@ function InvoiceManagementModal({
           <div>
             <div className="inv-mgmt-title">
               Invoice <span className="inv-mgmt-id">{invoice.invoice_number || `#${invoice.id}`}</span>
+              {isFinalized && <span className="inv-locked-badge"><Icon d={I.lock} size={11} /> Finalized</span>}
             </div>
             <div className="inv-mgmt-sub">
               <span className="inv-mgmt-patient">{patient?.name || `Patient #${invoice.patient_id}`}</span>
@@ -265,6 +299,11 @@ function InvoiceManagementModal({
             <button className="inv-mgmt-btn-print" onClick={onPrintSOA}>
               <Icon d={I.print} size={13} /> Print SOA
             </button>
+            {!isFinalized && items.length > 0 && (
+              <button className="inv-mgmt-btn-print" onClick={handleFinalize} title="Lock this invoice as a final record">
+                <Icon d={I.lock} size={13} /> Finalize
+              </button>
+            )}
             <button className="inv-mgmt-btn-pay" onClick={onRecordPayment} disabled={balanceDue <= 0}>
               <Icon d={I.wallet} size={13} /> Record Payment
             </button>
@@ -280,13 +319,20 @@ function InvoiceManagementModal({
           ) : (
             <>
               {/* LINE ITEMS — shared builder (persisted mode) */}
+              {isFinalized && (
+                <div className="inv-lock-banner">
+                  <Icon d={I.lock} size={14} />
+                  <span>This invoice was finalized on {new Date(invoice.finalized_at).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' })} and is locked. Line items and amounts can no longer be changed.</span>
+                </div>
+              )}
               <InvoiceLineItems
                 items={items}
                 procedures={procedures}
+                readOnly={isFinalized}
                 onAddItem={handleAddItem}
                 onDeleteItem={(item) => handleDeleteItem(item.id)}
                 onToggleEligible={handleToggleEligible}
-                headerAction={payments.length === 0 && items.some(it => it.procedure_id != null) ? (
+                headerAction={!isFinalized && payments.length === 0 && items.some(it => it.procedure_id != null) ? (
                   <button type="button" className="inv-add-btn" onClick={handleReapplyEligibility}
                     title="Update all catalog-linked lines to match current Procedures eligibility settings">
                     <Icon d={I.refresh} size={12} /> Re-apply eligibility
@@ -301,7 +347,7 @@ function InvoiceManagementModal({
               <div className="inv-mgmt-section inv-mgmt-meta-section">
                 <div className="inv-mgmt-section-title">
                   Invoice Details
-                  {!discountEdit && (
+                  {!discountEdit && !isFinalized && (
                     <button className="inv-edit-meta-btn" onClick={openDiscountEdit}>
                       <Icon d={I.edit} size={12} /> Edit
                     </button>
@@ -360,6 +406,12 @@ function InvoiceManagementModal({
                       <span>Due Date</span>
                       <span>{dueDate ? new Date(dueDate).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</span>
                     </div>
+                    {invoice.sc_pwd_id && (
+                      <div className="inv-meta-row-display">
+                        <span>Senior/PWD ID</span>
+                        <span>{invoice.sc_pwd_id}</span>
+                      </div>
+                    )}
                     {notes && (
                       <div className="inv-meta-row-display">
                         <span>Notes</span>

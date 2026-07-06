@@ -31,7 +31,8 @@ const I = {
   search: ['M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z'],
 };
 
-function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggleEligible, headerAction, fmt, currencySymbol, busy = false }) {
+function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggleEligible, headerAction, readOnly = false, fmt, currencySymbol, busy = false }) {
+  const canToggle = !readOnly && onToggleEligible;
   const [addMode, setAddMode] = useState(null); // 'procedure' | 'custom'
   const [procSearch, setProcSearch] = useState('');
   const [procDropdownVisible, setProcDropdownVisible] = useState(false);
@@ -122,19 +123,21 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggle
     <div className="inv-mgmt-section">
       <div className="inv-mgmt-section-title">
         Line Items
-        <div className="inv-mgmt-add-btns">
-          {headerAction}
-          <button type="button" className="inv-add-btn" onClick={() => { resetForm(); setAddMode('procedure'); }}>
-            <Icon d={I.search} size={12} /> From Procedures
-          </button>
-          <button type="button" className="inv-add-btn inv-add-btn-custom" onClick={() => { resetForm(); setAddMode('custom'); }}>
-            <Icon d={I.plus} size={12} /> Custom Item
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="inv-mgmt-add-btns">
+            {headerAction}
+            <button type="button" className="inv-add-btn" onClick={() => { resetForm(); setAddMode('procedure'); }}>
+              <Icon d={I.search} size={12} /> From Procedures
+            </button>
+            <button type="button" className="inv-add-btn inv-add-btn-custom" onClick={() => { resetForm(); setAddMode('custom'); }}>
+              <Icon d={I.plus} size={12} /> Custom Item
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Add Item Form */}
-      {addMode && (
+      {!readOnly && addMode && (
         <div className="inv-add-item-form">
           {addMode === 'procedure' ? (
             <div className="inv-add-row" ref={dropdownRef}>
@@ -225,7 +228,7 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggle
                 <td style={{ textAlign: 'right' }}>{fmt(item.unit_price)}</td>
                 <td style={{ textAlign: 'right' }} className="inv-item-total">{fmt(item.total)}</td>
                 <td style={{ textAlign: 'center' }}>
-                  {onToggleEligible ? (
+                  {canToggle ? (
                     <button
                       type="button"
                       className={`inv-elig-pill${eligible ? ' is-elig' : ''}`}
@@ -239,9 +242,11 @@ function InvoiceLineItems({ items, procedures, onAddItem, onDeleteItem, onToggle
                   )}
                 </td>
                 <td>
-                  <button type="button" className="inv-delete-btn" onClick={() => onDeleteItem(item)}>
-                    <Icon d={I.trash} size={13} />
-                  </button>
+                  {!readOnly && (
+                    <button type="button" className="inv-delete-btn" onClick={() => onDeleteItem(item)}>
+                      <Icon d={I.trash} size={13} />
+                    </button>
+                  )}
                 </td>
               </tr>
               );
