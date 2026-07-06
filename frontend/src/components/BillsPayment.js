@@ -6,6 +6,7 @@ import { DcThemeProvider } from '../themes/DcThemeProvider';
 import { AgingAnalysis } from './billing/AgingAnalysis';
 import { CollectionsOverview } from './billing/CollectionsOverview';
 import { GRANS, getPeriodRange, shiftAnchor, inRange, isCurrentOrFuture } from './billing/period';
+import { DISCOUNT_TYPES, computeDiscount, vatBreakdown } from './billing/discount';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
 import Swal from 'sweetalert2';
@@ -63,6 +64,13 @@ const swalConfig = {
 function BillsPayment() {
   const { clinicId, clinicName, currencySymbol, currencyLocale, loading: contextLoading } = useClinic();
 
+  // VAT config is read FRESH on each mount (this module remounts per visit) so a
+  // toggle in Clinic Config takes effect on the next open — the app-level clinic
+  // context is cached at login and wouldn't reflect the change.
+  const [vatCfg, setVatCfg] = useState({ registered: false, rate: 12 });
+  const vatRegistered = vatCfg.registered;
+  const vatRate = vatCfg.rate;
+
   const [invoices, setInvoices] = useState([]);
   const [payments, setPayments] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -101,7 +109,8 @@ function BillsPayment() {
   const [addInvoiceApptId, setAddInvoiceApptId] = useState('');
   const [addInvoiceDate, setAddInvoiceDate] = useState('');
   const [addInvoiceDue, setAddInvoiceDue] = useState('');
-  const [addInvoiceDiscount, setAddInvoiceDiscount] = useState('');
+  const [addDiscountType, setAddDiscountType] = useState('none'); // none|senior|pwd|percent|amount
+  const [addDiscountValue, setAddDiscountValue] = useState(''); // % or ₱ for custom types
   const [addInvoiceNotes, setAddInvoiceNotes] = useState('');
   const [addLineItems, setAddLineItems] = useState([]);
   const [patientAppointments, setPatientAppointments] = useState([]);
@@ -121,13 +130,17 @@ function BillsPayment() {
       supabase.from('patients').select('*').eq('clinic_id', clinicId),
       supabase.from('dentists').select('*').eq('clinic_id', clinicId),
       supabase.from('procedures').select('*').eq('clinic_id', clinicId).order('name'),
+      supabase.from('clinics').select('vat_registered, vat_rate').eq('id', clinicId).single(),
     ])
-    .then(([invRes, payRes, patRes, denRes, procRes]) => {
+    .then(([invRes, payRes, patRes, denRes, procRes, clinicRes]) => {
       setInvoices(invRes.data || []);
       setPayments(payRes.data || []);
       setPatients(patRes.data || []);
       setDentists(denRes.data || []);
       setProcedures(procRes.data || []);
+      if (clinicRes?.data) {
+        setVatCfg({ registered: !!clinicRes.data.vat_registered, rate: parseFloat(clinicRes.data.vat_rate) || 12 });
+      }
     })
     .catch(err => console.error("Error syncing data:", err))
     .finally(() => setTableLoading(false));
@@ -377,7 +390,8 @@ function BillsPayment() {
     setAddInvoiceApptId('');
     setAddInvoiceDate(todayStr());
     setAddInvoiceDue('');
-    setAddInvoiceDiscount('');
+    setAddDiscountType('none');
+    setAddDiscountValue('');
     setAddInvoiceNotes('');
     setAddLineItems([]);
     setPatientAppointments([]);
@@ -465,8 +479,19 @@ function BillsPayment() {
   };
 
   const addSubtotal = addLineItems.reduce((s, i) => s + parseFloat(i.total || 0), 0);
-  const addDiscountAmt = parseFloat(addInvoiceDiscount || 0) || 0;
+  const addDiscount = computeDiscount({
+    subtotal: addSubtotal,
+    type: addDiscountType,
+    customValue: parseFloat(addDiscountValue) || 0,
+    vatRegistered,
+    vatRate,
+  });
+  const addDiscountAmt = addDiscount.amount;
   const addTotal = Math.max(addSubtotal - addDiscountAmt, 0);
+  const addIsScPwd = addDiscountType === 'senior' || addDiscountType === 'pwd';
+  // VAT breakdown shows only on a regular VAT invoice; Senior/PWD sales are
+  // VAT-exempt (the discount already removed the VAT).
+  const addVat = (vatRegistered && !addIsScPwd) ? vatBreakdown(addTotal, vatRegistered, vatRate) : null;
 
   // Atomic create: insert the invoice, then its line items (DB triggers own the
   // totals). Nothing is written until this runs, so cancelling leaves no orphan.
@@ -487,6 +512,7 @@ function BillsPayment() {
           invoice_date: addInvoiceDate || todayStr(),
           due_date: addInvoiceDue || null,
           discount: addDiscountAmt,
+          discount_type: addDiscountType === 'none' ? null : addDiscountType,
           notes: addInvoiceNotes.trim() || null,
           total: 0,
         }])
@@ -937,6 +963,8 @@ function BillsPayment() {
           currencyLocale={currencyLocale}
           patients={patients}
           dentists={dentists}
+          vatRegistered={vatRegistered}
+          vatRate={vatRate}
           refreshTrigger={invoiceRefreshTrigger}  // ADD THIS LINE
           onClose={() => { setShowManageModal(false); setManagingInvoice(null); refreshData(); }}
           onInvoiceUpdated={refreshData}
@@ -1040,10 +1068,19 @@ function BillsPayment() {
                 <div className="inv-mgmt-section-title">Invoice Details</div>
                 <div className="bills-create-grid">
                   <label className="dc-field">
-                    <span>Discount ({currencySymbol})</span>
-                    <input type="number" min="0" step="0.01" value={addInvoiceDiscount}
-                      onChange={e => setAddInvoiceDiscount(e.target.value)} onFocus={e => e.target.select()} placeholder="0.00" />
+                    <span>Discount Type</span>
+                    <select value={addDiscountType} onChange={e => setAddDiscountType(e.target.value)}>
+                      {DISCOUNT_TYPES.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                    </select>
                   </label>
+                  {(addDiscountType === 'percent' || addDiscountType === 'amount') && (
+                    <label className="dc-field">
+                      <span>{addDiscountType === 'percent' ? 'Percent (%)' : `Amount (${currencySymbol})`}</span>
+                      <input type="number" min="0" step="0.01" value={addDiscountValue}
+                        onChange={e => setAddDiscountValue(e.target.value)} onFocus={e => e.target.select()}
+                        placeholder={addDiscountType === 'percent' ? '0' : '0.00'} />
+                    </label>
+                  )}
                   <label className="dc-field">
                     <span>Due Date</span>
                     <input type="date" value={addInvoiceDue} onChange={e => setAddInvoiceDue(e.target.value)} />
@@ -1060,7 +1097,19 @@ function BillsPayment() {
               <div className="inv-totals-block">
                 <div className="inv-totals-row"><span>Subtotal</span><span>{fmt(addSubtotal)}</span></div>
                 {addDiscountAmt > 0 && (
-                  <div className="inv-totals-row inv-totals-discount"><span>Discount</span><span>- {fmt(addDiscountAmt)}</span></div>
+                  <div className="inv-totals-row inv-totals-discount">
+                    <span>Discount{addDiscount.label ? ` (${addDiscount.label})` : ''}</span>
+                    <span>- {fmt(addDiscountAmt)}</span>
+                  </div>
+                )}
+                {vatRegistered && addIsScPwd && addDiscountAmt > 0 && (
+                  <div className="inv-totals-row"><span>VAT-Exempt Sale</span><span>—</span></div>
+                )}
+                {addVat && (
+                  <>
+                    <div className="inv-totals-row"><span>VATable Sales</span><span>{fmt(addVat.net)}</span></div>
+                    <div className="inv-totals-row"><span>VAT ({addVat.rate}%)</span><span>{fmt(addVat.vat)}</span></div>
+                  </>
                 )}
                 <hr className="inv-totals-hr" />
                 <div className="inv-totals-row inv-totals-balance"><span>Total</span><span>{fmt(addTotal)}</span></div>
@@ -1088,6 +1137,14 @@ function BillsPayment() {
         const patient = getPatientById(activeReceipt.patient_id);
         const dentist = dentists.find(d => d.id === activeReceipt.dentist_id);
         const currentStatus = activeReceipt.status || 'Unpaid';
+        const soaSubtotal = activeReceipt.subtotal != null
+          ? parseFloat(activeReceipt.subtotal)
+          : parseFloat(activeReceipt.total || 0) + parseFloat(activeReceipt.discount || 0);
+        const soaDiscount = parseFloat(activeReceipt.discount || 0);
+        const soaIsScPwd = activeReceipt.discount_type === 'senior' || activeReceipt.discount_type === 'pwd';
+        const soaVat = (vatRegistered && !soaIsScPwd) ? vatBreakdown(parseFloat(activeReceipt.total || 0), vatRegistered, vatRate) : null;
+        const soaDiscLabel = activeReceipt.discount_type === 'senior' ? 'Senior Citizen 20%'
+          : activeReceipt.discount_type === 'pwd' ? 'PWD 20%' : 'Discount Applied';
 
         return (
           <div className="bills-modal-overlay receipt-overlay" onClick={() => setShowReceiptModal(false)}>
@@ -1161,15 +1218,37 @@ function BillsPayment() {
 
                 <div className="receipt-totals-summary-wrapper">
                   <div className="receipt-summary-line">
-                    <span>Grand Total Due:</span>
-                    <span>{fmt(activeReceipt.total || 0)}</span>
+                    <span>Subtotal:</span>
+                    <span>{fmt(soaSubtotal)}</span>
                   </div>
-                  {parseFloat(activeReceipt.discount || 0) > 0 && (
+                  {soaVat && (
+                    <>
+                      <div className="receipt-summary-line">
+                        <span>VATable Sales:</span>
+                        <span>{fmt(soaVat.net)}</span>
+                      </div>
+                      <div className="receipt-summary-line">
+                        <span>VAT ({soaVat.rate}%):</span>
+                        <span>{fmt(soaVat.vat)}</span>
+                      </div>
+                    </>
+                  )}
+                  {vatRegistered && soaIsScPwd && soaDiscount > 0 && (
                     <div className="receipt-summary-line">
-                      <span>Discount Applied:</span>
-                      <span style={{ color: '#16a34a' }}>(-) {fmt(activeReceipt.discount)}</span>
+                      <span>VAT-Exempt Sale:</span>
+                      <span>—</span>
                     </div>
                   )}
+                  {soaDiscount > 0 && (
+                    <div className="receipt-summary-line">
+                      <span>{soaDiscLabel}:</span>
+                      <span style={{ color: '#16a34a' }}>(-) {fmt(soaDiscount)}</span>
+                    </div>
+                  )}
+                  <div className="receipt-summary-line">
+                    <span>Total Amount Due:</span>
+                    <span>{fmt(activeReceipt.total || 0)}</span>
+                  </div>
                   <div className="receipt-summary-line">
                     <span>Total Amount Paid:</span>
                     <span style={{ color: "#16a34a" }}>(-) {fmt(totalPaid)}</span>

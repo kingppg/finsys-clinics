@@ -9,16 +9,18 @@ export function ClinicProvider({ clinicId, children }) {
   // ─── NEW CURRENCY STATES ──────────────────────────────────────────────────
   const [currencySymbol, setCurrencySymbol] = useState('₱'); // default fallback
   const [currencyLocale, setCurrencyLocale] = useState('en-PH'); // default fallback
+  const [vatRegistered, setVatRegistered] = useState(false); // Non-VAT by default
+  const [vatRate, setVatRate] = useState(12);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!clinicId) return;
     setLoading(true);
-    
+
     supabase
       .from('clinics')
       // Make sure 'currency_symbol' and 'currency_locale' exist in your table columns!
-      .select('name, time_zone, currency_symbol, currency_locale') 
+      .select('name, time_zone, currency_symbol, currency_locale, vat_registered, vat_rate')
       .eq('id', clinicId)
       .single()
       .then(({ data }) => {
@@ -26,6 +28,8 @@ export function ClinicProvider({ clinicId, children }) {
         if (data?.name) setClinicName(data.name);
         if (data?.currency_symbol) setCurrencySymbol(data.currency_symbol);
         if (data?.currency_locale) setCurrencyLocale(data.currency_locale);
+        setVatRegistered(!!data?.vat_registered);
+        if (data?.vat_rate != null) setVatRate(parseFloat(data.vat_rate) || 12);
         setLoading(false);
       })
       .catch((err) => {
@@ -36,13 +40,15 @@ export function ClinicProvider({ clinicId, children }) {
 
   return (
     <ClinicContext.Provider 
-      value={{ 
-        clinicId, 
-        clinicTimeZone, 
-        clinicName, 
-        currencySymbol, 
-        currencyLocale, 
-        loading 
+      value={{
+        clinicId,
+        clinicTimeZone,
+        clinicName,
+        currencySymbol,
+        currencyLocale,
+        vatRegistered,
+        vatRate,
+        loading
       }}
     >
       {children}

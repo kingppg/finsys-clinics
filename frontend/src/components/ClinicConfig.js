@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { authHeaders } from '../api/authHeaders';
 import {
   LuFacebook, LuSmartphone, LuUsers, LuPlus, LuRefreshCw,
-  LuCheck, LuInfo, LuExternalLink, LuMessageSquare
+  LuCheck, LuInfo, LuExternalLink, LuMessageSquare, LuReceipt
 } from 'react-icons/lu';
 import AdminUsersRoles from './AdminUsersRoles';
 import { smsInfo } from '../utils/smsSegments';
@@ -19,7 +19,8 @@ const SAFE_CLINIC_COLUMNS =
   'id, name, address, contact_email, contact_phone, fb_page_id, created_at, ' +
   'updated_at, messenger_page_id, reminder_time, is_active, time_zone, ' +
   'queue_token, queue_stations, currency_symbol, currency_locale, ' +
-  'sms_provider, sms_sender, reminder_template, status_templates';
+  'sms_provider, sms_sender, reminder_template, status_templates, ' +
+  'vat_registered, vat_rate';
 
 const initialClinicState = {
   name: '',
@@ -35,7 +36,9 @@ const initialClinicState = {
   sms_api_secret: '',
   sms_sender: '',
   reminder_template: '',
-  status_templates: {}
+  status_templates: {},
+  vat_registered: false,
+  vat_rate: 12
 };
 
 // The hardcoded fallback the backend uses when both the per-appointment message
@@ -133,7 +136,9 @@ function ClinicConfig({ user, clinicId, onBack }) {
         sms_api_secret: clinic.sms_api_secret ?? '',
         sms_sender: clinic.sms_sender ?? '',
         reminder_template: clinic.reminder_template ?? '',
-        status_templates: clinic.status_templates ?? {}
+        status_templates: clinic.status_templates ?? {},
+        vat_registered: clinic.vat_registered ?? false,
+        vat_rate: clinic.vat_rate ?? 12
       });
     }
   }, [selectedClinicId, clinics]);
@@ -162,10 +167,10 @@ function ClinicConfig({ user, clinicId, onBack }) {
   }, [subTab, selectedClinicId, formData.sms_provider]);
 
   function handleFieldChange(e) {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: type === 'checkbox' ? checked : value
     }));
   }
 
@@ -642,6 +647,14 @@ function ClinicConfig({ user, clinicId, onBack }) {
       show: true
     },
     {
+      key: 'billing',
+      icon: <LuReceipt />,
+      label: 'Billing & Tax',
+      sub: formData.vat_registered ? `VAT-registered (${parseFloat(formData.vat_rate) || 12}%)` : 'Non-VAT',
+      dot: formData.vat_registered ? 'ok' : null,
+      show: true
+    },
+    {
       key: 'users',
       icon: <LuUsers />,
       label: 'Users & Roles',
@@ -1099,6 +1112,65 @@ function ClinicConfig({ user, clinicId, onBack }) {
                     <button type="button" className="dc-btn dc-btn--ghost" onClick={handleBack}>Back</button>
                   </div>
                 </>
+              )}
+            </>
+          )}
+
+          {/* ── BILLING & TAX ── */}
+          {subTab === 'billing' && (
+            <>
+              <div className="cc-panel-head">
+                <div className="cc-panel-eyebrow">Billing</div>
+                <h2 className="cc-panel-title">Tax &amp; VAT</h2>
+              </div>
+
+              {(!user.role || clinics.length === 0) ? (
+                <div className="dc-empty">
+                  <span className="dc-empty-icon">🧾</span>
+                  <span className="dc-empty-title">No clinic selected</span>
+                  <span className="dc-empty-hint">Select or add a clinic to configure it.</span>
+                </div>
+              ) : (
+                <form className="cc-form" onSubmit={handleSubmit} autoComplete="off">
+                  <div className={`cc-integration${formData.vat_registered ? ' is-on' : ' is-off'}`}>
+                    <div className="cc-integration-ico"><LuReceipt /></div>
+                    <div className="cc-integration-body">
+                      <div className="cc-integration-status">
+                        <span className="cc-statusdot" />
+                        {formData.vat_registered ? 'VAT-registered' : 'Non-VAT'}
+                      </div>
+                      <div className="cc-integration-detail">
+                        {formData.vat_registered
+                          ? `Invoices show a ${parseFloat(formData.vat_rate) || 12}% VAT breakdown; Senior/PWD sales are VAT-exempt, then 20% off.`
+                          : 'No VAT on invoices. Senior/PWD discounts are a flat 20% off.'}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="cc-hint"><LuInfo /> Turn this on only if the clinic is VAT-registered per its BIR Certificate of Registration (Form 2303). Most small clinics are Non-VAT.</p>
+
+                  <fieldset className="cc-group">
+                    <legend>VAT Configuration</legend>
+                    <label className="cc-toggle-row">
+                      <input type="checkbox" name="vat_registered" checked={!!formData.vat_registered} onChange={handleFieldChange} />
+                      <span>VAT-registered clinic (adds output VAT to invoices)</span>
+                    </label>
+                    {formData.vat_registered && (
+                      <div className="cc-grid" style={{ marginTop: 12 }}>
+                        <label className="dc-field">
+                          <span>VAT Rate (%)</span>
+                          <input type="number" name="vat_rate" min="0" step="0.01"
+                            value={formData.vat_rate} onChange={handleFieldChange} />
+                        </label>
+                      </div>
+                    )}
+                  </fieldset>
+
+                  <div className="cc-form-actions">
+                    <button type="submit" className="dc-btn dc-btn--primary" disabled={loading}>
+                      {loading ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                </form>
               )}
             </>
           )}

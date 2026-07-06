@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import Swal from 'sweetalert2';
 import InvoiceLineItems from './billing/InvoiceLineItems';
+import { DISCOUNT_TYPES, computeDiscount, vatBreakdown } from './billing/discount';
 
 const swalConfig = {
   confirmButtonColor: "#0f2340",
@@ -40,6 +41,8 @@ function InvoiceManagementModal({
   onPrintSOA,
   patients,
   dentists,
+  vatRegistered = false,
+  vatRate = 12,
 }) {
   const [items, setItems] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -50,7 +53,10 @@ function InvoiceManagementModal({
   const [addingItem, setAddingItem] = useState(false);
 
   // Invoice meta edit state
-  const [discount, setDiscount] = useState(invoice.discount || 0);
+  const [discountType, setDiscountType] = useState(
+    invoice.discount_type || (parseFloat(invoice.discount || 0) > 0 ? 'amount' : 'none')
+  );
+  const [discountValue, setDiscountValue] = useState(''); // seeded when Edit opens
   const [discountEdit, setDiscountEdit] = useState(false);
   const [dueDate, setDueDate] = useState(invoice.due_date || '');
   const [notes, setNotes] = useState(invoice.notes || '');
@@ -90,12 +96,34 @@ function InvoiceManagementModal({
     setLoading(false);
   };
 
-  // Computed values
+  // Computed values. While editing, the discount is derived live from the
+  // type + value; otherwise we show the stored invoice.discount.
   const subtotal = items.reduce((s, i) => s + parseFloat(i.total || 0), 0);
-  const discountAmt = parseFloat(discount || 0);
+  const discLabelFor = (t) => t === 'senior' ? 'Senior Citizen 20%' : t === 'pwd' ? 'PWD 20%'
+    : t === 'percent' ? 'Discount' : t === 'amount' ? 'Discount' : '';
+  const liveDiscount = discountEdit
+    ? computeDiscount({ subtotal, type: discountType, customValue: parseFloat(discountValue) || 0, vatRegistered, vatRate })
+    : { amount: parseFloat(invoice.discount || 0), label: discLabelFor(invoice.discount_type) };
+  const discountAmt = liveDiscount.amount;
   const total = Math.max(subtotal - discountAmt, 0);
   const totalPaid = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
   const balanceDue = Math.max(total - totalPaid, 0);
+  const activeDiscType = discountEdit ? discountType : invoice.discount_type;
+  const isScPwd = activeDiscType === 'senior' || activeDiscType === 'pwd';
+  const mgmtVat = (vatRegistered && !isScPwd) ? vatBreakdown(total, vatRegistered, vatRate) : null;
+
+  // Seed the custom value so an unchanged save preserves the amount.
+  const openDiscountEdit = () => {
+    const d = parseFloat(invoice.discount || 0);
+    if (discountType === 'amount' || (!invoice.discount_type && d > 0)) {
+      setDiscountValue(d ? String(d) : '');
+    } else if (discountType === 'percent' && subtotal > 0) {
+      setDiscountValue(String(Math.round((d / subtotal) * 10000) / 100));
+    } else {
+      setDiscountValue('');
+    }
+    setDiscountEdit(true);
+  };
 
   const fmt = (n) => `${currencySymbol}${Number(n).toLocaleString(currencyLocale, { minimumFractionDigits: 2 })}`;
 
@@ -147,7 +175,8 @@ function InvoiceManagementModal({
   const handleSaveMeta = async () => {
     setSavingMeta(true);
     const { error } = await supabase.from('invoices').update({
-      discount: parseFloat(discount) || 0,
+      discount: discountAmt,
+      discount_type: discountType === 'none' ? null : discountType,
       due_date: dueDate || null,
       notes: notes || null,
     }).eq('id', invoice.id);
@@ -213,7 +242,7 @@ function InvoiceManagementModal({
                 <div className="inv-mgmt-section-title">
                   Invoice Details
                   {!discountEdit && (
-                    <button className="inv-edit-meta-btn" onClick={() => setDiscountEdit(true)}>
+                    <button className="inv-edit-meta-btn" onClick={openDiscountEdit}>
                       <Icon d={I.edit} size={12} /> Edit
                     </button>
                   )}
@@ -222,11 +251,25 @@ function InvoiceManagementModal({
                 {discountEdit ? (
                   <div className="inv-meta-edit-form">
                     <div className="inv-meta-row">
-                      <label>Discount ({currencySymbol})</label>
-                      <input className="inv-input inv-input-sm" type="number" min="0" step="0.01"
-                        value={discount} onChange={e => setDiscount(e.target.value)}
-                        onFocus={e => e.target.select()} />
+                      <label>Discount Type</label>
+                      <select className="inv-input" value={discountType} onChange={e => setDiscountType(e.target.value)}>
+                        {DISCOUNT_TYPES.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+                      </select>
                     </div>
+                    {(discountType === 'percent' || discountType === 'amount') && (
+                      <div className="inv-meta-row">
+                        <label>{discountType === 'percent' ? 'Percent (%)' : `Amount (${currencySymbol})`}</label>
+                        <input className="inv-input inv-input-sm" type="number" min="0" step="0.01"
+                          value={discountValue} onChange={e => setDiscountValue(e.target.value)}
+                          onFocus={e => e.target.select()} placeholder={discountType === 'percent' ? '0' : '0.00'} />
+                      </div>
+                    )}
+                    {(discountType === 'senior' || discountType === 'pwd') && (
+                      <div className="inv-meta-row">
+                        <label>Computed</label>
+                        <span className="inv-line-total">{fmt(discountAmt)}{vatRegistered ? ' (VAT-exempt + 20%)' : ' (20%)'}</span>
+                      </div>
+                    )}
                     <div className="inv-meta-row">
                       <label>Due Date</label>
                       <input className="inv-input" type="date"
@@ -239,7 +282,7 @@ function InvoiceManagementModal({
                         placeholder="Optional notes for this invoice..." rows={2} />
                     </div>
                     <div className="inv-add-actions">
-                      <button className="inv-btn-ghost" onClick={() => { setDiscountEdit(false); setDiscount(invoice.discount || 0); setDueDate(invoice.due_date || ''); setNotes(invoice.notes || ''); }}>Cancel</button>
+                      <button className="inv-btn-ghost" onClick={() => { setDiscountEdit(false); setDiscountType(invoice.discount_type || (parseFloat(invoice.discount || 0) > 0 ? 'amount' : 'none')); setDueDate(invoice.due_date || ''); setNotes(invoice.notes || ''); }}>Cancel</button>
                       <button className="inv-btn-confirm" onClick={handleSaveMeta} disabled={savingMeta}>
                         {savingMeta ? <span className="bills-spinner-small" /> : <><Icon d={I.check} size={12} /> Save</>}
                       </button>
@@ -247,6 +290,12 @@ function InvoiceManagementModal({
                   </div>
                 ) : (
                   <div className="inv-meta-display">
+                    {discountAmt > 0 && (
+                      <div className="inv-meta-row-display">
+                        <span>Discount</span>
+                        <span>{fmt(discountAmt)}{liveDiscount.label ? ` · ${liveDiscount.label}` : ''}</span>
+                      </div>
+                    )}
                     <div className="inv-meta-row-display">
                       <span>Due Date</span>
                       <span>{dueDate ? new Date(dueDate).toLocaleDateString(currencyLocale, { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</span>
@@ -298,9 +347,18 @@ function InvoiceManagementModal({
                 </div>
                 {discountAmt > 0 && (
                   <div className="inv-totals-row inv-totals-discount">
-                    <span>Discount</span>
+                    <span>Discount{liveDiscount.label ? ` (${liveDiscount.label})` : ''}</span>
                     <span>- {fmt(discountAmt)}</span>
                   </div>
+                )}
+                {vatRegistered && isScPwd && discountAmt > 0 && (
+                  <div className="inv-totals-row"><span>VAT-Exempt Sale</span><span>—</span></div>
+                )}
+                {mgmtVat && (
+                  <>
+                    <div className="inv-totals-row"><span>VATable Sales</span><span>{fmt(mgmtVat.net)}</span></div>
+                    <div className="inv-totals-row"><span>VAT ({mgmtVat.rate}%)</span><span>{fmt(mgmtVat.vat)}</span></div>
+                  </>
                 )}
                 <div className="inv-totals-row inv-totals-total">
                   <span>Total</span>
