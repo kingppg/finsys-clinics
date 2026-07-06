@@ -649,7 +649,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
     {
       key: 'billing',
       icon: <LuReceipt />,
-      label: 'Billing & Tax',
+      label: 'VAT Registration',
       sub: formData.vat_registered ? `VAT-registered (${parseFloat(formData.vat_rate) || 12}%)` : 'Non-VAT',
       dot: formData.vat_registered ? 'ok' : null,
       show: true
@@ -1121,7 +1121,7 @@ function ClinicConfig({ user, clinicId, onBack }) {
             <>
               <div className="cc-panel-head">
                 <div className="cc-panel-eyebrow">Billing</div>
-                <h2 className="cc-panel-title">Tax &amp; VAT</h2>
+                <h2 className="cc-panel-title">VAT Registration</h2>
               </div>
 
               {(!user.role || clinics.length === 0) ? (
@@ -1141,28 +1141,28 @@ function ClinicConfig({ user, clinicId, onBack }) {
                       </div>
                       <div className="cc-integration-detail">
                         {formData.vat_registered
-                          ? `Invoices show a ${parseFloat(formData.vat_rate) || 12}% VAT breakdown; Senior/PWD sales are VAT-exempt, then 20% off.`
-                          : 'No VAT on invoices. Senior/PWD discounts are a flat 20% off.'}
+                          ? `Adds ${parseFloat(formData.vat_rate) || 12}% VAT to VATable invoices. Qualified Senior Citizen / PWD transactions are VAT-exempt and receive the statutory 20% discount on eligible goods and services.`
+                          : 'Invoices do not include VAT. Qualified Senior Citizen / PWD transactions receive the statutory 20% discount.'}
                       </div>
                     </div>
                   </div>
-                  <p className="cc-hint"><LuInfo /> Turn this on only if the clinic is VAT-registered per its BIR Certificate of Registration (Form 2303). Most small clinics are Non-VAT.</p>
+                  <p className="cc-hint"><LuInfo /> Billing uses VAT-exclusive base prices — VAT and statutory discounts are computed during invoicing.</p>
 
                   <fieldset className="cc-group">
-                    <legend>VAT Configuration</legend>
+                    <legend>BIR VAT Registration</legend>
                     <label className="cc-toggle-row">
                       <input type="checkbox" name="vat_registered" checked={!!formData.vat_registered} onChange={handleFieldChange} />
-                      <span>VAT-registered clinic (adds output VAT to invoices)</span>
+                      <span>Clinic is VAT-registered with the BIR</span>
                     </label>
-                    {formData.vat_registered && (
-                      <div className="cc-grid" style={{ marginTop: 12 }}>
-                        <label className="dc-field">
-                          <span>VAT Rate (%)</span>
-                          <input type="number" name="vat_rate" min="0" step="0.01"
-                            value={formData.vat_rate} onChange={handleFieldChange} />
-                        </label>
-                      </div>
-                    )}
+                    <p className="cc-hint cc-hint--warn"><LuInfo /> This setting affects <b>new invoices only</b>. Existing invoices keep their original tax computation. Turn it on only if the clinic is VAT-registered per its BIR Certificate of Registration (Form 2303) — most small clinics are Non-VAT.</p>
+                    <div className="cc-grid" style={{ marginTop: 12 }}>
+                      <label className="dc-field">
+                        <span>VAT Rate (%){formData.vat_registered ? '' : ' — Non-VAT'}</span>
+                        <input type="number" name="vat_rate" min="0" step="0.01"
+                          value={formData.vat_rate} onChange={handleFieldChange}
+                          disabled={!formData.vat_registered} />
+                      </label>
+                    </div>
                   </fieldset>
 
                   <div className="cc-form-actions">

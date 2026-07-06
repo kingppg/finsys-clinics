@@ -691,3 +691,18 @@
   gap: 10px;
   margin-top: 18px;
 }
+
+/* VAT page — warning hint + disabled rate field */
+.cc-hint--warn {
+  background: var(--dc-warning-soft, #fffbeb);
+  color: var(--dc-warning, #b45309);
+  border: 1px solid var(--dc-warning, #d97706);
+  border-radius: var(--dc-radius, 12px);
+  padding: 9px 12px;
+  align-items: flex-start;
+}
+.cc-hint--warn svg { flex-shrink: 0; margin-top: 2px; }
+.cc-form .dc-field input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

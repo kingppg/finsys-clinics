@@ -855,6 +855,22 @@ const ClinicProcedureManager = () => {
         </div>
       )}
 
+      {/* ── Senior/PWD eligibility guide ── */}
+      <div className="CPM-guide">
+        <span className="CPM-guide-ico"><Icon d={I.percent} size={15} /></span>
+        <div className="CPM-guide-body">
+          <div className="CPM-guide-title">Senior Citizen / PWD eligibility</div>
+          <p>
+            Each procedure has an <b>SC/PWD</b> checkbox (click <b>Edit</b> on a procedure to set it).
+            Keep it <b>checked</b> for medically-necessary dental services — consultation, extraction,
+            filling, root canal, cleaning — which qualify for the statutory <b>20% Senior/PWD discount</b>.
+            <b> Uncheck</b> it for purely cosmetic / elective procedures (teeth whitening, veneers), which
+            do <b>not</b> qualify; these show a <span className="CPM-cosmetic-badge">Cosmetic</span> badge.
+            On an invoice, the Senior/PWD discount is applied only to the eligible line items.
+          </p>
+        </div>
+      </div>
+
       {/* ── Body ── */}
       <div className="CPM-body">
         {loading && <div className="CPM-loading"><span className="CPM-spinner" /> Loading…</div>}

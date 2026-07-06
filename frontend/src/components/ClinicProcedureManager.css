@@ -590,3 +590,36 @@
   accent-color: var(--dc-accent, #2DD4BF);
   cursor: pointer;
 }
+
+/* Senior/PWD eligibility guide callout */
+.CPM-guide {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 13px 16px;
+  margin-bottom: 16px;
+  border-radius: 14px;
+  background: var(--dc-accent-soft, rgba(45,212,191,0.10));
+  border: 1px solid var(--dc-border, rgba(148,163,184,0.16));
+}
+.CPM-guide-ico {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--dc-accent, #2DD4BF);
+  color: var(--dc-accent-contrast, #06201C);
+}
+.CPM-guide-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--dc-text, #EDF2FA);
+  margin-bottom: 3px;
+}
+.CPM-guide-body p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--dc-text-2, #A9B7CE);
+}
+.CPM-guide-body .CPM-cosmetic-badge { margin: 0 2px; }
