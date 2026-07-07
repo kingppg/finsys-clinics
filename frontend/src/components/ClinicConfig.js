@@ -4,9 +4,10 @@ import { supabase } from '../supabaseClient';
 import { authHeaders } from '../api/authHeaders';
 import {
   LuFacebook, LuSmartphone, LuUsers, LuPlus, LuRefreshCw,
-  LuCheck, LuInfo, LuExternalLink, LuMessageSquare, LuReceipt
+  LuCheck, LuInfo, LuExternalLink, LuMessageSquare, LuReceipt, LuCalendarClock
 } from 'react-icons/lu';
 import AdminUsersRoles from './AdminUsersRoles';
+import ClinicSchedule from './clinic/ClinicSchedule';
 import { smsInfo } from '../utils/smsSegments';
 import './ClinicConfig.css';
 
@@ -647,6 +648,14 @@ function ClinicConfig({ user, clinicId, onBack }) {
       show: true
     },
     {
+      key: 'schedule',
+      icon: <LuCalendarClock />,
+      label: 'Clinic Schedule',
+      sub: 'Hours, breaks, slots & holidays',
+      dot: null,
+      show: true
+    },
+    {
       key: 'billing',
       icon: <LuReceipt />,
       label: 'VAT Registration',
@@ -1173,6 +1182,19 @@ function ClinicConfig({ user, clinicId, onBack }) {
                 </form>
               )}
             </>
+          )}
+
+          {/* ── SCHEDULE ── */}
+          {subTab === 'schedule' && (
+            (!selectedClinicId || isNew) ? (
+              <div className="dc-empty">
+                <span className="dc-empty-icon">🗓️</span>
+                <span className="dc-empty-title">No clinic selected</span>
+                <span className="dc-empty-hint">Select or save a clinic first to configure its schedule.</span>
+              </div>
+            ) : (
+              <ClinicSchedule clinicId={selectedClinicId} />
+            )
           )}
 
           {/* ── USERS ── */}

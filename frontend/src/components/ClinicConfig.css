@@ -706,3 +706,51 @@
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* ── Clinic Schedule rail (geometry only; colors via --dc-* tokens) ── */
+.cc-schedule .cc-sched-days { display: flex; flex-direction: column; gap: 8px; }
+.cc-sched-dayrow {
+  display: grid;
+  grid-template-columns: 120px 110px 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.cc-sched-dayname { font-weight: 600; color: var(--dc-text, #EDF2FA); }
+.cc-sched-closed { margin: 0; }
+.cc-sched-time {
+  padding: 7px 9px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: 8px;
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text, #EDF2FA);
+}
+.cc-sched-time:disabled { opacity: 0.45; cursor: not-allowed; }
+.cc-sched-dash { color: var(--dc-text-3, #6E7E98); text-align: center; }
+.cc-sched-breakrow,
+.cc-sched-addholiday,
+.cc-sched-holrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.cc-sched-breaklabel,
+.cc-sched-addholiday input[type="text"] {
+  flex: 1 1 160px;
+  padding: 7px 9px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: 8px;
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text, #EDF2FA);
+}
+.cc-sched-holidays { display: flex; flex-direction: column; gap: 6px; }
+.cc-sched-holrow {
+  padding: 8px 10px;
+  border: 1px solid var(--dc-border, rgba(148, 163, 184, 0.16));
+  border-radius: 8px;
+  background: var(--dc-surface, #131C2E);
+}
+.cc-sched-holrow.is-unblocked { opacity: 0.55; }
+.cc-sched-holdate { font-weight: 600; color: var(--dc-text, #EDF2FA); min-width: 96px; }
+.cc-sched-hollabel { flex: 1 1 auto; color: var(--dc-text-2, #B8C4D9); }
