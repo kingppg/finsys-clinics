@@ -447,6 +447,54 @@ function testPhoneHelper() {
 }
 
 // ---------------------------------------------------------------------------
+// PART 4 — schedule-driven slots (getAvailableSlots reads clinic.schedule +
+// clinic_holidays via the shared engine). Default reproduces old behavior;
+// custom config changes hours/interval; holidays close a date; booked detection
+// is range-match.
+// ---------------------------------------------------------------------------
+async function testScheduleEngine() {
+  section('PART 4 — configurable schedule (hours / holidays / interval / range-match)');
+  const bh = require('./helpers/bookingHelpers');
+  const sun = '2026-07-05'; // a Sunday, no seeded appts
+  const wed = APPT_DATE;     // a non-Sunday (has seeded 10:00 appts on dentist 1)
+
+  const defCtx = { clinicId: 1, timeZone: 'Asia/Manila', clinic: { id: 1 } }; // no schedule → default
+  let r = await bh.getAvailableSlots(sun, defCtx);
+  check('default: Sunday closed (closedReason=day)', r.closedReason === 'day' && r.slots.length === 0);
+
+  r = await bh.getAvailableSlots(wed, defCtx);
+  check('default: open weekday yields slots', r.closedReason === null && r.slots.length > 0);
+  check('default: lunch 12:00 excluded', !r.slots.includes('12:00 PM'));
+
+  // Custom: Sunday OPEN 08:00–12:00, 30-min slots, no breaks.
+  const customCtx = { clinicId: 1, timeZone: 'Asia/Manila', clinic: { id: 1, schedule: {
+    days: { '0': { is_closed: false, open: '08:00', close: '12:00' } },
+    breaks: [], slot_interval_minutes: 30,
+  } } };
+  r = await bh.getAvailableSlots(sun, customCtx);
+  check('custom: Sunday now open', r.closedReason === null && r.slots.length > 0);
+  check('custom: 30-min grid starts 08:00 AM', r.slots[0] === '08:00 AM');
+  check('custom: last slot 11:30 AM (no run past close)', r.slots[r.slots.length - 1] === '11:30 AM');
+
+  // Range-match: an off-grid 09:10 appt must block the 09:00 slot (30-min grid).
+  fakeDb.__db.appointments.push({ id: 9001, dentist_id: 1, patient_id: 1, appointment_time: `${sun}T09:10:00+08:00`, status: 'Confirmed', clinic_id: 1 });
+  r = await bh.getAvailableSlots(sun, customCtx);
+  check('range-match: off-grid 09:10 appt blocks 09:00 slot', !r.slots.includes('09:00 AM'));
+  check('range-match: 08:30 slot still free', r.slots.includes('08:30 AM'));
+  fakeDb.__db.appointments = fakeDb.__db.appointments.filter(a => a.id !== 9001);
+
+  // Holiday: a blocked holiday closes the date.
+  fakeDb.__db.clinic_holidays = [{ id: 'h1', clinic_id: 1, holiday_date: wed, is_recurring: false, is_blocked: true }];
+  r = await bh.getAvailableSlots(wed, defCtx);
+  check('holiday: blocked date closed (closedReason=holiday)', r.closedReason === 'holiday' && r.slots.length === 0);
+  // Unblocked holiday does NOT close.
+  fakeDb.__db.clinic_holidays = [{ id: 'h2', clinic_id: 1, holiday_date: wed, is_recurring: false, is_blocked: false }];
+  r = await bh.getAvailableSlots(wed, defCtx);
+  check('holiday: unblocked holiday keeps day open', r.closedReason === null);
+  fakeDb.__db.clinic_holidays = [];
+}
+
+// ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
 async function main() {
@@ -496,6 +544,7 @@ async function main() {
   await testConfirmCodeVerification();
   await testConfirmWrongName();
   await testPhoneRequired();
+  await testScheduleEngine();
 
   console.log(`\n=== RESULT: ${passCount} passed, ${failCount} failed ===`);
   process.exit(failCount === 0 ? 0 : 1);

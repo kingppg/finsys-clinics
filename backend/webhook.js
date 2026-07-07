@@ -41,6 +41,7 @@ const {
   findPatientByMessengerId,
   findPatientByNameAndPhone,
   getAvailableSlots,
+  isDentistSlotFree,
   hasDoubleBookingOnDate,
   proceedToSlotSelection
 } = require('./helpers/bookingHelpers');
@@ -546,11 +547,6 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        if (!isClinicOpen(dateStr)) {
-          await sendMessage(sender_psid, "Pasensya na po, sarado kami tuwing Linggo! 😊 Pwede po kayong pumili ng ibang araw — Lunes hanggang Sabado lang po kami bukas.", context);
-          return;
-        }
-
         // "Past" must mean past in the CLINIC's timezone — the old server-UTC
         // midnight compare let 00:00–08:00 (Manila) users book yesterday.
         const todayInTZ = new Intl.DateTimeFormat('en-CA', { timeZone: context.timeZone || 'Asia/Manila' }).format(new Date());
@@ -561,9 +557,23 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
         userState.data.date = dateStr;
 
-        const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
+        // Closed days/holidays + the slot grid now come from the clinic's
+        // configured schedule (migration 024) via getAvailableSlots — no more
+        // hardcoded Sunday/9–6/lunch. closedReason explains a closure.
+        const { slots, activeDentists, closedReason } = await getAvailableSlots(userState.data.date, context);
         userState.data.slots = slots;
         userState.data.activeDentists = activeDentists;
+
+        if (closedReason === 'holiday') {
+          await sendMessage(sender_psid, "Pasensya na po, sarado kami sa petsang iyon dahil holiday. 😊 Pwede po kayong pumili ng ibang petsa.", context);
+          userState.data = {};
+          return;
+        }
+        if (closedReason === 'day') {
+          await sendMessage(sender_psid, "Pasensya na po, sarado kami sa araw na iyon. 😊 Pumili lang po ng araw na bukas kami.", context);
+          userState.data = {};
+          return;
+        }
 
         if (!activeDentists.length) {
           await sendMessage(sender_psid, "Pasensya na po, wala pang available na dentist ngayon. Pakisubukan mamaya. 😊", context);
@@ -1007,31 +1017,15 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         const offset = getUtcOffset(context.timeZone);
         const datetime = `${userState.data.date}T${slot24}:00${offset}`;
         const activeDentists = userState.data.activeDentists || [];
-        const dayOfWeek = getDayOfWeek(userState.data.date);
         let assignedDentist = null;
 
+        // Assign the first dentist free at this slot — blocks + RANGE-MATCH
+        // booking check via the shared helper (same semantics as the offer).
         for (const dentist of activeDentists) {
-          // Query errors read as "dentist NOT available" (fail closed).
-          const { data: blocks, error: blocksErr } = await supabase.from('dentist_availability')
-            .select('start_time,end_time,is_available').eq('dentist_id', dentist.id)
-            .or(`specific_date.eq.${userState.data.date},day_of_week.eq.${dayOfWeek}`)
-            .eq('is_available', false).eq('clinic_id', context.clinicId);
-          if (blocksErr) { console.error("confirming blocks error:", blocksErr); continue; }
-          let isBlocked = false;
-          for (const block of (blocks || [])) {
-            const [sh, sm] = block.start_time.split(':').map(Number);
-            const [eh, em] = block.end_time.split(':').map(Number);
-            const [h, m] = slot24.split(':').map(Number);
-            const slotMin = h * 60 + m;
-            if (slotMin >= sh * 60 + sm && slotMin < eh * 60 + em) { isBlocked = true; break; }
+          if (await isDentistSlotFree(dentist.id, userState.data.date, slot24, context)) {
+            assignedDentist = dentist;
+            break;
           }
-          if (isBlocked) continue;
-          const { data: bookings, error: bookingsErr } = await supabase.from('appointments').select('id,status')
-            .eq('dentist_id', dentist.id).eq('appointment_time', datetime).eq('clinic_id', context.clinicId);
-          if (bookingsErr) { console.error("confirming bookings error:", bookingsErr); continue; }
-          if ((bookings || []).some(b => b.status !== 'Cancelled')) continue;
-          assignedDentist = dentist;
-          break;
         }
 
         if (!assignedDentist) {
@@ -1040,15 +1034,9 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        // ✅ Fix #5: Re-verify slot is still free (race condition mitigation)
-        // If another booking claimed it between our check and now, reject and retry
-        const { data: finalCheck, error: finalCheckErr } = await supabase.from('appointments')
-          .select('id,status')
-          .eq('dentist_id', assignedDentist.id)
-          .eq('appointment_time', datetime)
-          .eq('clinic_id', context.clinicId);
-        if (finalCheckErr || (finalCheck || []).some(b => b.status !== 'Cancelled')) {
-          if (finalCheckErr) console.error("confirming finalCheck error:", finalCheckErr);
+        // ✅ Fix #5: Re-verify the assigned dentist is STILL free right before we
+        // write (race mitigation), using the same range-match check.
+        if (!(await isDentistSlotFree(assignedDentist.id, userState.data.date, slot24, context))) {
           await sendMessage(sender_psid, "Pasensya na po, hindi na po available ang slot na iyon. Pakisubukan ng ibang slot. 😊", context);
           userStates[sender_psid].state = "awaiting_slot";
           return;

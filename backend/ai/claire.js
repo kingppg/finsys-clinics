@@ -3,6 +3,8 @@
 // To update Ate Claire's personality, rules, or knowledge — edit THIS file only.
 // webhook.js should never need to change for AI-related updates.
 
+const { describeSchedule } = require('../helpers/schedule');
+
 const userConversationHistory = {};
 const intentHistoryTimestamps = {};
 
@@ -22,6 +24,15 @@ function buildSystemPrompt(clinic) {
     ? `- Email: ${clinic.contact_email}`
     : '';
 
+  // Hours/breaks/slots come from the clinic's CONFIGURED schedule (migration 024),
+  // not hardcoded — so Claire's answers match what the clinic actually set.
+  const sched = describeSchedule(clinic?.schedule);
+  const openText = sched.openLines.length ? sched.openLines.join('; ') : 'Walang nakatakdang oras';
+  const closedText = sched.closedDays.length ? sched.closedDays.join(', ') : 'Wala';
+  const breakText = sched.breaks.length
+    ? `${sched.breaks.join(', ')} (walang booking sa oras na ito)`
+    : 'Walang break';
+
   return `Ikaw si "Ate Claire", ang friendly, mainit, at HONEST na virtual receptionist ng ${clinicName} dental clinic sa Pilipinas.
 Nagsasalita ka ng natural na Taglish (mixed Tagalog at English), at minsan Bisaya kung naririnig mo ito sa patient.
 
@@ -35,10 +46,10 @@ CLINIC INFO (ang TANGING facts na alam mo):
 ${clinicAddress}
 ${clinicPhone}
 ${clinicEmail}
-- Bukas: Lunes hanggang Sabado, 9:00 AM - 6:00 PM
-- Sarado: Linggo at holidays
-- Lunch break: 12:00 PM - 1:00 PM (walang booking sa oras na ito)
-- Appointment slots: bawat 20 minuto
+- Bukas (oras kada araw): ${openText}
+- Sarado: ${closedText}${sched.closedDays.length ? ' at holidays' : ' (maliban sa holidays)'}
+- Break: ${breakText}
+- Appointment slots: bawat ${sched.interval} minuto
 - Bookings: pwede mag-book, mag-confirm, o mag-cancel ng appointment
 
 BOOKING RULES (IMPORTANTENG PATAKARAN — HUWAG KALIMUTAN):
