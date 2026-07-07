@@ -59,10 +59,23 @@ function getWeeksOfMonth(year, month) {
   return weeks;
 }
 
-function getYearList(appointments) {
+// Clinic-local calendar parts for a timestamp. All date FILTERING and week math
+// must use the CLINIC's timezone (matching how times are displayed); the old
+// code used the browser's local zone via new Date(...).getFullYear()/getMonth()/
+// getDate(), so an appointment near midnight landed on the wrong day whenever a
+// staff member's browser timezone differed from the clinic's.
+function clinicYMD(ts, tz) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz || 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date(ts));
+  const get = (t) => Number(parts.find(p => p.type === t)?.value);
+  return { y: get('year'), mo: get('month'), d: get('day') };
+}
+
+function getYearList(appointments, tz) {
   const years = new Set();
   const thisYear = new Date().getFullYear();
-  appointments.forEach(a => years.add(new Date(a.appointment_time).getFullYear()));
+  appointments.forEach(a => years.add(clinicYMD(a.appointment_time, tz).y));
   let arr = Array.from(years);
   if (arr.length === 0) arr = [thisYear];
   const min = Math.min(...arr, thisYear - 2);
@@ -180,7 +193,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
         setDentists(denRes.data || []);
         setPatients(patRes.data || []);
 
-        const years = getYearList(appAll || []);
+        const years = getYearList(appAll || [], clinicTimeZone);
         const currentYear = String(new Date().getFullYear());
         if (!selectedYear && !jumpDate) {
           if (years.includes(Number(currentYear))) {
@@ -380,21 +393,21 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
   }, [selectedMonth]);
 
   function passesCurrentFilter(appt) {
-    const d = new Date(appt.appointment_time);
+    const { y, mo, d } = clinicYMD(appt.appointment_time, clinicTimeZone);
     if (viewMode === 'monthly') {
-      return d.getFullYear() === Number(selectedYear) &&
-             (d.getMonth() + 1) === Number(selectedMonth);
+      return y === Number(selectedYear) && mo === Number(selectedMonth);
     }
     if (viewMode === 'weekly') {
       const weeksArr = getWeeksOfMonth(selectedYear, selectedMonth);
       const w = weeksArr[selectedWeekIdx];
       if (!w) return false;
-      return d >= w.start && d <= w.end;
+      // Compare the clinic-local calendar date (as a local-midnight Date) against
+      // the week's date range — a pure ordinal comparison, timezone-agnostic.
+      const cd = new Date(y, mo - 1, d);
+      return cd >= w.start && cd <= w.end;
     }
     if (viewMode === 'daily') {
-      return d.getFullYear() === Number(selectedYear) &&
-             (d.getMonth() + 1) === Number(selectedMonth) &&
-             d.getDate() === Number(selectedDay);
+      return y === Number(selectedYear) && mo === Number(selectedMonth) && d === Number(selectedDay);
     }
     return true;
   }
@@ -423,23 +436,21 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
       let filtered = [];
       if (viewMode === 'monthly' && selectedYear && selectedMonth) {
         filtered = arr.filter(a => {
-          const d = new Date(a.appointment_time);
-          return d.getFullYear() === Number(selectedYear) &&
-                 (d.getMonth() + 1) === Number(selectedMonth);
+          const { y, mo } = clinicYMD(a.appointment_time, clinicTimeZone);
+          return y === Number(selectedYear) && mo === Number(selectedMonth);
         });
       } else if (viewMode === 'weekly' && selectedYear && selectedMonth) {
         const weeksArr = getWeeksOfMonth(selectedYear, selectedMonth);
         const { start, end } = weeksArr[selectedWeekIdx] || {};
         filtered = arr.filter(a => {
-          const dateObj = new Date(a.appointment_time);
-          return start && end && dateObj >= start && dateObj <= end;
+          const { y, mo, d } = clinicYMD(a.appointment_time, clinicTimeZone);
+          const cd = new Date(y, mo - 1, d);
+          return start && end && cd >= start && cd <= end;
         });
       } else if (viewMode === 'daily' && selectedYear && selectedMonth && selectedDay) {
         filtered = arr.filter(a => {
-          const d = new Date(a.appointment_time);
-          return d.getFullYear() === Number(selectedYear) &&
-                 (d.getMonth() + 1) === Number(selectedMonth) &&
-                 d.getDate() === Number(selectedDay);
+          const { y, mo, d } = clinicYMD(a.appointment_time, clinicTimeZone);
+          return y === Number(selectedYear) && mo === Number(selectedMonth) && d === Number(selectedDay);
         });
       } else {
         filtered = arr;
@@ -607,7 +618,7 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
     }
   });
 
-  const years = getYearList(appointments);
+  const years = getYearList(appointments, clinicTimeZone);
   const weeksArr = selectedYear && selectedMonth ? getWeeksOfMonth(selectedYear, selectedMonth) : [];
 
   function renderStatusCell(appt) {
