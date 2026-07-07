@@ -4,7 +4,7 @@ import { LuUtensils, LuBan, LuBookMarked, LuClock, LuCheck, LuCalendarClock, LuC
 import { supabase } from '../supabaseClient';
 import './AppointmentsModern.css';
 import './MainSection.css';
-import io from 'socket.io-client';
+import socket from '../socket';
 import Swal from 'sweetalert2';
 import { useClinic } from './ClinicContext'; // ✅ import context hook
 import { normalizePHMobile } from '../utils/phone';
@@ -268,7 +268,6 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
   const [doubleBookingChecked, setDoubleBookingChecked] = useState(false);
 
   const slots = generateTimeSlots("09:00", "18:00", 20);
-  const socketRef = useRef();
 
   const fetchPatients = useCallback(async () => {
     const { data } = await supabase
@@ -313,12 +312,13 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
   }, [selectedDentist, selectedDate, appointment, clinicId]);
 
   useEffect(() => {
-    socketRef.current = io('http://localhost:5000');
-    socketRef.current.on('appointment-updated', () => {
-      fetchBookedSlots();
-      fetchBlockedSlots();
-    });
-    return () => { if (socketRef.current) socketRef.current.disconnect(); };
+    // Use the shared socket singleton (env-based URL) — the old code hardcoded
+    // http://localhost:5000, so live slot refresh never worked in production.
+    // Never disconnect the shared socket here (other views depend on it); just
+    // add/remove this listener.
+    const handler = () => { fetchBookedSlots(); fetchBlockedSlots(); };
+    socket.on('appointment-updated', handler);
+    return () => { socket.off('appointment-updated', handler); };
     // eslint-disable-next-line
   }, [selectedDentist, selectedDate, appointment]);
 
@@ -343,10 +343,21 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
   const fetchBookedSlots = async () => {
     if (!selectedDentist || !selectedDate) { setBookedSlots([]); return; }
     const dateStr = selectedDate.toLocaleDateString('sv-SE');
+    // Bound the query to a 3-day window around the target day. The old query
+    // loaded EVERY appointment for the dentist unscoped — past PostgREST's
+    // 1000-row cap that silently truncates, so a busy dentist could have the
+    // day's booked slots dropped and rendered "available" → a double-book. A
+    // 3-day window can never exceed the cap; the JS date match below stays the
+    // authoritative per-day filter.
+    const dayMs = 86400000;
+    const base = new Date(`${dateStr}T00:00:00`);
+    const startISO = new Date(base.getTime() - dayMs).toISOString();
+    const endISO = new Date(base.getTime() + 2 * dayMs).toISOString();
     try {
       const { data, error } = await supabase
         .from('appointments').select('id, appointment_time, patient_id, reason')
-        .eq('dentist_id', selectedDentist).eq('clinic_id', clinicId).eq('deleted', false);
+        .eq('dentist_id', selectedDentist).eq('clinic_id', clinicId).eq('deleted', false)
+        .gte('appointment_time', startISO).lt('appointment_time', endISO);
       if (error) { setBookedSlots([]); return; }
       let slotsList = (data || [])
         .filter(appt => new Date(appt.appointment_time).toLocaleDateString('sv-SE') === dateStr)
@@ -450,9 +461,10 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     const datetime = `${dateStr}T${selectedSlot}:00${offset}`;
 
     try {
-      const { data: patientAppointments } = await supabase
+      const { data: patientAppointments, error: dbErr } = await supabase
         .from('appointments').select('*')
         .eq('patient_id', selectedPatient).eq('clinic_id', clinicId).eq('deleted', false);
+      if (dbErr) throw dbErr; // don't silently skip the double-booking guard on a read error
       let otherAppointments = appointment
         ? (patientAppointments || []).filter(a => a.id !== appointment.id && a.appointment_time?.startsWith(dateStr))
         : (patientAppointments || []).filter(a => a.appointment_time?.startsWith(dateStr));
@@ -490,31 +502,42 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     if (otherNotes.trim()) reasonToSave += ` — Notes: ${otherNotes.trim()}`;
 
     try {
+      // supabase-js does NOT throw on a DB error — it returns { error }. The old
+      // code ignored it, so a failed write (RLS/constraint/FK) still showed a
+      // success toast and closed the form. Always check the returned error.
       if (appointment) {
-        await supabase.from('appointments').update({
+        const { error } = await supabase.from('appointments').update({
           dentist_id: selectedDentist, patient_id: selectedPatient,
           appointment_time: datetime, reason: reasonToSave, status: "Scheduled",
           procedure_id: Number(selectedProcedure),
           procedure_price: Number(procedures.find(p => String(p.id) === String(selectedProcedure))?.price || 0),
           notes: otherNotes.trim() || null,
         }).eq('id', appointment.id).eq('clinic_id', clinicId);
+        if (error) throw error;
         setSuccess('Appointment updated!');
         Swal.fire({ icon: 'success', title: 'Appointment updated!', timer: 1200, timerProgressBar: true, showConfirmButton: false });
       } else {
-        await supabase.from('appointments').insert([{
+        const { error } = await supabase.from('appointments').insert([{
           dentist_id: selectedDentist, patient_id: selectedPatient,
           appointment_time: datetime, reason: reasonToSave, clinic_id: clinicId,
           procedure_id: Number(selectedProcedure),
           procedure_price: Number(procedures.find(p => String(p.id) === String(selectedProcedure))?.price || 0),
           notes: otherNotes.trim() || null,
         }]);
+        if (error) throw error;
         setSuccess('Appointment booked!');
         Swal.fire({ icon: 'success', title: 'Appointment booked!', timer: 1200, timerProgressBar: true, showConfirmButton: false });
       }
       setTimeout(() => { setSuccess(''); onClose(); }, 1200);
-    } catch {
-      setError('Booking failed! This slot may already be taken or dentist is unavailable.');
-      Swal.fire({ icon: 'error', title: 'Booking failed!', html: 'This slot may already be taken or dentist is unavailable.', timer: 2200, timerProgressBar: true });
+    } catch (err) {
+      // 23505 = the (dentist_id, appointment_time) unique index (migration 023):
+      // the slot was taken between our client check and the write.
+      const clash = err && (err.code === '23505' || String(err.message || '').toLowerCase().includes('duplicate key'));
+      const msg = clash
+        ? 'That slot was just taken for this dentist. Please pick another time.'
+        : 'Booking failed! This slot may already be taken or dentist is unavailable.';
+      setError(msg);
+      Swal.fire({ icon: 'error', title: clash ? 'Slot no longer available' : 'Booking failed!', html: msg, timer: 2600, timerProgressBar: true });
       fetchBookedSlots(); fetchBlockedSlots();
     }
   };

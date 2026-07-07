@@ -21,6 +21,13 @@ const SOUND_PATH = process.env.PUBLIC_URL + '/sounds/notify.mp3';
 // ==========================================
 
 function getWeeksOfMonth(year, month) {
+  // Week `end` is stored at 23:59:59.999 of its last day. The old code left it
+  // at 00:00, so the weekly filter's `d <= end` excluded every appointment on a
+  // week's final day (business-hour times are all > midnight) — most visibly the
+  // month's last day silently vanished from the weekly view. The internal
+  // next-week arithmetic still uses midnight `end`/`weekEnd`, so boundaries are
+  // unaffected; only the stored comparison end is pushed to end-of-day.
+  const endOfDay = (d) => { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; };
   const m = parseInt(month, 10) - 1;
   const firstDayOfMonth = new Date(year, m, 1);
   const lastDayOfMonth = new Date(year, m + 1, 0);
@@ -35,7 +42,7 @@ function getWeeksOfMonth(year, month) {
     end.setDate(start.getDate() + (7 - start.getDay()));
     if (end > lastDayOfMonth) end = new Date(lastDayOfMonth);
   }
-  weeks.push({ start: new Date(start), end: new Date(end) });
+  weeks.push({ start: new Date(start), end: endOfDay(end) });
 
   let nextMonday = new Date(end);
   nextMonday.setDate(end.getDate() + 1);
@@ -45,7 +52,7 @@ function getWeeksOfMonth(year, month) {
     let weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
     if (weekEnd > lastDayOfMonth) weekEnd = new Date(lastDayOfMonth);
-    weeks.push({ start: weekStart, end: weekEnd });
+    weeks.push({ start: weekStart, end: endOfDay(weekEnd) });
     nextMonday = new Date(weekEnd);
     nextMonday.setDate(weekEnd.getDate() + 1);
   }
@@ -487,11 +494,14 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
     });
     if (isConfirmed) {
       try {
-        await supabase
+        // supabase-js returns { error } rather than throwing — check it, or a
+        // failed soft-delete would still show "Appointment cancelled".
+        const { error } = await supabase
           .from('appointments')
           .update({ deleted: true })
           .eq('id', id)
           .eq('clinic_id', clinicId);
+        if (error) throw error;
         Swal.fire({
           icon: 'success',
           title: 'Appointment cancelled',
@@ -536,11 +546,15 @@ function AppointmentsTable({ onAdd, onEdit, onReminder, onFiles, clinicId, jumpD
     }
 
     try {
-      await supabase
+      // Check the write error BEFORE the optimistic UI update and the patient
+      // notification — otherwise a silently-failed status change would still
+      // flip the row in the UI and text the patient a status that never saved.
+      const { error } = await supabase
         .from('appointments')
         .update({ status: newStatus, checked_in_at: null })
         .eq('id', id)
         .eq('clinic_id', appointment?.clinic_id ?? clinicId);
+      if (error) throw error;
       await fetch(`${API_BASE}/status-notifications/${id}`, {
         method: 'POST',
         headers: await authHeaders({ 'Content-Type': 'application/json' }),
