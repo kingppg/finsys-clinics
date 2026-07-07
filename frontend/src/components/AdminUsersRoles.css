@@ -46,3 +46,18 @@
   color: var(--dc-text-3, #6E7E98);
   word-break: break-all;
 }
+
+/* "You" badge marking the signed-in user's own row in the table */
+.aur-you-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--dc-accent, #2b7de1);
+  background: var(--dc-accent-soft, rgba(43, 125, 225, 0.12));
+  border-radius: 999px;
+  vertical-align: middle;
+}

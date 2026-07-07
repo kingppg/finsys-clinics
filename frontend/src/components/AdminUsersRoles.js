@@ -292,7 +292,12 @@ function AdminUsersRoles({ clinicId, currentUser }) {
             ) : (
               users.map((user) => (
                 <tr key={user.id}>
-                  <td title={user.name}>{user.name || '—'}</td>
+                  <td title={user.name}>
+                    {user.name || '—'}
+                    {currentUser?.id != null && String(user.id) === String(currentUser.id) && (
+                      <span className="aur-you-pill">You</span>
+                    )}
+                  </td>
                   <td title={user.email}>{user.email}</td>
                   <td>
                     <span className="dc-pill" style={roleTone(user.role)}>{user.role}</span>
