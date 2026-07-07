@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { fetchAllRows } from '../api/fetchAllRows';
+import { normalizePHMobile } from '../utils/phone';
 import PatientProfile from './patients/PatientProfile'; // full-page profile: history, odontogram, files (TS)
 import { LuSquarePen, LuTrash2, LuSearch, LuUserPlus } from 'react-icons/lu';
 import './Patients.css';
@@ -52,7 +53,7 @@ function Patients({ setModalContent, clinicId }) {
                 </label>
                 <label className="dc-field">
                   <span>Phone</span>
-                  <input type="tel" name="phone" value={newPatient.phone} onChange={handleChange} />
+                  <input type="tel" name="phone" placeholder="09171234567" value={newPatient.phone} onChange={handleChange} />
                 </label>
               </div>
               {error && <div className="dc-banner dc-banner--err">{error}</div>}
@@ -77,7 +78,7 @@ function Patients({ setModalContent, clinicId }) {
                 </label>
                 <label className="dc-field">
                   <span>Phone</span>
-                  <input type="tel" name="phone" value={editPatient.phone} onChange={handleEditChange} />
+                  <input type="tel" name="phone" placeholder="09171234567" value={editPatient.phone} onChange={handleEditChange} />
                 </label>
               </div>
               {error && <div className="dc-banner dc-banner--err">{error}</div>}
@@ -162,8 +163,10 @@ function Patients({ setModalContent, clinicId }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setError('');
     if (!newPatient.name || !newPatient.phone) { setError('All patient fields are required.'); return; }
+    const phone = normalizePHMobile(newPatient.phone);
+    if (!phone) { setError('Please enter a valid PH mobile number (e.g. 09171234567) — needed for SMS reminders.'); return; }
     try {
-      const { error } = await supabase.from('patients').insert([{ ...newPatient, clinic_id: clinicId }]);
+      const { error } = await supabase.from('patients').insert([{ ...newPatient, phone, clinic_id: clinicId }]);
       if (error) throw error;
       setNewPatient({ name: '', phone: '' });
       closeAddModal(); fetchPatients();
@@ -183,9 +186,11 @@ function Patients({ setModalContent, clinicId }) {
   const saveEdit = async (id) => {
     setError('');
     if (!editPatient.name || !editPatient.phone) { setError('All fields required.'); return; }
+    const phone = normalizePHMobile(editPatient.phone);
+    if (!phone) { setError('Please enter a valid PH mobile number (e.g. 09171234567) — needed for SMS reminders.'); return; }
     try {
       const { error } = await supabase.from('patients')
-        .update({ name: editPatient.name, phone: editPatient.phone, messenger_id: editPatient.messenger_id, clinic_id: clinicId })
+        .update({ name: editPatient.name, phone, messenger_id: editPatient.messenger_id, clinic_id: clinicId })
         .eq('id', id);
       if (error) throw error;
       setEditPatientId(null); setEditPatient({ name: '', phone: '', messenger_id: '' });

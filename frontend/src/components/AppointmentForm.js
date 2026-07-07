@@ -7,6 +7,7 @@ import './MainSection.css';
 import io from 'socket.io-client';
 import Swal from 'sweetalert2';
 import { useClinic } from './ClinicContext'; // ✅ import context hook
+import { normalizePHMobile } from '../utils/phone';
 
 // ─── Timezone utility ─────────────────────────────────────────────────────────
 function getUtcOffset(timeZone) {
@@ -109,11 +110,13 @@ function PatientSearchSelect({ patients, selectedPatient, onSelect, onPatientAdd
     setAddError('');
     if (!newName.trim()) { setAddError('Name is required.'); return; }
     if (!newPhone.trim()) { setAddError('Phone is required.'); return; }
+    const phone = normalizePHMobile(newPhone);
+    if (!phone) { setAddError('Please enter a valid PH mobile number (e.g. 09171234567) — needed for SMS reminders.'); return; }
     setAdding(true);
     try {
       const { data, error } = await supabase
         .from('patients')
-        .insert([{ name: newName.trim(), phone: newPhone.trim(), clinic_id: clinicId }])
+        .insert([{ name: newName.trim(), phone, clinic_id: clinicId }])
         .select()
         .single();
       if (error) throw error;
@@ -207,7 +210,7 @@ function PatientSearchSelect({ patients, selectedPatient, onSelect, onPatientAdd
               />
               <input
                 type="tel"
-                placeholder="Phone number *"
+                placeholder="09171234567 *"
                 value={newPhone}
                 onChange={e => setNewPhone(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddNew(); }}
