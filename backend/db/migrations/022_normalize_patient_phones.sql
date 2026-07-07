@@ -20,8 +20,9 @@
 BEGIN;
 
 -- 1) Snapshot every non-null phone before mutating (rollback source).
+--    patients.id is an integer in this DB (verified 2026-07-07).
 CREATE TABLE IF NOT EXISTS public.patients_phone_backup_022 (
-  id         uuid,
+  id         bigint,
   old_phone  text,
   backed_up_at timestamptz DEFAULT now()
 );
