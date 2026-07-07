@@ -20,20 +20,21 @@
 BEGIN;
 
 -- 1) Snapshot every non-null phone before mutating (rollback source).
---    patients.id is an integer in this DB (verified 2026-07-07).
-CREATE TABLE IF NOT EXISTS public.patients_phone_backup_022 (
-  id         bigint,
-  old_phone  text,
+--    patients.id is an integer in this DB (verified 2026-07-07). Drop + create
+--    fresh so a re-run always starts clean (an older run created this table as
+--    `id uuid`, which then failed the id comparison — DROP clears that trap).
+DROP TABLE IF EXISTS public.patients_phone_backup_022;
+
+CREATE TABLE public.patients_phone_backup_022 (
+  id           bigint,
+  old_phone    text,
   backed_up_at timestamptz DEFAULT now()
 );
 
 INSERT INTO public.patients_phone_backup_022 (id, old_phone)
 SELECT id, phone
 FROM public.patients
-WHERE phone IS NOT NULL
-  AND NOT EXISTS (
-    SELECT 1 FROM public.patients_phone_backup_022 b WHERE b.id = public.patients.id
-  );
+WHERE phone IS NOT NULL;
 
 -- 2) Canonicalize recognizable PH mobiles to 09XXXXXXXXX.
 --    d = digits only; strip a 63 or leading 0; require 9 + 9 digits; re-add 0.
