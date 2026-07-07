@@ -344,12 +344,65 @@ The Billing module is now a complete, BIR-aware, audit-grade invoicing system. *
 
 **Migrations 007–013 ALL RUN ✅. Billing VAT/discount/finalize/refund work is COMPLETE — nothing deferred.** Only minor cosmetic follow-ups remain: persist `appointment_id` FK on invoices (column unconfirmed); Manage modal still on `.bills-modal-overlay` (not `.dc-overlay`); optional per-invoice VAT-rate snapshot.
 
+### o) BILLING — security hardening + integrity audit (2026-07-06, `d30a1de` — DEPLOYED) ⭐ read this too for billing
+Deep adversarial audit of the whole Billing surface, then fixed the findings. **Migrations 014–018 ALL RUN in Supabase ✅ and code DEPLOYED** (push to main → Render + Vercel). DB and frontend are in sync in prod.
+
+**THE headline (was CRITICAL, now closed):** the billing tables had **NO RLS**. The public anon key (shipped in the JS bundle) could — with **no login** — read every invoice/payment, insert payments, UPDATE payment amounts, and DELETE invoices for **any** clinic. Verified live with the anon key (GET returned real rows; POST/PATCH/DELETE succeeded), then re-verified CLOSED after the fix (GET → `[]`, INSERT → 401, DELETE of real rows → deleted nothing).
+
+**Migrations (all idempotent, rollback blocks in each file):**
+- **014_billing_rls.sql** — RLS on `invoices` / `invoice_items` / `payments` / `procedures`: `authenticated` full access, `anon` denied. Same pattern as `secure-users-table.sql`. (`patients`/`appointments` were already RLS-protected.) NOTE: this closed the urgent PUBLIC hole but left cross-clinic isolation permissive for authenticated — **now DONE in migration 020 (§p): per-clinic scoping via a JWT-email→clinic helper.**
+- **015_payments_immutable.sql** — payments are **append-only**: `payments_append_only()` trigger blocks DELETE and blocks UPDATE of every financial field (only `reversed_at`/`updated_at` may change). Plus **`reverse_payment(p_payment_id, p_clinic_id, p_amount, p_note)`** SECURITY DEFINER RPC = one atomic reversal (caps at net collected server-side, blocks double-reversal, inserts offsetting entry + marks `reversed_at` in one tx). Replaces the old two-write refund race. `InvoiceManagementModal.confirmRefund` now calls the RPC (note formatting preserved).
+- **016_or_number_atomic.sql** — **OR numbers were race-prone** (`generate_or_number` used COUNT(*)+1 — the same flaw 007 fixed for invoices → two concurrent payments could mint the SAME BIR receipt #). Now a per-clinic+year atomic counter (`or_number_counters`) + `UNIQUE (clinic_id, or_number)` index, and reversals **skip** OR assignment (money-out ≠ receipt). Self-checks for existing dupes before adding the index.
+- **017_percent_discount_dbowned.sql** — **`percent` discounts were freezing** (stored as pesos once, never rescaled when items changed → "10%" silently drifted). Added `invoices.discount_value` (raw %), and `update_invoice_total_from_items` now recomputes `percent` from it (like senior/PWD). Frontend (Create + Manage) saves `discount_value`; `amount`/none/senior/pwd paths unchanged. `amount` intentionally does NOT rescale.
+- **018_audit_created_by_and_void_guard.sql** — `invoices.created_by` + `payments.created_by` = `uuid DEFAULT auth.uid()` (auto-captures WHO on every insert incl. auto-invoice + refund; NULL = system; existing rows NULL). Plus `prevent_invalid_void()` trigger = DB-enforces the UI's rule (can't void a finalized or paid invoice).
+
+**Frontend (deployed):**
+- **C1:** `/api/billing` route **unmounted** in `index.js` (service-key router with NO auth = a public RLS bypass; the UI never used it — reads Supabase directly). Re-enable form is in the code comment.
+- **H2 double-billing (confirmed real):** the auto-invoice trigger dedups on `appointment_id` ONLY, and the manual Create path never stamped it → manual-invoice-then-Completed = 2 invoices. Fixed: `handleCreateInvoice` now stamps `appointment_id` + warns if the linked visit is already invoiced.
+- **H5 overdue:** one shared `isInvoiceOverdue()` in `billingAnalytics.ts` (local-day, "due today" is NOT overdue) used by BOTH the invoices table and Aging — they used to disagree (table used a UTC parse vs instant).
+- **Donut:** `computeCollections` excludes `Reversal`/negative rows from the method mix (was drawing a negative slice); they still net into Total Collected.
+
+**H3 — hidden DB logic captured to repo:** these load-bearing triggers existed ONLY in the live DB, never in git — now in **`backend/db/billing-schema-baseline.sql`** (authoritative snapshot; `capture-billing-schema.sql` = the read-only introspection queries used):
+- `create_invoice_on_appointment_completed()` (trigger `trg_create_invoice_on_completed`, AFTER UPDATE on appointments) — auto-invoice on Completed; dedups on `appointment_id`.
+- `update_invoice_status_on_payment()` (`trigger_update_invoice_status`) — Unpaid/Partial/Paid state machine, net-aware (`SUM(amount)`).
+- `assign_or_number_on_payment()` + `generate_or_number()` — OR # assignment (now atomic via 016).
+Baseline is a REBUILD snapshot — do NOT run against the existing prod DB. **Keep it updated when any billing function changes** (the trap: 010→013 each redefine `update_invoice_total_on_discount`; re-running an OLDER numbered migration silently regresses it — treat the baseline as canonical).
+
+**Two audit corrections (I was wrong the first pass):** (1) OR numbers are NOT free-text/optional — they're auto-assigned by a trigger (retracted that finding). (2) `appointment_id` DOES exist and is populated (134/149 live) — the bug is the manual path not stamping it, not a missing column.
+
+**Deliberately NOT fixed (with reasons):** H6 stale-balance multi-terminal = BY DESIGN (electronic over-payment is intentional advance credit; refund RPC already re-validates server-side) — not a bug. Per-invoice **VAT-rate snapshot** = latent (no VAT-registered clinics exist yet; do it when one registers). **1000-row cap** (`BillsPayment` loads all invoices/payments, PostgREST caps at 1000) = latent at 42 payments / 149 invoices, but a real forward risk — do the server-side-aggregate refactor deliberately before a clinic gets busy. Orphan `frontend/src/components/InvoiceConfirmationModal.js` (exports unused `confirmInvoice`) = confirmed dead but left in place (owner caution on removals).
+
+### p) APP-WIDE security audit — Appointments surface + scale + multi-tenant isolation (2026-07-07) ⭐ read for security posture
+Second deep-audit session (after Billing §o). Audited the Appointments surface (components, modals, messaging, manual reminders, scheduler, status/notifications) AND swept security app-wide. Commits `b124f5e`, `37f4185`, `948441e` — all DEPLOYED; migrations 019–020 RUN in Supabase.
+
+**Anchor fact — Supabase RLS model here:** the frontend uses the anon key; logged-in staff carry the `authenticated` role (Supabase Auth). RLS = the whole trust boundary. `anon` = denied; `authenticated` = allowed (now clinic-scoped, see below). The backend/webhook use the SERVICE key (bypass RLS). `clinics` is NOT RLS — it's column-grant protected (must stay anon-readable for Queue/login).
+
+**AC1 — 9 more UNRESTRICTED tables (migration 019, `b124f5e`):** a `pg_class.relrowsecurity` catalog check found 10 tables with NO RLS (my anon read-probe had missed the EMPTY ones — it can't tell "RLS-protected" from "no rows"). Live-verified `appointment_reminders` was fully readable AND writable by anon (patient Messenger IDs = PII, message text, appt times, cross-clinic; could delete/forge the audit trail). Also `invoice_number_counters`/`or_number_counters` (tamper → numbering-collision DoS) and `dentist_availability`. Fixed: RLS authenticated-only on all 9 (`clinics` excluded). Re-probed CLOSED (read `[]`, write 401).
+
+**Per-clinic ISOLATION (migration 020, `948441e`) — the big multi-tenant fix:** 014/019 policies were "any authenticated = full access", so a logged-in staffer from Clinic A could query Clinic B. Now every policy is `superadmin OR clinic_id = caller's clinic`. Caller's clinic is resolved from the **JWT email** (`auth.jwt()->>'email'`) → `public.users.clinic_id`, exactly like `requireAuth.js`. Two **SECURITY DEFINER** helpers `current_staff_clinic_id()` / `current_staff_is_superadmin()` (definer-rights = read `users` without tripping its RLS → no recursion/lockout). **Scoped 17 data tables**; works with existing sessions; NO app code change (frontend already filters by clinic_id). Verified live: own-clinic data loads, anon still denied (no regression). **EXCLUDED (own follow-up pass):** `users` (login/signup risk; staff PII not patient data), `payment_plan_installments` (no clinic_id — scope via parent), `messenger_sessions` (service-only), `clinics` (column-grant). Reversible via the in-file ROLLBACK block.
+
+**AH2 — reminder scheduler stale config (`b124f5e`):** the cron job closure held a stale `clinic` snapshot; `rescheduleJobs` only rebuilds on a few tracked fields, so edits to `reminder_template`/`sms_sender`/Twilio `sms_api_secret` never reached the running job. Fixed: `sendRemindersForClinic` re-fetches the clinic FRESH each run (falls back to cached on failure).
+
+**AM1 — cron timezone (`37f4185`):** was converting clinic-local time → a UTC cron and relying on the host being UTC + no DST (true on Render/PH, latent otherwise). Now hands clinic-local `HH:MM` to node-cron with `{ timezone }` (v4.2.1 supports it) — handles DST, no host-TZ dependency. Removed `getCronStringUTC`.
+
+**AM2 — manual send ignored soft-delete (`b124f5e`):** `/appointments/:id/send-reminder` now filters `deleted=false` (can't remind a cancelled appointment).
+
+**AH1 — the 1000-row silent-truncation cap (`37f4185`):** PostgREST caps a response at 1000 rows; components that load a whole table client-side silently lost the oldest rows past 1000 (appointments hit first; also the deferred billing cap). Fixed with reusable **`frontend/src/api/fetchAllRows.ts`** (pages via `.range()` until exhausted; requires a stable `.order()`; loop-guarded). Applied to `AppointmentsTable` (view + year list), `Patients`, `Dentists`, `BillsPayment` (invoices+payments). `CalendarView` was already date-scoped (untouched).
+
+**Queue Display — public TV broke under RLS (`37f4185`):** the token `/queue` page has no login, so it couldn't read the now-protected patients/appointments with the anon key (empty queue). New **PUBLIC** endpoint `GET /api/queue/:token` (inline in `index.js`, SERVICE key, scoped by `queue_token`) serves the minimal queue (**first names only** — no PII/table exposure). `QueueDisplay.jsx` now loads from it + polls 20s + re-fetches on socket events. Uses the existing CORS allowlist.
+
+**Dismissed after scrutiny (not bugs):** `checked_in_at`-null socket emit (benign); in-memory `userStates` (actually persisted to `messenger_sessions`); OR#s "free-text" (auto-assigned by trigger). **Dead code (left, owner caution):** `backend/appointments.js` (unmounted raw-pg router, PATCH allowlist missing 'Checked-In'); `InvoiceConfirmationModal.js` (unused `confirmInvoice`).
+
+**Security posture now (honest):** the DB trust boundary is closed app-wide — no public exposure anywhere, append-only ledger, per-clinic isolation. Two subsystems deep-audited for LOGIC (Billing, Appointments+messaging); the rest (booking bot/Claire ~1144 lines, Patients/Dentists/Odontogram/PatientFiles/ClinicConfig/auth flows) got the security sweep but NOT a logic audit. **Remaining same-severity item: scope `public.users` per-clinic.** Then: logic audits of the booking bot + remaining modules, one at a time.
+
 ### Local dev note
 A running Node backend holds old code in memory until restarted. After pulling/editing backend files, **restart the backend** (`npm run dev` uses nodemon and auto-restarts; plain `node index.js` does not). The frontend's `API_BASE` falls back to `http://localhost:5000`, so local dev calls the local backend — keep it running and on latest code.
 
 ### Emergency rollback
 - Webhook signature dropping real events (`Rejected webhook event — invalid signature`): unset `FB_APP_SECRET`/`FB_CLIENT_SECRET` in Render env, or `git revert <commit>`.
 - `users` RLS broke login/user-management: `ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;` in Supabase.
+- **Billing RLS (014) broke the Billing tab** (e.g. an un-authenticated read path surfaced): re-open per table — `ALTER TABLE public.invoices DISABLE ROW LEVEL SECURITY;` (and `invoice_items`/`payments`/`procedures`). Verified working post-deploy, but this is the escape hatch.
+- **Billing code (`d30a1de`)**: `git revert d30a1de` reverts the frontend + route unmount. Each migration 014–018 has its own rollback block in-file (drop the trigger/RPC/index/column). The append-only guard (015) is the one most likely to surprise a future dev who tries to hand-edit a payment — that's intended; reverse it instead.
 
 ---
 
@@ -412,5 +465,9 @@ A running Node backend holds old code in memory until restarted. After pulling/e
 | `813dd1e` | Billing: partial refund amount (reverse-payment amount modal — overpayment in one step) |
 | `2072c0f` | Billing: show overpayment credit instead of clamped ₱0 balance (+ "Overpaid" pill) |
 | `0757d86` | Billing: POS modal — cash tender/change, denomination chips, back-dated date, formal invoice # |
+| `d30a1de` | **security(billing): close public data exposure (RLS 014) + append-only ledger & atomic refund (015) + race-safe OR #s (016) + DB-owned % discount (017) + created_by/void-guard (018) + H2 double-bill guard + shared overdue + donut fix + trigger baseline capture** |
+| `b124f5e` | **security+fix(appointments): RLS on 9 more unrestricted tables (019, incl. appointment_reminders PII) + scheduler fresh-config (AH2) + manual-send soft-delete guard (AM2)** |
+| `37f4185` | **fix(scale+queue): page past 1000-row cap (fetchAllRows on Appointments/Patients/Dentists/Billing) + public token queue endpoint (AH1) + cron timezone via node-cron `{timezone}` (AM1)** |
+| `948441e` | **security(rls): per-clinic isolation on 17 data tables — `superadmin OR clinic_id=caller` via JWT-email→clinic SECURITY DEFINER helpers (020); users deferred** |
 
 *(Keep this table and the sections above updated after every change — this handoff is the source of truth.)*
