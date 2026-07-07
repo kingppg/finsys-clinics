@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const axios = require('axios');
+const { formatForProvider } = require('../helpers/phone');
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
   throw new Error('Supabase env vars are missing!');
@@ -71,22 +72,24 @@ async function sendSMS(phone, text, clinic) {
     console.log(`[SMS] Skipped — no SMS provider configured for clinic "${clinic.name}".`);
     return false;
   }
+  // Format for the target provider (Twilio needs E.164, Semaphore takes local).
+  const to = formatForProvider(phone, clinic.sms_provider);
   if (clinic.sms_provider === 'semaphore') {
     await axios.post('https://api.semaphore.co/api/v4/messages', {
       apikey: clinic.sms_api_key,
-      number: phone,
+      number: to,
       message: text,
       sendername: clinic.sms_sender || 'SEMAPHORE'
     });
-    console.log(`✅ Sent Semaphore SMS to ${phone}`);
+    console.log(`✅ Sent Semaphore SMS to ${to}`);
     return true;
   } else if (clinic.sms_provider === 'twilio') {
     await axios.post(
       `https://api.twilio.com/2010-04-01/Accounts/${clinic.sms_api_key}/Messages.json`,
-      new URLSearchParams({ To: phone, From: clinic.sms_sender, Body: text }),
+      new URLSearchParams({ To: to, From: clinic.sms_sender, Body: text }),
       { auth: { username: clinic.sms_api_key, password: clinic.sms_api_secret } }
     );
-    console.log(`✅ Sent Twilio SMS to ${phone}`);
+    console.log(`✅ Sent Twilio SMS to ${to}`);
     return true;
   }
   return false;

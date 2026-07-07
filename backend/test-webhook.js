@@ -45,8 +45,11 @@ function makeFakeSupabase(seed = {}) {
     return rows.filter(r => filters.every(f => {
       const v = r[f.col];
       switch (f.type) {
-        case 'eq':  return v === f.val;
-        case 'neq': return v !== f.val;
+        // PostgREST coerces the query value to the column type, so a numeric id
+        // column matches a string code like '300'. Mirror that with string-eq
+        // (but keep null/undefined distinct from the string "null").
+        case 'eq':  return (v == null || f.val == null) ? v === f.val : String(v) === String(f.val);
+        case 'neq': return (v == null || f.val == null) ? v !== f.val : String(v) !== String(f.val);
         case 'gte': return v >= f.val;
         case 'lte': return v <= f.val;
         case 'gt':  return v > f.val;
@@ -296,7 +299,9 @@ async function testSomeoneElseSameName() {
   check('guard1: someone-else → awaiting_patient_name', stateOf(g1) === 'awaiting_patient_name');
 
   await send(g1, 'Maria Santos');
-  const askLines = await send(g1, 'skip');           // no phone → name-only match → confirm prompt
+  // Phone required now: give a number that does NOT match the existing Maria
+  // (09990001111) so we still land on the name-only match → confirm prompt.
+  const askLines = await send(g1, '09995551234');
   check('guard1: name-only match → awaiting_guardian_confirm_match', stateOf(g1) === 'awaiting_guardian_confirm_match');
   check('guard1: bot asks to confirm the same-name record', lastText(askLines).includes('pareho ng pangalan'));
 
@@ -310,12 +315,100 @@ async function testSomeoneElseSameName() {
   await send(g2, APPT_DATE);
   await send(g2, 'para sa asawa ko');
   await send(g2, 'Maria Santos');
-  await send(g2, 'skip');
+  await send(g2, '09996667777');                     // required phone, non-matching → name-only
   check('guard2: reached guardian confirmation', stateOf(g2) === 'awaiting_guardian_confirm_match');
 
   const noLines = await send(g2, 'no');
   check('guard2: NO → proceeds to slot selection', stateOf(g2) === 'awaiting_slot');
   check('guard2: bot signals a new record will be made', lastText(noLines).includes('bagong record'));
+}
+
+// Scenario I — phone is REQUIRED and validated (SMS reminder fallback).
+// Skip words and junk/landline numbers are rejected; a real PH mobile in any
+// common format is accepted and normalized to 09XXXXXXXXX.
+async function testPhoneRequired() {
+  section('PART 2h — phone required + PH-mobile validation/normalization');
+  const psid = 'phone-user';
+
+  await send(psid, 'book appointment');
+  await send(psid, APPT_DATE);
+  await send(psid, 'Ana Reyes');
+  check('reached phone step', stateOf(psid) === 'awaiting_my_phone');
+
+  await send(psid, 'skip');
+  check('"skip" is rejected (stays on phone step)', stateOf(psid) === 'awaiting_my_phone');
+
+  await send(psid, '1234567890');                    // not a PH mobile
+  check('junk/landline number rejected', stateOf(psid) === 'awaiting_my_phone');
+
+  await send(psid, '+63 917 111 2233');              // valid, messy format
+  check('valid PH mobile (formatted) accepted → slot selection', stateOf(psid) === 'awaiting_slot');
+
+  await send(psid, '1');                             // pick slot
+  await send(psid, 'CONFIRM_BOOKING');
+  const p = fakeDb.__db.patients.find(x => x.messenger_id === psid);
+  check('phone normalized to 09XXXXXXXXX on save', !!p && p.phone === '09171112233');
+}
+
+// Scenario F — impossible calendar dates must be rejected, never offered slots
+async function testInvalidDateRejected() {
+  section('PART 2e — impossible calendar dates rejected (regex-passing garbage)');
+  const psid = 'baddate-user';
+  await send(psid, 'book appointment');
+  const l1 = await send(psid, '2026-13-45');
+  check('month 13 rejected (stays awaiting_date)', stateOf(psid) === 'awaiting_date');
+  check('month 13: no slot buttons offered', !lastText(l1).includes('available slots'));
+  const l2 = await send(psid, '2026-07-32');
+  check('day 32 rejected (stays awaiting_date)', stateOf(psid) === 'awaiting_date');
+  check('day 32: no slot buttons offered', !lastText(l2).includes('available slots'));
+  await send(psid, APPT_DATE);
+  check('a real date afterwards still proceeds', stateOf(psid) === 'awaiting_my_name');
+  await send(psid, 'exit please'); // leave flow clean
+}
+
+// Scenario G — confirm-by-code requires name verification (F1) and the status
+// update actually happens for self-confirmation (F3)
+async function testConfirmCodeVerification() {
+  section('PART 2f — confirm code: verify-before-link (F1) + real status update (F3)');
+  const psid = 'confirmer1';
+
+  await send(psid, 'MENU_CONFIRM_BOOKING');
+  check('menu → awaiting_confirm_code', stateOf(psid) === 'awaiting_confirm_code');
+
+  const vLines = await send(psid, '300');            // Maria Clara's Scheduled appt
+  check('unknown sender is asked to verify the patient name', stateOf(psid) === 'awaiting_confirm_verify');
+  check('bot does NOT echo the stored name', !lastText(vLines).includes('maria clara'));
+  const before = fakeDb.__db.patients.find(p => p.id === 20);
+  check('no messenger link written before verification', !before.messenger_id);
+
+  await send(psid, 'Maria Clara');                   // correct full name
+  const appt = fakeDb.__db.appointments.find(a => a.id === 300);
+  const patient = fakeDb.__db.patients.find(p => p.id === 20);
+  check('correct name → messenger linked to sender', patient.messenger_id === psid);
+  check('correct name → status ACTUALLY becomes Confirmed (F3)', appt.status === 'Confirmed');
+  check('flow returns to default', stateOf(psid) === 'default');
+}
+
+// Scenario G2 — a wrong name must NOT link the account or confirm (F1 defense)
+async function testConfirmWrongName() {
+  section('PART 2g — confirm code: wrong name is rejected (no link, no confirm)');
+  const psid = 'attacker1';
+
+  await send(psid, 'MENU_CONFIRM_BOOKING');
+  await send(psid, '301');                           // Juan Dela Cruz's Scheduled appt
+  check('unknown sender asked to verify', stateOf(psid) === 'awaiting_confirm_verify');
+
+  await send(psid, 'Wrong Guess');                   // attempt 1
+  check('wrong name: stays in verify (retry)', stateOf(psid) === 'awaiting_confirm_verify');
+  const p1 = fakeDb.__db.patients.find(p => p.id === 21);
+  check('wrong name: no messenger link written', !p1.messenger_id);
+  const a1 = fakeDb.__db.appointments.find(a => a.id === 301);
+  check('wrong name: appointment still Scheduled (not confirmed)', a1.status === 'Scheduled');
+
+  await send(psid, 'Still Wrong');                   // attempt 2 → give up
+  check('second wrong name: kicked back to default', stateOf(psid) === 'default');
+  const p2 = fakeDb.__db.patients.find(p => p.id === 21);
+  check('after lockout: still no link', !p2.messenger_id);
 }
 
 // Scenario E — confidence gating: a low-confidence book intent must NOT change state
@@ -332,11 +425,34 @@ async function testConfidenceGating() {
 }
 
 // ---------------------------------------------------------------------------
+// PART 3 — PH phone helper (validation at capture + formatting at SMS send).
+// Pure functions, no mocks needed.
+// ---------------------------------------------------------------------------
+function testPhoneHelper() {
+  section('PART 3 — phone normalize + provider formatting');
+  const { normalizePHMobile, formatForProvider } = require('./helpers/phone');
+
+  check('09… stays canonical', normalizePHMobile('09171234567') === '09171234567');
+  check('+63 with spaces → 09…', normalizePHMobile('+63 917 123 4567') === '09171234567');
+  check('639… → 09…', normalizePHMobile('639171234567') === '09171234567');
+  check('bare 9… → 09…', normalizePHMobile('9171234567') === '09171234567');
+  check('dashes tolerated', normalizePHMobile('0917-123-4567') === '09171234567');
+  check('non-mobile 10 digits rejected', normalizePHMobile('1234567890') === null);
+  check('landline rejected', normalizePHMobile('0288881234') === null);
+  check('empty rejected', normalizePHMobile('') === null);
+
+  check('twilio → E.164', formatForProvider('09171234567', 'twilio') === '+639171234567');
+  check('twilio from messy → E.164', formatForProvider('+63 917 123 4567', 'twilio') === '+639171234567');
+  check('semaphore → local 09…', formatForProvider('639171234567', 'semaphore') === '09171234567');
+}
+
+// ---------------------------------------------------------------------------
 // Runner
 // ---------------------------------------------------------------------------
 async function main() {
   // PART 1 first, with the REAL claire (uses global.fetch, no DB/axios needed).
   await testClaireHistory();
+  testPhoneHelper();
 
   // Install module mocks, THEN load webhook so it picks them up.
   fakeDb = makeFakeSupabase({
@@ -346,11 +462,17 @@ async function main() {
       { id: 1, name: 'Maria Santos', phone: '09990001111', clinic_id: 1 },
       // Two guardians who each already have an appointment on APPT_DATE.
       { id: 5, name: 'Guardian One', phone: '09170000001', messenger_id: 'guard1', clinic_id: 1 },
-      { id: 6, name: 'Guardian Two', phone: '09170000002', messenger_id: 'guard2', clinic_id: 1 }
+      { id: 6, name: 'Guardian Two', phone: '09170000002', messenger_id: 'guard2', clinic_id: 1 },
+      // Staff-created, UNLINKED patients with Scheduled appointments — the
+      // subjects of the confirm-by-code verification tests (F1/F3).
+      { id: 20, name: 'Maria Clara', phone: '09991112222', clinic_id: 1 },
+      { id: 21, name: 'Juan Dela Cruz', phone: '09993334444', clinic_id: 1 }
     ],
     appointments: [
       { id: 100, patient_id: 5, dentist_id: 1, appointment_time: `${APPT_DATE}T10:00:00+08:00`, status: 'Confirmed', clinic_id: 1 },
-      { id: 101, patient_id: 6, dentist_id: 1, appointment_time: `${APPT_DATE}T10:00:00+08:00`, status: 'Confirmed', clinic_id: 1 }
+      { id: 101, patient_id: 6, dentist_id: 1, appointment_time: `${APPT_DATE}T10:00:00+08:00`, status: 'Confirmed', clinic_id: 1 },
+      { id: 300, patient_id: 20, dentist_id: 1, appointment_time: `${APPT_DATE}T14:00:00+08:00`, status: 'Scheduled', clinic_id: 1 },
+      { id: 301, patient_id: 21, dentist_id: 1, appointment_time: `${APPT_DATE}T15:00:00+08:00`, status: 'Scheduled', clinic_id: 1 }
     ]
   });
 
@@ -370,6 +492,10 @@ async function main() {
   await testConfirmBooking();
   await testSomeoneElseSameName();
   await testConfidenceGating();
+  await testInvalidDateRejected();
+  await testConfirmCodeVerification();
+  await testConfirmWrongName();
+  await testPhoneRequired();
 
   console.log(`\n=== RESULT: ${passCount} passed, ${failCount} failed ===`);
   process.exit(failCount === 0 ? 0 : 1);

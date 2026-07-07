@@ -35,7 +35,9 @@ const {
   toTitleCase,
   to12HourFormat,
   to24HourFormat,
+  getDayOfWeek,
   isClinicOpen,
+  normalizePHMobile,
   findPatientByMessengerId,
   findPatientByNameAndPhone,
   getAvailableSlots,
@@ -201,7 +203,9 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
     }
   }
   if (message === 'MENU_BOOK_APPOINTMENT') {
-    userState.state = "awaiting_date";
+    // Fresh data — a stale patient_name/booking_for from an abandoned earlier
+    // flow must not leak into this booking (same reset as BOOK_ANOTHER).
+    userStates[sender_psid] = { state: "awaiting_date", data: {} };
     await sendMessage(sender_psid, "Sige po! Paki-type ang inyong preferred na petsa sa format: YYYY-MM-DD (halimbawa: 2025-12-20) 😊", context);
     return;
   }
@@ -343,56 +347,60 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           await sendMessage(sender_psid, "Ay, wala po kaming nahanap na appointment sa code na iyon. Pakicheck ulit ang inyong code. 😊", context);
           return;
         }
-        // ✅ Fix #7: Separate guardian from patient identity
-        // During confirmation, NEVER link sender to patient.messenger_id (that's for booking)
-        // Only use guardian_messenger_id if sender is not the patient
-        const { data: patientRow } = await supabase.from('patients').select('messenger_id')
+        const { data: patientRow } = await supabase.from('patients').select('id, name, messenger_id')
           .eq('id', appointment.patient_id).eq('clinic_id', context.clinicId).maybeSingle();
 
-        // Only link if sender IS the actual patient (patient has no messenger_id yet)
-        if (!patientRow?.messenger_id) {
-          // Check: is sender a different patient? If so, they're a guardian
-          const { data: existingPatient } = await supabase.from('patients').select('id')
-            .eq('messenger_id', sender_psid).eq('clinic_id', context.clinicId).maybeSingle();
-          if (existingPatient && existingPatient.id !== appointment.patient_id) {
-            // Sender is a different patient → they're confirming for someone else (guardian)
-            await supabase.from('appointments').update({ guardian_messenger_id: sender_psid })
-              .eq('id', appointment.id).eq('clinic_id', context.clinicId);
-          } else if (!existingPatient) {
-            // Sender has no patient record at all
-            // Conservative: only link if they're confirming their OWN appointment (booking_for === "me")
-            // For now, assume they're the patient since they have the code
-            // But DON'T set guardian_messenger_id unless we're sure they're a guardian
-            // In future, could ask "Is this your appointment or someone else's?"
-            await supabase.from('patients').update({ messenger_id: sender_psid })
-              .eq('id', appointment.patient_id).eq('clinic_id', context.clinicId);
-          }
-        }
-        if (["Completed", "Cancelled", "No Show"].includes(appointment.status)) {
-          let statusMsg = "";
-          if (appointment.status === "Completed") statusMsg = "Natapos na po ang appointment na ito. Gusto po ba ninyong mag-book ng bago? 😊";
-          if (appointment.status === "Cancelled") statusMsg = "Na-cancel na po ang appointment na ito. Gusto po ba ninyong mag-book ng bago? 😊";
-          if (appointment.status === "No Show") statusMsg = "Ang appointment na ito ay minarkahan bilang 'No Show'. Gusto po ba ninyong mag-book ng bago? 😊";
-          await sendBookingPromptButtonTemplate(sender_psid, statusMsg, context.pageAccessToken);
-          userStates[sender_psid] = { state: "awaiting_booking_prompt_response", data: {} };
+        // Senders already tied to this appointment skip verification.
+        const isLinkedPatient = !!patientRow?.messenger_id && patientRow.messenger_id === sender_psid;
+        const isGuardian = appointment.guardian_messenger_id === sender_psid;
+        if (isLinkedPatient || isGuardian) {
+          await finalizeCodeConfirmation(sender_psid, appointment, patientRow, context, req, true);
           return;
         }
-        if (["Scheduled", "Confirmed"].includes(appointment.status)) {
-          const { data: patientRow2 } = await supabase.from('patients').select('messenger_id')
-            .eq('id', appointment.patient_id).eq('clinic_id', context.clinicId).maybeSingle();
-          if (!patientRow2?.messenger_id) {
-            await supabase.from('appointments').update({ status: 'Confirmed' })
-              .eq('id', appointment.id).eq('clinic_id', context.clinicId);
-            if (req?.io) await emitAppointmentUpdate(req.io, context.clinicId, appointment.id);
-            await sendMessage(sender_psid, "✅ Na-link na po ang inyong Messenger at nakumpirma na ang inyong appointment! Makakatanggap na kayo ng reminder bago ang inyong schedule. 🦷😊", context);
-          } else {
-            await sendMessage(sender_psid, "✅ Confirmed na po ang inyong appointment! Makakatanggap kayo ng reminder. Ingat po! 🦷", context);
-          }
+
+        // Appointment codes are short sequential numbers — possession alone
+        // proves nothing (anyone can type 1, 2, 3…). Before linking a Messenger
+        // account or granting confirm/cancel rights, the sender must prove they
+        // know WHO the appointment is for. Never echo the stored name.
+        userStates[sender_psid] = {
+          state: "awaiting_confirm_verify",
+          data: { confirm_appt_id: appointment.id, confirm_attempts: 0 }
+        };
+        await sendMessage(sender_psid, "Para po ma-verify, paki-type ang buong pangalan ng pasyente sa appointment na ito. 😊", context);
+        return;
+      }
+
+      case "awaiting_confirm_verify": {
+        if (topIntent === 'cancel_flow') {
+          if (aiReply) await sendMessage(sender_psid, aiReply, context);
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        await sendMessage(sender_psid, "May nangyari po sa pagproseso ng inyong code. Paki-contact ang clinic para sa assistance. 😊", context);
-        userStates[sender_psid] = { state: "default", data: {} };
+        const { data: appointment } = await supabase
+          .from('appointments').select('*')
+          .eq('id', userState.data.confirm_appt_id).eq('clinic_id', context.clinicId).maybeSingle();
+        if (!appointment) {
+          await sendMessage(sender_psid, "May nangyari po sa pagproseso ng inyong code. Paki-contact ang clinic para sa assistance. 😊", context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        const { data: patientRow } = await supabase.from('patients').select('id, name, messenger_id')
+          .eq('id', appointment.patient_id).eq('clinic_id', context.clinicId).maybeSingle();
+
+        const given = normalize(message).replace(/\s+/g, ' ');
+        const actual = normalize(String(patientRow?.name || '')).replace(/\s+/g, ' ');
+        if (patientRow && given && given === actual) {
+          await finalizeCodeConfirmation(sender_psid, appointment, patientRow, context, req, false);
+          return;
+        }
+        const attempts = (userState.data.confirm_attempts || 0) + 1;
+        if (attempts >= 2) {
+          await sendMessage(sender_psid, "Pasensya na po, hindi po tugma ang pangalan sa aming record. Para sa seguridad ng aming mga pasyente, pakicontact na lang po ang clinic directly. 😊", context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
+        userState.data.confirm_attempts = attempts;
+        await sendMessage(sender_psid, "Hmm, hindi po tugma ang pangalan. Paki-type ulit po ang buong pangalan ng pasyente (gaya ng pagkaka-rehistro sa clinic). 😊", context);
         return;
       }
 
@@ -458,8 +466,15 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        await supabase.from('appointments').update({ status: 'Cancelled', reason: 'Cancelled via Messenger' })
+        const { error: cancelErr } = await supabase.from('appointments')
+          .update({ status: 'Cancelled', reason: 'Cancelled via Messenger' })
           .eq('id', appointment.id).eq('clinic_id', context.clinicId);
+        if (cancelErr) {
+          console.error("Error cancelling appointment:", cancelErr);
+          await sendMessage(sender_psid, "Pasensya na po, hindi po natuloy ang pag-cancel — may nangyari sa sistema. Pakisubukan ulit po o kontakin ang clinic. 😊", context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
         if (req?.io) await emitAppointmentUpdate(req.io, context.clinicId, appointment.id);
         await sendMessage(sender_psid, "Na-cancel na po ang inyong appointment. Kung kailangan ninyong mag-book ulit, message lang po kayo anytime. Ingat! 😊", context);
         userStates[sender_psid] = { state: "default", data: {} };
@@ -505,9 +520,10 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
+        const dateStr = message.trim();
         const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (!dateRegex.test(message.trim())) {
-          const looksLikeDateAttempt = /\d/.test(message.trim());
+        if (!dateRegex.test(dateStr)) {
+          const looksLikeDateAttempt = /\d/.test(dateStr);
           if (looksLikeDateAttempt) {
             await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng petsa. 😊 Paki-type po sa format na YYYY-MM-DD, halimbawa: 2026-05-05.", context);
           } else {
@@ -517,18 +533,33 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           return;
         }
 
-        if (!isClinicOpen(message.trim())) {
+        // Calendar validity: the regex alone accepts impossible dates like
+        // 2026-07-32, which parse to Invalid Date and sail through every later
+        // check (NaN comparisons are all false) — the old chain ended in a
+        // "booked!" message whose insert had silently failed.
+        const [yy, mm, dd] = dateStr.split('-').map(Number);
+        const roundTrip = new Date(Date.UTC(yy, mm - 1, dd));
+        const isRealDate = roundTrip.getUTCFullYear() === yy &&
+          roundTrip.getUTCMonth() === mm - 1 && roundTrip.getUTCDate() === dd;
+        if (!isRealDate) {
+          await sendMessage(sender_psid, "Hmm, wala po sa kalendaryo ang petsang iyon. 😊 Paki-check po at i-type ulit sa format na YYYY-MM-DD, halimbawa: 2026-05-05.", context);
+          return;
+        }
+
+        if (!isClinicOpen(dateStr)) {
           await sendMessage(sender_psid, "Pasensya na po, sarado kami tuwing Linggo! 😊 Pwede po kayong pumili ng ibang araw — Lunes hanggang Sabado lang po kami bukas.", context);
           return;
         }
 
-        const today = new Date(); today.setHours(0, 0, 0, 0);
-        if (new Date(message.trim()) < today) {
+        // "Past" must mean past in the CLINIC's timezone — the old server-UTC
+        // midnight compare let 00:00–08:00 (Manila) users book yesterday.
+        const todayInTZ = new Intl.DateTimeFormat('en-CA', { timeZone: context.timeZone || 'Asia/Manila' }).format(new Date());
+        if (dateStr < todayInTZ) {
           await sendMessage(sender_psid, "Ay, nakaraan na po ang petsang iyon! 😅 Paki-type ng petsa na hindi pa nakaraan po.", context);
           return;
         }
 
-        userState.data.date = message.trim();
+        userState.data.date = dateStr;
 
         const { slots, activeDentists } = await getAvailableSlots(userState.data.date, context);
         userState.data.slots = slots;
@@ -604,7 +635,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         }
         userState.data.patient_name = toTitleCase(message.trim());
         userState.state = "awaiting_my_phone";
-        await sendMessage(sender_psid, "Salamat po! May contact number po ba kayo? Pwede ring mag-type ng 'skip' kung ayaw ninyong ibigay. 📱", context);
+        await sendMessage(sender_psid, "Salamat po! Paki-type po ang inyong mobile number (halimbawa: 09171234567). Kailangan po namin ito para sa appointment reminders. 📱", context);
         return;
       }
 
@@ -614,20 +645,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        let phone = null;
-        const skipPhrases = ['wala', 'walang', 'wala po', 'wala siya', 'no number',
-          'no contact', 'none', 'nothing', 'di ko alam', 'hindi ko alam', 'not sure',
-          'di ko sure', 'wag na', 'skip', 'priv', 'private'];
-        const msgLower = message.toLowerCase().trim();
-        const isSkip = skipPhrases.some(p => msgLower.includes(p)) ||
-          normalize(message) === 'skip' ||
-          topIntent === 'no';
-        if (!isSkip) {
-          phone = message.trim();
-          if (!/^\d{10,}$/.test(phone)) {
-            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng number. Numbers lang po, o mag-type ng 'skip' kung wala pong contact number. 😊", context);
-            return;
-          }
+        // Phone is REQUIRED now (SMS reminder fallback) — no skip path.
+        const phone = normalizePHMobile(message);
+        if (!phone) {
+          await sendMessage(sender_psid, "Hmm, parang hindi tama ang mobile number. 😊 Paki-type po ng valid na PH mobile number (halimbawa: 09171234567), kailangan po ito para sa reminders. 📱", context);
+          return;
         }
         userState.data.patient_phone = phone;
 
@@ -666,6 +688,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
       }
 
       case "awaiting_my_confirm_match": {
+        if (topIntent === 'cancel_flow') {
+          if (aiReply) await sendMessage(sender_psid, aiReply, context);
+          userStates[sender_psid] = { state: "default", data: {} };
+          return;
+        }
         if (topIntent === 'yes') {
           await supabase.from('patients').update({ messenger_id: sender_psid })
             .eq('id', userState.data.found_patient_id).eq('clinic_id', context.clinicId);
@@ -720,23 +747,19 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         // stronger signal than a stray first-person token, so a message like
         // "para sa anak, hindi sa akin" resolves to someone else. (Bug #9)
         if (isForSomeoneElse) {
-          userState.data.booking_for = "someone else";
-
-          // ✅ If we already have patient name and slots from a previous attempt
-          // (e.g. redirected back after double-booking on same date),
-          // skip straight to slot selection instead of asking for name again
-          if (userState.data.patient_name && userState.data.slots && userState.data.slots.length > 0) {
-            userState.state = "awaiting_slot";
-            await sendMessage(
-              sender_psid,
-              `Narito po ang mga available na slots para sa ${userState.data.date}. Pumili lang po! 😊`,
-              context
-            );
-            await sendTimeSlotButtonTemplate(sender_psid, userState.data.date, userState.data.slots, context.pageAccessToken);
-            return;
-          }
-
-          // Fresh booking for someone else — ask for name
+          // The identity fields may hold the SENDER'S own name/phone here (the
+          // unlinked self path enters this state with them set) — the old
+          // "skip straight to slots" shortcut then booked the already-double-
+          // booked sender under the guise of "someone else". The legitimate
+          // redirect-after-double-booking flow re-enters via awaiting_date,
+          // never this state, so ALWAYS collect the other person's identity
+          // fresh; only the date/slot context survives.
+          userState.data = {
+            booking_for: "someone else",
+            date: userState.data.date,
+            slots: userState.data.slots,
+            activeDentists: userState.data.activeDentists
+          };
           userState.state = "awaiting_patient_name";
           const reply = aiReply || "Paki-type po ang buong pangalan ng taong gusto ninyong i-book. 😊";
           await sendMessage(sender_psid, reply, context);
@@ -764,7 +787,7 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         }
         userState.data.patient_name = toTitleCase(message.trim());
         userState.state = "awaiting_patient_phone";
-        await sendMessage(sender_psid, `Salamat po! May contact number po ba si ${userState.data.patient_name}? Pwede ring mag-type ng 'skip'. 📱`, context);
+        await sendMessage(sender_psid, `Salamat po! Paki-type po ang mobile number ni ${userState.data.patient_name} (halimbawa: 09171234567). Kailangan po ito para sa appointment reminders. 📱`, context);
         return;
       }
 
@@ -774,20 +797,11 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           userStates[sender_psid] = { state: "default", data: {} };
           return;
         }
-        let phone = null;
-        const skipPhrasesP = ['wala', 'walang', 'wala po', 'wala siya', 'no number',
-          'no contact', 'none', 'nothing', 'di ko alam', 'hindi ko alam', 'not sure',
-          'di ko sure', 'wag na', 'skip', 'priv', 'private'];
-        const msgLowerP = message.toLowerCase().trim();
-        const isSkipP = skipPhrasesP.some(p => msgLowerP.includes(p)) ||
-          normalize(message) === 'skip' ||
-          topIntent === 'no';
-        if (!isSkipP) {
-          phone = message.trim();
-          if (!/^\d{10,}$/.test(phone)) {
-            await sendMessage(sender_psid, "Hmm, parang hindi tama ang format ng number. Numbers lang po, o mag-type ng 'skip' kung wala pong contact number. 😊", context);
-            return;
-          }
+        // Phone is REQUIRED now (SMS reminder fallback) — no skip path.
+        const phone = normalizePHMobile(message);
+        if (!phone) {
+          await sendMessage(sender_psid, "Hmm, parang hindi tama ang mobile number. 😊 Paki-type po ng valid na PH mobile number (halimbawa: 09171234567), kailangan po ito para sa reminders. 📱", context);
+          return;
         }
         userState.data.patient_phone = phone;
 
@@ -992,15 +1006,17 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
         const slot24 = to24HourFormat(userState.data.slot);
         const offset = getUtcOffset(context.timeZone);
         const datetime = `${userState.data.date}T${slot24}:00${offset}`;
-        const activeDentists = userState.data.activeDentists;
+        const activeDentists = userState.data.activeDentists || [];
+        const dayOfWeek = getDayOfWeek(userState.data.date);
         let assignedDentist = null;
 
         for (const dentist of activeDentists) {
-          const dayOfWeek = new Date(userState.data.date).getDay();
-          const { data: blocks } = await supabase.from('dentist_availability')
+          // Query errors read as "dentist NOT available" (fail closed).
+          const { data: blocks, error: blocksErr } = await supabase.from('dentist_availability')
             .select('start_time,end_time,is_available').eq('dentist_id', dentist.id)
             .or(`specific_date.eq.${userState.data.date},day_of_week.eq.${dayOfWeek}`)
             .eq('is_available', false).eq('clinic_id', context.clinicId);
+          if (blocksErr) { console.error("confirming blocks error:", blocksErr); continue; }
           let isBlocked = false;
           for (const block of (blocks || [])) {
             const [sh, sm] = block.start_time.split(':').map(Number);
@@ -1010,8 +1026,9 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
             if (slotMin >= sh * 60 + sm && slotMin < eh * 60 + em) { isBlocked = true; break; }
           }
           if (isBlocked) continue;
-          const { data: bookings } = await supabase.from('appointments').select('id,status')
+          const { data: bookings, error: bookingsErr } = await supabase.from('appointments').select('id,status')
             .eq('dentist_id', dentist.id).eq('appointment_time', datetime).eq('clinic_id', context.clinicId);
+          if (bookingsErr) { console.error("confirming bookings error:", bookingsErr); continue; }
           if ((bookings || []).some(b => b.status !== 'Cancelled')) continue;
           assignedDentist = dentist;
           break;
@@ -1025,13 +1042,14 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
 
         // ✅ Fix #5: Re-verify slot is still free (race condition mitigation)
         // If another booking claimed it between our check and now, reject and retry
-        const { data: finalCheck } = await supabase.from('appointments')
+        const { data: finalCheck, error: finalCheckErr } = await supabase.from('appointments')
           .select('id,status')
           .eq('dentist_id', assignedDentist.id)
           .eq('appointment_time', datetime)
           .eq('clinic_id', context.clinicId);
-        if ((finalCheck || []).some(b => b.status !== 'Cancelled')) {
-          await sendMessage(sender_psid, "Pasensya na po, kunin na ng iba ang slot na iyon. Pakisubukan ng ibang slot. 😊", context);
+        if (finalCheckErr || (finalCheck || []).some(b => b.status !== 'Cancelled')) {
+          if (finalCheckErr) console.error("confirming finalCheck error:", finalCheckErr);
+          await sendMessage(sender_psid, "Pasensya na po, hindi na po available ang slot na iyon. Pakisubukan ng ibang slot. 😊", context);
           userStates[sender_psid].state = "awaiting_slot";
           return;
         }
@@ -1057,6 +1075,26 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           }
         }
 
+        // One-appointment-per-person-per-date, re-checked at the moment of
+        // truth: every earlier check ran minutes ago on a different resolution
+        // path, and one flow (the old for-whom shortcut) reached here with a
+        // patient that was ALREADY double-booked. Only pre-existing patients
+        // can trip this; a brand-new record has no appointments yet.
+        if (patient_id) {
+          const nowDoubleBooked = await hasDoubleBookingOnDate(patient_id, userState.data.date, context);
+          if (nowDoubleBooked) {
+            const who = userState.data.booking_for === "someone else"
+              ? `si ${userState.data.patient_name || 'ang pasyente'}`
+              : "kayo";
+            await sendMessage(sender_psid, `Mayroon na pong appointment ${who} sa ${userState.data.date}. 😔 Paki-type ng ibang petsa (YYYY-MM-DD).`, context);
+            userStates[sender_psid].state = "awaiting_date";
+            userStates[sender_psid].data = userState.data.booking_for === "someone else"
+              ? { booking_for: "someone else", patient_name: userState.data.patient_name, patient_phone: userState.data.patient_phone }
+              : {};
+            return;
+          }
+        }
+
         // Insert new patient only if truly new
         if (!patient_id) {
           const insertPayload = {
@@ -1076,52 +1114,38 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
           patient_id = insertedPatient.id;
         }
 
-        const { data: existingAppointments } = await supabase.from('appointments').select('id,status')
-          .eq('dentist_id', assignedDentist.id).eq('appointment_time', datetime).eq('clinic_id', context.clinicId);
-
-        // Confirm booking
-        {
-          let appointmentId;
-          try {
-            if (existingAppointments?.length > 0) {
-              const existingId = existingAppointments[0].id;
-              const { data: updated, error: updErr } = await supabase.from('appointments')
-                .update({ patient_id, status: 'Confirmed', reason: 'Messenger Booking', guardian_messenger_id: sender_psid })
-                .eq('id', existingId).eq('clinic_id', context.clinicId).select('id').single();
-              appointmentId = updErr ? existingId : updated.id;
-            } else {
-              const { data: ins } = await supabase.from('appointments').insert({
-                dentist_id: assignedDentist.id, patient_id, appointment_time: datetime,
-                booking_origin: 'Messenger Booking', status: 'Confirmed', reason: 'Messenger Booking',
-                guardian_messenger_id: sender_psid, clinic_id: context.clinicId
-              }).select('id').single();
-              if (ins) appointmentId = ins.id;
-            }
-
-            let bookedName = userState.data.patient_name;
-            if (appointmentId) {
-              const { data: apptDetail } = await supabase.from('appointments')
-                .select('id, patient_id, dentist_id').eq('id', appointmentId).eq('clinic_id', context.clinicId).maybeSingle();
-              if (apptDetail) {
-                const { data: p } = await supabase.from('patients').select('name, phone')
-                  .eq('id', apptDetail.patient_id).eq('clinic_id', context.clinicId).maybeSingle();
-                if (p) bookedName = p.name;
-              }
-            }
-
-            if (req?.io && appointmentId) await emitAppointmentUpdate(req.io, context.clinicId, appointmentId);
-
-            await sendMessage(sender_psid,
-              `✅ Na-book na po ang inyong appointment!\n\n📅 Petsa: ${userState.data.date}\n⏰ Oras: ${userState.data.slot}\n👤 Pangalan: ${bookedName}\n🔖 Appointment Code: ${appointmentId || ''}\n\nSalamat po sa pagpili ng ${context.clinicName}! Ingat at God bless! 🦷😊`,
-              context
-            );
-          } catch (err) {
-            console.error("Error booking:", err);
-            await sendMessage(sender_psid, "May nangyari po sa pag-book. Pakisubukan ulit. 😊", context);
-          }
-          userStates[sender_psid] = { state: "default", data: {} };
+        // Confirm booking — ALWAYS a fresh row. The old path "recycled" any
+        // existing row at this dentist+time (necessarily Cancelled, per the
+        // finalCheck above): it overwrote that patient's cancellation history
+        // and consumed the Cancelled-at-summary analytics rows; under a race
+        // it could even hijack a concurrently-created confirmed appointment.
+        const { data: ins, error: apptInsErr } = await supabase.from('appointments').insert({
+          dentist_id: assignedDentist.id, patient_id, appointment_time: datetime,
+          booking_origin: 'Messenger Booking', status: 'Confirmed', reason: 'Messenger Booking',
+          guardian_messenger_id: sender_psid, clinic_id: context.clinicId
+        }).select('id').single();
+        if (apptInsErr || !ins) {
+          // Never tell the patient "booked!" when nothing was written.
+          console.error("Error inserting appointment:", apptInsErr);
+          await sendMessage(sender_psid, "Pasensya na po, hindi po natuloy ang pag-book — may nangyari sa sistema. Pakisubukan ulit po ang slot, o pumili ng iba. 😊", context);
+          userStates[sender_psid].state = "awaiting_slot";
           return;
         }
+        const appointmentId = ins.id;
+
+        let bookedName = userState.data.patient_name;
+        const { data: bookedPatient } = await supabase.from('patients').select('name')
+          .eq('id', patient_id).eq('clinic_id', context.clinicId).maybeSingle();
+        if (bookedPatient?.name) bookedName = bookedPatient.name;
+
+        if (req?.io) await emitAppointmentUpdate(req.io, context.clinicId, appointmentId);
+
+        await sendMessage(sender_psid,
+          `✅ Na-book na po ang inyong appointment!\n\n📅 Petsa: ${userState.data.date}\n⏰ Oras: ${userState.data.slot}\n👤 Pangalan: ${bookedName}\n🔖 Appointment Code: ${appointmentId}\n\nSalamat po sa pagpili ng ${context.clinicName}! Ingat at God bless! 🦷😊`,
+          context
+        );
+        userStates[sender_psid] = { state: "default", data: {} };
+        return;
       }
 
       default: {
@@ -1137,6 +1161,70 @@ async function handleMessage(sender_psid, message, webhook_event, req, context) 
       userStates[sender_psid] = { state: "default", data: {} };
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shared tail of the confirm-by-code flow. Reached only when the sender is
+// already tied to the appointment (alreadyRelated) or has just passed name
+// verification. Identity writes happen HERE, and the pre-existing link state
+// is captured BEFORE any write — the old code re-read the patient AFTER
+// linking, concluded "already linked", and skipped the status update, so
+// self-confirmations never actually confirmed anything.
+// ---------------------------------------------------------------------------
+async function finalizeCodeConfirmation(sender_psid, appointment, patientRow, context, req, alreadyRelated) {
+  let linkedSelfNow = false;
+  if (!alreadyRelated) {
+    if (!patientRow?.messenger_id) {
+      const { data: senderPatient } = await supabase.from('patients').select('id')
+        .eq('messenger_id', sender_psid).eq('clinic_id', context.clinicId).maybeSingle();
+      if (senderPatient && senderPatient.id !== appointment.patient_id) {
+        // Verified sender is a different patient → guardian of this one.
+        await supabase.from('appointments').update({ guardian_messenger_id: sender_psid })
+          .eq('id', appointment.id).eq('clinic_id', context.clinicId);
+      } else if (!senderPatient) {
+        // Verified sender with no record of their own → the patient themself.
+        await supabase.from('patients').update({ messenger_id: sender_psid })
+          .eq('id', appointment.patient_id).eq('clinic_id', context.clinicId);
+        linkedSelfNow = true;
+      }
+    } else {
+      // Patient's Messenger belongs to someone else; the verified sender is a
+      // relative/guardian — record them on the appointment only (Fix #7).
+      await supabase.from('appointments').update({ guardian_messenger_id: sender_psid })
+        .eq('id', appointment.id).eq('clinic_id', context.clinicId);
+    }
+  }
+
+  if (["Completed", "Cancelled", "No Show"].includes(appointment.status)) {
+    let statusMsg = "";
+    if (appointment.status === "Completed") statusMsg = "Natapos na po ang appointment na ito. Gusto po ba ninyong mag-book ng bago? 😊";
+    if (appointment.status === "Cancelled") statusMsg = "Na-cancel na po ang appointment na ito. Gusto po ba ninyong mag-book ng bago? 😊";
+    if (appointment.status === "No Show") statusMsg = "Ang appointment na ito ay minarkahan bilang 'No Show'. Gusto po ba ninyong mag-book ng bago? 😊";
+    await sendBookingPromptButtonTemplate(sender_psid, statusMsg, context.pageAccessToken);
+    userStates[sender_psid] = { state: "awaiting_booking_prompt_response", data: {} };
+    return;
+  }
+  if (["Scheduled", "Confirmed"].includes(appointment.status)) {
+    if (appointment.status === "Scheduled") {
+      const { error: confErr } = await supabase.from('appointments').update({ status: 'Confirmed' })
+        .eq('id', appointment.id).eq('clinic_id', context.clinicId);
+      if (confErr) {
+        console.error("Error confirming appointment:", confErr);
+        await sendMessage(sender_psid, "Pasensya na po, hindi po natuloy ang pag-confirm — may nangyari sa sistema. Pakisubukan ulit po. 😊", context);
+        userStates[sender_psid] = { state: "default", data: {} };
+        return;
+      }
+      if (req?.io) await emitAppointmentUpdate(req.io, context.clinicId, appointment.id);
+    }
+    const msg = linkedSelfNow
+      ? "✅ Na-link na po ang inyong Messenger at nakumpirma na ang inyong appointment! Makakatanggap na kayo ng reminder bago ang inyong schedule. 🦷😊"
+      : "✅ Confirmed na po ang inyong appointment! Makakatanggap kayo ng reminder. Ingat po! 🦷";
+    await sendMessage(sender_psid, msg, context);
+    userStates[sender_psid] = { state: "default", data: {} };
+    return;
+  }
+  await sendMessage(sender_psid, "May nangyari po sa pagproseso ng inyong code. Paki-contact ang clinic para sa assistance. 😊", context);
+  userStates[sender_psid] = { state: "default", data: {} };
 }
 
 // handleMessage and userStates are exported for the local test harness

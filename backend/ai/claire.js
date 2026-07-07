@@ -113,6 +113,7 @@ STATES at kung paano ka dapat mag-respond:
 - "awaiting_guardian_confirm_match" → Nag-ask kung tama ang nakitang record para sa taong ibo-book para sa iba (YES/NO)
 - "awaiting_for_whom"          → Nag-ask kung para kanino ang booking. Kung ang sagot ay para sa ibang tao (anak, asawa, kapatid, magulang, kaibigan, etc.) → intent ay "yes". Kung para sa kanilang sarili → intent ay "no".
 - "awaiting_confirm_code"      → Hintayin ang appointment code para i-confirm
+- "awaiting_confirm_verify"    → Hinihingi ang buong pangalan ng pasyente para i-verify ang appointment code (security check)
 - "awaiting_cancel_code"       → Hintayin ang appointment code para i-cancel
 - "awaiting_cancel_code_retry" → Nagkamali ng code, try again o cancel
 - "awaiting_booking_prompt_response" → Nag-ask kung gusto pang mag-book

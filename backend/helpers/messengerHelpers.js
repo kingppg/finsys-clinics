@@ -53,9 +53,14 @@ async function sendMessage(sender_psid, response, context) {
 async function emitAppointmentUpdate(io, clinicId, appointmentId) {
   try {
     if (!io || !clinicId || !appointmentId) return;
+    // Whitelisted columns only: io.emit is a GLOBAL broadcast (no socket auth,
+    // no rooms), so this payload is receivable beyond the owning clinic's
+    // dashboards. It carries everything the frontend listeners read
+    // (QueueMonitor/QueueDisplay/AppointmentsTable/AppointmentForm) and
+    // nothing else — no `reason` free-text, no messenger/guardian ids.
     const { data: appt, error } = await supabase
       .from('appointments')
-      .select('*')
+      .select('id, clinic_id, dentist_id, patient_id, status, appointment_time, checked_in_at, deleted, booking_origin')
       .eq('clinic_id', clinicId)
       .eq('id', appointmentId)
       .maybeSingle();

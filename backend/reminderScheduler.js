@@ -3,6 +3,7 @@ require('dotenv').config();
 const cron = require('node-cron');
 const { createClient } = require('@supabase/supabase-js');
 const axios = require('axios');
+const { formatForProvider } = require('./helpers/phone');
 
 // --- Supabase Client ---
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
@@ -74,10 +75,12 @@ async function sendSMS(phone, text, clinic) {
     console.log(`[SMS] Skipped — no SMS provider configured for clinic "${clinic.name}".`);
     return false;
   }
+  // Format for the target provider (Twilio needs E.164, Semaphore takes local).
+  const to = formatForProvider(phone, clinic.sms_provider);
   if (clinic.sms_provider === 'semaphore') {
-    return await sendSemaphoreSMS(phone, text, clinic.sms_api_key, clinic.sms_sender);
+    return await sendSemaphoreSMS(to, text, clinic.sms_api_key, clinic.sms_sender);
   } else if (clinic.sms_provider === 'twilio') {
-    return await sendTwilioSMS(phone, text, clinic.sms_api_key, clinic.sms_api_secret, clinic.sms_sender);
+    return await sendTwilioSMS(to, text, clinic.sms_api_key, clinic.sms_api_secret, clinic.sms_sender);
   }
   return false;
 }

@@ -7,6 +7,7 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { getUtcOffset, sendMessage } = require('./messengerHelpers');
+const { normalizePHMobile } = require('./phone');
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
   console.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables.");
@@ -54,9 +55,22 @@ function generateTimeSlots(start = "09:00", end = "18:00", interval = 20) {
   return slots.filter(slot => !["12:00", "12:20", "12:40"].includes(slot));
 }
 
-function isClinicOpen(dateStr) {
-  return new Date(dateStr).getDay() !== 0;
+// Weekday of a YYYY-MM-DD string, independent of the server's timezone.
+// new Date(dateStr).getDay() is UTC-midnight parsed but read in HOST-local
+// time — correct only while the host runs UTC (true on Render today).
+function getDayOfWeek(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
+
+function isClinicOpen(dateStr) {
+  return getDayOfWeek(dateStr) !== 0;
+}
+
+// PH mobile validation now lives in ./phone (shared with the SMS send paths).
+// Phone is REQUIRED at booking because SMS is the reminder fallback whenever
+// Facebook's 24-hour messaging window has closed (always, days before an appt).
+// Re-exported here so existing callers (webhook.js) keep importing it.
 
 async function getActiveDentists(context) {
   const { data, error } = await supabase
@@ -111,20 +125,23 @@ async function getAvailableSlots(dateStr, context) {
 
   const baseSlots = generateTimeSlots("09:00", "18:00", 20);
   const availableSlots = [];
-  const dayOfWeek = new Date(dateStr).getDay();
+  const dayOfWeek = getDayOfWeek(dateStr);
   const offset = getUtcOffset(context.timeZone);
 
   for (const slot of baseSlots) {
     let slotAvailable = false;
 
     for (const dentist of activeDentists) {
-      const { data: blocks } = await supabase
+      // Query errors must read as "dentist NOT available" — ignoring them made
+      // a failed query (e.g. from a malformed date) offer EVERY slot as free.
+      const { data: blocks, error: blocksErr } = await supabase
         .from('dentist_availability')
         .select('start_time,end_time,is_available')
         .eq('dentist_id', dentist.id)
         .or(`specific_date.eq.${dateStr},day_of_week.eq.${dayOfWeek}`)
         .eq('is_available', false)
         .eq('clinic_id', context.clinicId);
+      if (blocksErr) { console.error("getAvailableSlots blocks error:", blocksErr); continue; }
 
       let isBlocked = false;
       for (const block of (blocks || [])) {
@@ -142,12 +159,13 @@ async function getAvailableSlots(dateStr, context) {
       if (isBlocked) continue;
 
       const slotDateTime = `${dateStr}T${slot}:00${offset}`;
-      const { data: bookings } = await supabase
+      const { data: bookings, error: bookingsErr } = await supabase
         .from('appointments')
         .select('id,status')
         .eq('dentist_id', dentist.id)
         .eq('appointment_time', slotDateTime)
         .eq('clinic_id', context.clinicId);
+      if (bookingsErr) { console.error("getAvailableSlots bookings error:", bookingsErr); continue; }
 
       if ((bookings || []).some(b => (b.status || '').toLowerCase() !== 'cancelled')) continue;
 
@@ -228,7 +246,9 @@ module.exports = {
   toTitleCase,
   to12HourFormat,
   to24HourFormat,
+  getDayOfWeek,
   isClinicOpen,
+  normalizePHMobile,
   getActiveDentists,
   findPatientByMessengerId,
   findPatientByNameAndPhone,
