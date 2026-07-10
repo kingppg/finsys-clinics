@@ -774,6 +774,7 @@ function BillsPayment() {
             </div>
           </div>
 
+          <div className="bills-table-scroll">
           <table className="bills-table bills-invoices-table">
             <thead>
               <tr>
@@ -899,6 +900,7 @@ function BillsPayment() {
               </tfoot>
             )}
           </table>
+          </div>
 
           {/* Pagination */}
           {sortedRows.length > INVOICES_PAGE_SIZE && (
@@ -927,6 +929,7 @@ function BillsPayment() {
             <span className="bills-section-sub">{paymentsInPeriod.length} transaction{paymentsInPeriod.length === 1 ? '' : 's'}</span>
           </div>
 
+          <div className="bills-table-scroll">
           <table className="bills-table bills-payments-table">
             <thead>
               <tr>
@@ -976,6 +979,7 @@ function BillsPayment() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
         </>
         )}
