@@ -3,10 +3,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Swal from 'sweetalert2';
 import { LuTrash2, LuBan, LuLock, LuCoffee, LuSunrise, LuSunset, LuCircleCheck, LuCalendarClock, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { supabase } from '../supabaseClient';
+import { daySlots, closedReasonFor, normalizeSchedule, toMin, toHHMM } from '../utils/schedule';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const HOURS = Array.from({length: 9}, (_, i) => `${(9 + i).toString().padStart(2,'0')}:00`);
-const LUNCH_HOUR = '12:00';
+// Grid slots + breaks + closed days now come from the clinic's configured
+// schedule (migration 024) via the shared utils/schedule — the SAME engine the
+// booking bot and AppointmentForm use — so a block always lands on a real
+// bookable slot boundary at any interval (incl. 25/35/40/45-min).
 
 function parseLocalDate(dateStr) {
   return dateStr ? new Date(dateStr) : null;
@@ -35,10 +38,10 @@ function formatRange(startStr, endStr) {
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 // ── Purpose-built month calendar (replaces react-calendar) ──
-// Full control over grid/sizing/theming; disables past dates + Sundays (same
-// rules the old tileDisabled/minDate enforced) and marks days that have blocks.
-// Emits a native Date via onPick → the existing handleCalendarChange handler.
-function AvCalendar({ valueStr, onPick, hasBlocks }) {
+// Full control over grid/sizing/theming; disables past dates + days the clinic
+// is CLOSED (per schedule / blocked holiday, via the isDateClosed predicate) and
+// marks days that have blocks. Emits a native Date via onPick.
+function AvCalendar({ valueStr, onPick, hasBlocks, isDateClosed }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const selected = valueStr ? parseLocalDate(valueStr) : null;
   const seed = selected || today;
@@ -79,8 +82,7 @@ function AvCalendar({ valueStr, onPick, hasBlocks }) {
       <div className="av-cal-grid av-cal-days">
         {cells.map((date, i) => {
           if (!date) return <div key={`e${i}`} className="av-cal-empty" />;
-          const isSun = date.getDay() === 0;
-          const disabled = isSun || date < today;
+          const disabled = date < today || (isDateClosed ? isDateClosed(date) : false);
           const isSel = sameDay(date, selected);
           const isToday = sameDay(date, today);
           const cls = ['av-cal-day'];
@@ -118,6 +120,24 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
 
   const [slotStatus, setSlotStatus] = useState({});
   const [saving, setSaving] = useState(false);
+  const [schedule, setSchedule] = useState(null);
+  const [holidays, setHolidays] = useState([]);
+
+  // Load the clinic's schedule + holidays (drives grid, breaks, closed days).
+  useEffect(() => {
+    if (!clinicId) return;
+    supabase.from('clinics').select('schedule').eq('id', clinicId).single()
+      .then(res => setSchedule(res.data?.schedule || null));
+    supabase.from('clinic_holidays').select('holiday_date, is_recurring, is_blocked').eq('clinic_id', clinicId)
+      .then(res => setHolidays(res.data || []));
+  }, [clinicId]);
+
+  // Derived, schedule-driven values for the selected date.
+  const interval = normalizeSchedule(schedule).slot_interval_minutes;
+  const daySlotList = selectedDate ? daySlots(schedule, selectedDate) : [];
+  const bookableSlots = daySlotList.filter(s => !s.isBreak).map(s => s.time);
+  const selectedClosed = selectedDate ? closedReasonFor(schedule, holidays, selectedDate) : null;
+  const isDateClosed = (dateObj) => closedReasonFor(schedule, holidays, dateObj.toLocaleDateString('sv-SE')) !== null;
 
   useEffect(() => {
     if (dentistId) {
@@ -180,38 +200,40 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
   }, [selectedDentist, clinicId]);
 
   useEffect(() => {
-    if (!selectedDentist || !selectedDate) {
+    if (!selectedDentist || !selectedDate || selectedClosed) {
       setSlotStatus({});
       return;
     }
-    let status = Object.fromEntries(HOURS.map(h => [h, true]));
-    status[LUNCH_HOUR] = false;
-    const blocks = availability.filter(a => {
+    // Every bookable (non-break) slot starts open.
+    const status = {};
+    bookableSlots.forEach(t => { status[t] = true; });
+
+    // Staff blocks for this date: mark a slot blocked if its [start, start+interval)
+    // overlaps the stored block range — so ranges saved at any interval, or old
+    // hourly ranges, map onto the grid correctly.
+    availability.forEach(a => {
       const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
-      return dbDate === selectedDate && !a.is_available;
+      if (dbDate !== selectedDate || a.is_available) return;
+      const bStart = toMin(stripSeconds(a.start_time));
+      const bEnd = toMin(stripSeconds(a.end_time));
+      bookableSlots.forEach(t => {
+        const s = toMin(t);
+        if (s < bEnd && s + interval > bStart) status[t] = false;
+      });
     });
-    blocks.forEach(block => {
-      const startTime = stripSeconds(block.start_time);
-      const endTime = stripSeconds(block.end_time);
-      let startIdx = HOURS.indexOf(startTime);
-      let endIdx = HOURS.indexOf(endTime);
-      if (startIdx === -1) return;
-      if (endIdx === -1) endIdx = HOURS.length;
-      for (let i = startIdx; i < endIdx; i++) {
-        if (HOURS[i] !== LUNCH_HOUR) {
-          status[HOURS[i]] = false;
-        }
-      }
-    });
+
+    // Appointments → booked: mark the slot whose [start, start+interval) contains
+    // the appointment start (range-match; catches off-grid appointments too).
     appointments.forEach(appt => {
       const d = new Date(appt.appointment_time);
-      const hourSlot = `${d.getHours().toString().padStart(2, '0')}:00`;
-      if (HOURS.includes(hourSlot)) {
-        status[hourSlot] = 'booked';
-      }
+      const mins = d.getHours() * 60 + d.getMinutes();
+      const t = bookableSlots.find(x => { const s = toMin(x); return mins >= s && mins < s + interval; });
+      if (t) status[t] = 'booked';
     });
+
     setSlotStatus(status);
-  }, [selectedDate, availability, appointments, selectedDentist]);
+    // eslint-disable-next-line
+  }, [selectedDate, availability, appointments, selectedDentist, schedule, holidays]);
 
   function handleCalendarChange(dateObj) {
     const dateStr = dateObj.toLocaleDateString('sv-SE');
@@ -250,46 +272,41 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     });
   }
 
-  function handleSlotClick(hour) {
-    if (slotStatus[hour] === 'booked' || hour === LUNCH_HOUR) return;
-
+  function handleSlotClick(time) {
+    if (slotStatus[time] === 'booked') return; // break slots aren't rendered clickable
     setSlotStatus(prev => ({
       ...prev,
-      [hour]: prev[hour] === true ? false : true
+      [time]: prev[time] === true ? false : true
     }));
   }
 
   function handleBlockAll() {
-    let newStatus = {};
-    for (let h of HOURS) {
-      newStatus[h] = h === LUNCH_HOUR ? false : (slotStatus[h] === 'booked' ? 'booked' : false);
-    }
-    setSlotStatus(newStatus);
-  }
-
-  function handleUnblockAll() {
-    let newStatus = {};
-    for (let h of HOURS) {
-      newStatus[h] = h === LUNCH_HOUR ? false : (slotStatus[h] === 'booked' ? 'booked' : true);
-    }
-    setSlotStatus(newStatus);
-  }
-
-  // Block a half-day range (UI-state only — same category as Block All; the
-  // save/delete DB flow is untouched). Booked slots and lunch are preserved.
-  function blockPeriod(hoursSubset) {
     setSlotStatus(prev => {
-      const next = { ...prev };
-      for (let h of hoursSubset) {
-        if (h === LUNCH_HOUR) continue;
-        if (next[h] === 'booked') continue;
-        next[h] = false;
-      }
+      const next = {};
+      bookableSlots.forEach(t => { next[t] = prev[t] === 'booked' ? 'booked' : false; });
       return next;
     });
   }
-  const AM_HOURS = HOURS.filter(h => h < LUNCH_HOUR);
-  const PM_HOURS = HOURS.filter(h => h > LUNCH_HOUR);
+
+  function handleUnblockAll() {
+    setSlotStatus(prev => {
+      const next = {};
+      bookableSlots.forEach(t => { next[t] = prev[t] === 'booked' ? 'booked' : true; });
+      return next;
+    });
+  }
+
+  // Block a half-day range (UI-state only). Booked slots are preserved; break
+  // slots aren't in bookableSlots so they're untouched.
+  function blockPeriod(times) {
+    setSlotStatus(prev => {
+      const next = { ...prev };
+      times.forEach(t => { if (next[t] !== 'booked') next[t] = false; });
+      return next;
+    });
+  }
+  const AM_SLOTS = bookableSlots.filter(t => toMin(t) < 720);  // before 12:00
+  const PM_SLOTS = bookableSlots.filter(t => toMin(t) >= 720); // 12:00 onward
 
   // Does a calendar date already have blocked periods? (drives the tile dot)
   function dateHasBlocks(dateObj) {
@@ -331,33 +348,32 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     }
 
     try {
-      let i = 0;
-      while (i < HOURS.length) {
-        if (slotStatus[HOURS[i]] === false && HOURS[i] !== LUNCH_HOUR) {
-          let startHour = HOURS[i];
-          let endIdx = i + 1;
-          while (
-            endIdx < HOURS.length &&
-            slotStatus[HOURS[endIdx]] === false &&
-            HOURS[endIdx] !== LUNCH_HOUR
-          ) {
-            endIdx++;
-          }
-          let endHour = HOURS[endIdx] || "18:00";
-          await supabase
-            .from('dentist_availability')
-            .insert([{
-              dentist_id: selectedDentist,
-              specific_date: selectedDate,
-              start_time: startHour,
-              end_time: endHour,
-              is_available: false,
-              clinic_id: clinicId
-            }]);
-          i = endIdx;
+      // Merge contiguous blocked slots into time-aligned ranges. A run continues
+      // only while the next blocked slot starts exactly where the previous one
+      // ends (start + interval) — so a break naturally splits runs, and each
+      // stored range lines up with real slot boundaries.
+      const blockedTimes = bookableSlots.filter(t => slotStatus[t] === false);
+      const runs = [];
+      for (const t of blockedTimes) {
+        const s = toMin(t);
+        const last = runs[runs.length - 1];
+        if (last && s === last.endMin) {
+          last.endMin = s + interval;
         } else {
-          i++;
+          runs.push({ start: t, endMin: s + interval });
         }
+      }
+      for (const run of runs) {
+        await supabase
+          .from('dentist_availability')
+          .insert([{
+            dentist_id: selectedDentist,
+            specific_date: selectedDate,
+            start_time: run.start,
+            end_time: toHHMM(run.endMin),
+            is_available: false,
+            clinic_id: clinicId
+          }]);
       }
       Promise.all([
         supabase
@@ -522,13 +538,11 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     </table>
   );
 
-  const availableCount = Object.values(slotStatus).filter(v => v === true).length;
-  const bookedCount = Object.values(slotStatus).filter(v => v === 'booked').length;
-  const hasLunch = slotStatus[LUNCH_HOUR] === false;           // lunch stored as false
-  const lunchCount = hasLunch ? 1 : 0;
-  // exclude the lunch slot from "blocked" so the meter/stats read true
-  const blockedCount = Math.max(0, Object.values(slotStatus).filter(v => v === false).length - lunchCount);
-  const workable = HOURS.length - 1;                            // bookable slots (minus lunch)
+  const availableCount = bookableSlots.filter(t => slotStatus[t] === true).length;
+  const bookedCount = bookableSlots.filter(t => slotStatus[t] === 'booked').length;
+  const blockedCount = bookableSlots.filter(t => slotStatus[t] === false).length;
+  const breakCount = daySlotList.filter(s => s.isBreak).length; // breaks (may be 0, 1, or many)
+  const workable = bookableSlots.length;                        // bookable slots (excludes breaks)
   const openPct = workable ? Math.round((availableCount / workable) * 100) : 0;
   const dayObj = parseLocalDate(selectedDate);
   const prettyDate = dayObj
@@ -576,7 +590,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
                 <span className="av-seg av-seg--available" style={{ flexGrow: availableCount }} />
                 <span className="av-seg av-seg--blocked" style={{ flexGrow: blockedCount }} />
                 <span className="av-seg av-seg--booked" style={{ flexGrow: bookedCount }} />
-                <span className="av-seg av-seg--lunch" style={{ flexGrow: lunchCount }} />
+                <span className="av-seg av-seg--lunch" style={{ flexGrow: breakCount }} />
               </div>
             </div>
 
@@ -585,28 +599,34 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
               <div className="av-stat av-stat--available"><b>{availableCount}</b><span>Open</span></div>
               <div className="av-stat av-stat--blocked"><b>{blockedCount}</b><span>Blocked</span></div>
               <div className="av-stat av-stat--booked"><b>{bookedCount}</b><span>Booked</span></div>
-              <div className="av-stat av-stat--lunch"><b>{lunchCount}</b><span>Lunch</span></div>
+              <div className="av-stat av-stat--lunch"><b>{breakCount}</b><span>Break</span></div>
             </div>
 
             {/* Quick presets */}
             <div className="av-quick">
-              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={handleBlockAll} disabled={saving}><LuBan /> Block All</button>
-              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={handleUnblockAll} disabled={saving}><LuCircleCheck /> Open All</button>
-              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={() => blockPeriod(AM_HOURS)} disabled={saving}><LuSunrise /> Block AM</button>
-              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={() => blockPeriod(PM_HOURS)} disabled={saving}><LuSunset /> Block PM</button>
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={handleBlockAll} disabled={saving || !!selectedClosed}><LuBan /> Block All</button>
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={handleUnblockAll} disabled={saving || !!selectedClosed}><LuCircleCheck /> Open All</button>
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={() => blockPeriod(AM_SLOTS)} disabled={saving || !!selectedClosed}><LuSunrise /> Block AM</button>
+              <button type="button" className="dc-btn dc-btn--ghost av-quick-btn" onClick={() => blockPeriod(PM_SLOTS)} disabled={saving || !!selectedClosed}><LuSunset /> Block PM</button>
             </div>
 
+            {selectedClosed ? (
+              <div className="av-closed-note">
+                <LuBan /> The clinic is closed on this day
+                {selectedClosed === 'holiday' ? ' (holiday)' : ' (per the clinic schedule)'}.
+                {' '}No availability to set — pick another day.
+              </div>
+            ) : (
             <div className="av-hour-grid">
-              {HOURS.map(hour => {
-                const slotType = slotStatus[hour];
-                const isLunch = hour === LUNCH_HOUR;
+              {daySlotList.map(({ time, isBreak }) => {
+                const slotType = slotStatus[time];
                 let mod = 'available';
                 let label = 'Open';
                 let disabled = false;
                 let SlotIcon = null;
 
-                if (isLunch) {
-                  mod = 'lunch'; label = 'Lunch'; disabled = true; SlotIcon = LuCoffee;
+                if (isBreak) {
+                  mod = 'lunch'; label = 'Break'; disabled = true; SlotIcon = LuCoffee;
                 } else if (slotType === false) {
                   mod = 'blocked'; label = 'Blocked'; SlotIcon = LuBan;
                 } else if (slotType === 'booked') {
@@ -616,19 +636,20 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
                 return (
                   <button
                     type="button"
-                    key={hour}
+                    key={time}
                     className={`av-slot av-slot--${mod}`}
-                    onClick={() => !disabled && handleSlotClick(hour)}
+                    onClick={() => !disabled && handleSlotClick(time)}
                     title={label}
                     disabled={saving || disabled}
                   >
                     {SlotIcon && <SlotIcon className="av-slot-ico" />}
-                    <span className="av-slot-time">{formatHourTo12Hr(hour)}</span>
+                    <span className="av-slot-time">{formatHourTo12Hr(time)}</span>
                     <span className="av-slot-label">{label}</span>
                   </button>
                 );
               })}
             </div>
+            )}
 
             <div className="av-actions">
               <button type="submit" className="dc-btn dc-btn--primary" disabled={saving}>
@@ -651,6 +672,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
                 valueStr={selectedDate}
                 onPick={handleCalendarChange}
                 hasBlocks={dateHasBlocks}
+                isDateClosed={isDateClosed}
               />
             </div>
           </div>

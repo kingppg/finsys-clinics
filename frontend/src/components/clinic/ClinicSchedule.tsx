@@ -217,7 +217,7 @@ function ClinicSchedule({ clinicId }: { clinicId: number | string }) {
 
       {loadError && <div className="dc-banner dc-banner--err">{loadError}</div>}
       <p className="cc-hint">
-        These settings will drive booking hours across the app. <b>Phase 1: they are saved here but not yet applied to booking</b> — the bot and appointment form still use the current fixed hours until the next rollout.
+        These settings drive booking hours across the whole app — the <b>booking bot</b>, the <b>appointment form</b>, and <b>dentist availability</b> all read them. Changes take effect immediately.
       </p>
 
       {/* ── Operating hours ── */}

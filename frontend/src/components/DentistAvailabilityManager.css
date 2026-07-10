@@ -426,3 +426,17 @@
   .av-cal-col { width: 100%; }
   .av-stats { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Closed-day state (schedule/holiday) in place of the slot grid */
+.av-closed-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 16px;
+  border: 1px dashed var(--dc-border-strong, rgba(148, 163, 184, 0.32));
+  border-radius: 10px;
+  background: var(--dc-surface-2, #1A2438);
+  color: var(--dc-text-2, #B8C4D9);
+  font-size: 0.95rem;
+}
+.av-closed-note svg { flex-shrink: 0; color: var(--dc-warning, #FBBF24); }
