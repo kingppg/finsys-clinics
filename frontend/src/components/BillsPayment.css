@@ -218,13 +218,24 @@
   overflow: hidden;
 }
 
-/* Wide tables scroll horizontally within their card so every column (incl. the
-   Actions buttons) stays reachable on narrow/tablet widths — the page no longer
-   scrolls sideways (min-width:0 on .dc-viewport), so the table owns its own
-   horizontal scroll instead of relying on the document. */
+/* Bounded scroll box per table (same pattern as Aging Analysis' .dcb-table-scroll):
+   the table scrolls inside its own box in BOTH axes, so (a) every column incl.
+   Actions stays reachable on narrow/tablet widths, and (b) the column headers can
+   stick to the top of the box. Anchoring the sticky to this box sidesteps the
+   .bills-section-card overflow:hidden — a page-level sticky thead would be trapped
+   by that. min-height keeps a usable window on short screens. */
 .bills-table-scroll {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: calc(100dvh - 340px);
+  min-height: 220px;
   -webkit-overflow-scrolling: touch;
+}
+/* Sticky column headers while scrolling the rows. th already has an opaque
+   --dc-surface-2 background so rows don't show through. */
+.bills-table-scroll .bills-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .bills-section-header {
