@@ -23,6 +23,11 @@
    surfaces (e.g. the login page, where no theme is injected) unchanged. */
 .dc-viewport {
   background: var(--dc-bg, #f6f9fc);
+  /* Flex child of the shell row: min-width:0 lets it shrink to the available
+     width instead of expanding to its content's intrinsic width. Without this,
+     a wide inner layout (e.g. the two-column booking form on a tablet) pushes
+     <main> past the viewport and the whole page scrolls sideways. */
+  min-width: 0;
 }
 
 /* The dashboard <main> is stretched to exactly 100vh by the flex shell, so

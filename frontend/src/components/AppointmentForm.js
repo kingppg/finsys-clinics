@@ -251,6 +251,10 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
   const [doubleBookingChecked, setDoubleBookingChecked] = useState(false);
   const [schedule, setSchedule] = useState(null);
   const [holidays, setHolidays] = useState([]);
+  const [phoneEdit, setPhoneEdit] = useState(false);
+  const [phoneValue, setPhoneValue] = useState('');
+  const [phoneSaving, setPhoneSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
 
   // Slot grid, breaks, and closed-days now come from the clinic's configured
   // schedule (migration 024) via the shared utils/schedule — same engine the
@@ -325,6 +329,36 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     setProcedures(found ? found.procedures : []);
     setSelectedProcedure('');
   }, [selectedCategory, categories]);
+
+  useEffect(() => {
+    setPhoneEdit(false);
+    setPhoneError('');
+  }, [selectedPatient]);
+
+  const handleSavePhone = async () => {
+    setPhoneError('');
+    const normalized = normalizePHMobile(phoneValue);
+    if (!normalized) {
+      setPhoneError('Please enter a valid PH mobile number (e.g. 09171234567).');
+      return;
+    }
+    setPhoneSaving(true);
+    const { data, error: updErr } = await supabase
+      .from('patients')
+      .update({ phone: normalized })
+      .eq('id', selectedPatient)
+      .eq('clinic_id', clinicId)
+      .select()
+      .single();
+    setPhoneSaving(false);
+    if (updErr) {
+      setPhoneError('Failed to save phone. Please try again.');
+      console.error(updErr);
+      return;
+    }
+    setPatients(prev => prev.map(p => String(p.id) === String(selectedPatient) ? { ...p, phone: data.phone } : p));
+    setPhoneEdit(false);
+  };
 
   useEffect(() => {
     if (appointment && categories.length > 0) {
@@ -560,7 +594,8 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
   const isLunchSlot = (slot) => breakTimes.has(slot);
 
   // Live booking summary values
-  const summaryPatient = patients.find(p => String(p.id) === String(selectedPatient))?.name;
+  const selectedPatientObj = patients.find(p => String(p.id) === String(selectedPatient));
+  const summaryPatient = selectedPatientObj?.name;
   const summaryDentist = dentists.find(d => String(d.id) === String(selectedDentist))?.name;
   const summaryProc = procedures.find(p => String(p.id) === String(selectedProcedure));
   const summaryPrice = summaryProc?.price;
@@ -689,69 +724,120 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
             </div>
             {validationErrors.selectedSlot && <div className="field-error">{validationErrors.selectedSlot}</div>}
 
-            <div className="af-section-head"><LuClipboardList /><span>Procedure</span></div>
-            <label>Procedure Category:</label>
-            <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} required className={validationErrors.selectedCategory ? 'input-error' : ''}>
-              <option value="">Select Category</option>
-              {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-            </select>
-            {validationErrors.selectedCategory && <div className="field-error">{validationErrors.selectedCategory}</div>}
+            <div className="af-proc-summary-row">
+              <div className="af-proc-fields">
+                <div className="af-section-head"><LuClipboardList /><span>Procedure</span></div>
+                <label>Procedure Category:</label>
+                <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} required className={validationErrors.selectedCategory ? 'input-error' : ''}>
+                  <option value="">Select Category</option>
+                  {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                </select>
+                {validationErrors.selectedCategory && <div className="field-error">{validationErrors.selectedCategory}</div>}
 
-            <label>Procedure:</label>
-            <select value={selectedProcedure} onChange={e => setSelectedProcedure(e.target.value)} required disabled={!selectedCategory} className={validationErrors.selectedProcedure ? 'input-error' : ''}>
-              <option value="">Select Procedure</option>
-              {procedures.map(proc => (
-                <option key={proc.id} value={proc.id}>{proc.name} {proc.price ? `₱${proc.price}` : ""}</option>
-              ))}
-            </select>
-            {validationErrors.selectedProcedure && <div className="field-error">{validationErrors.selectedProcedure}</div>}
+                <label>Procedure:</label>
+                <select value={selectedProcedure} onChange={e => setSelectedProcedure(e.target.value)} required disabled={!selectedCategory} className={validationErrors.selectedProcedure ? 'input-error' : ''}>
+                  <option value="">Select Procedure</option>
+                  {procedures.map(proc => (
+                    <option key={proc.id} value={proc.id}>{proc.name} {proc.price ? `₱${proc.price}` : ""}</option>
+                  ))}
+                </select>
+                {validationErrors.selectedProcedure && <div className="field-error">{validationErrors.selectedProcedure}</div>}
 
-            {selectedProcedure && (
-              <div className="appt-price">
-                Price: ₱{procedures.find(p => String(p.id) === String(selectedProcedure))?.price || '0.00'}
+                {selectedProcedure && (
+                  <div className="appt-price">
+                    Price: ₱{procedures.find(p => String(p.id) === String(selectedProcedure))?.price || '0.00'}
+                  </div>
+                )}
+
+                <label>Additional Notes (optional):</label>
+                <input type="text" value={otherNotes} onChange={e => setOtherNotes(e.target.value)} placeholder="Add notes or details" />
               </div>
-            )}
 
-            <label>Additional Notes (optional):</label>
-            <input type="text" value={otherNotes} onChange={e => setOtherNotes(e.target.value)} placeholder="Add notes or details" />
-          </div>
-        </div>
-
-        {/* ── Live booking summary + actions ── */}
-        {error && <div className="modal-error af-error">{error}</div>}
-        <div className="af-summary">
-          <div className="af-summary-items">
-            <div className="af-summary-item">
-              <span className="af-summary-label">Patient</span>
-              <span className="af-summary-value">{summaryPatient || '—'}</span>
-            </div>
-            <div className="af-summary-item">
-              <span className="af-summary-label">Dentist</span>
-              <span className="af-summary-value">{summaryDentist || '—'}</span>
-            </div>
-            <div className="af-summary-item">
-              <span className="af-summary-label">Date</span>
-              <span className="af-summary-value">{selectedDate ? selectedDate.toLocaleDateString() : '—'}</span>
-            </div>
-            <div className="af-summary-item">
-              <span className="af-summary-label">Time</span>
-              <span className="af-summary-value">{selectedSlot ? to12HourFormat(selectedSlot) : '—'}</span>
-            </div>
-            <div className="af-summary-item">
-              <span className="af-summary-label">Procedure</span>
-              <span className="af-summary-value">{summaryProc?.name || '—'}</span>
-            </div>
-          </div>
-          <div className="af-summary-right">
-            <div className="af-summary-total">
-              <span>Total</span>
-              <strong>₱{summaryPrice || '0.00'}</strong>
-            </div>
-            <div className="af-summary-actions">
-              <button type="button" className="dc-btn dc-btn--ghost" onClick={onClose}>Cancel</button>
-              <button type="submit" className="dc-btn dc-btn--primary" disabled={!canBook}>
-                {appointment ? 'Save Changes' : 'Book Appointment'}
-              </button>
+              {/* ── Live booking summary + actions ── */}
+              <div className="af-summary af-summary--sidebar">
+                <div className="af-summary-head">
+                  <LuCalendarClock className="af-summary-head-icon" />
+                  <span className="af-summary-head-title">Booking Summary</span>
+                  {canBook && <span className="af-summary-head-ready">Ready</span>}
+                </div>
+                {error && <div className="modal-error af-error">{error}</div>}
+                <div className="af-summary-items">
+                  <div className="af-summary-item af-summary-item--patient">
+                    <div className="af-summary-item-col">
+                      <span className="af-summary-label">Patient</span>
+                      <span className="af-summary-value">{summaryPatient || '—'}</span>
+                    </div>
+                    {selectedPatient && (
+                      <div className="af-summary-phone">
+                        <span className="af-summary-label">Phone</span>
+                        {phoneEdit ? (
+                          <div className="af-summary-phone-edit">
+                            <input
+                              type="tel"
+                              value={phoneValue}
+                              onChange={e => setPhoneValue(e.target.value)}
+                              placeholder="09171234567"
+                              autoFocus
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleSavePhone();
+                                if (e.key === 'Escape') { setPhoneEdit(false); setPhoneError(''); }
+                              }}
+                            />
+                            <div className="af-summary-phone-actions">
+                              <button type="button" className="af-summary-phone-btn ghost" onClick={() => { setPhoneEdit(false); setPhoneError(''); }}>Cancel</button>
+                              <button type="button" className="af-summary-phone-btn primary" onClick={handleSavePhone} disabled={phoneSaving}>
+                                {phoneSaving ? 'Saving…' : 'Save'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="af-summary-phone-view">
+                            <span className={`af-summary-value${selectedPatientObj?.phone ? '' : ' empty'}`}>
+                              {selectedPatientObj?.phone || 'No phone'}
+                            </span>
+                            <button
+                              type="button"
+                              className="af-summary-phone-editbtn"
+                              onClick={() => { setPhoneValue(selectedPatientObj?.phone || ''); setPhoneError(''); setPhoneEdit(true); }}
+                            >
+                              {selectedPatientObj?.phone ? 'Edit' : 'Add'}
+                            </button>
+                          </div>
+                        )}
+                        {phoneError && <div className="field-error">{phoneError}</div>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="af-summary-item">
+                    <span className="af-summary-label">Dentist</span>
+                    <span className="af-summary-value">{summaryDentist || '—'}</span>
+                  </div>
+                  <div className="af-summary-item">
+                    <span className="af-summary-label">Date</span>
+                    <span className="af-summary-value">{selectedDate ? selectedDate.toLocaleDateString() : '—'}</span>
+                  </div>
+                  <div className="af-summary-item">
+                    <span className="af-summary-label">Time</span>
+                    <span className="af-summary-value">{selectedSlot ? to12HourFormat(selectedSlot) : '—'}</span>
+                  </div>
+                  <div className="af-summary-item">
+                    <span className="af-summary-label">Procedure</span>
+                    <span className="af-summary-value">{summaryProc?.name || '—'}</span>
+                  </div>
+                </div>
+                <div className="af-summary-right">
+                  <div className="af-summary-total">
+                    <span>Total</span>
+                    <strong>₱{summaryPrice || '0.00'}</strong>
+                  </div>
+                  <div className="af-summary-actions">
+                    <button type="button" className="dc-btn dc-btn--ghost" onClick={onClose}>Cancel</button>
+                    <button type="submit" className="dc-btn dc-btn--primary" disabled={!canBook}>
+                      {appointment ? 'Save Changes' : 'Book Appointment'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

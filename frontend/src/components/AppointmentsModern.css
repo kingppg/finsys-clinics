@@ -443,6 +443,67 @@ tr.row-scroll-focus {
 .appointment-grid > div:first-child { min-width: 220px; max-width: 260px; flex: 0 0 250px; }
 .appointment-grid > div:last-child { flex: 1 1 0%; min-width: 0; }
 
+/* ── Frozen left panel, internal-scroll right column ─────────────────────────
+   The title + "Who & When" column (dentist / patient / calendar) must NOT move
+   at all — only the right side (time slots, procedure, summary) scrolls. Since
+   the page scrolls on the document, sticky would drift-then-pin; instead we lock
+   the CARD to the viewport height (flex column: fixed title, flex body) and give
+   ONLY the right column its own overflow-y scroll. The page itself no longer
+   scrolls, so the left panel is genuinely static. No overflow on the LEFT column
+   (it would clip the patient-search dropdown); it stays natural height and fits.
+   Holds down to tablet portrait (768px); below that the grid stacks (phones).
+   Height uses 100dvh so iOS Safari's dynamic toolbar can't cause overflow. */
+@media (min-width: 768px) {
+  .appointment-modern.main-section {
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
+    margin: 10px auto 16px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .appointment-modern > h2 {
+    flex: 0 0 auto;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--dc-border, #e4e9f2);
+  }
+  .appointment-modern > form {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .appointment-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
+  }
+  .appointment-grid > div:first-child { align-self: flex-start; }
+  .appointment-grid > div:last-child {
+    align-self: stretch;
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;   /* momentum scroll on iOS */
+    padding-right: 10px;
+  }
+}
+
+/* Tablet range (portrait iPad ~768 up to small laptop): keep the exact same
+   frozen two-column behavior, just tighten the geometry so both columns fit —
+   narrower left panel, smaller gap/padding. The slot grid auto-fills columns to
+   whatever width remains, and procedure+summary stack (see the 1024px rule). */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .appointment-modern.main-section { padding: 20px 18px 22px; }
+  .appointment-grid { gap: 20px; }
+  .appointment-grid > div:first-child {
+    flex: 0 0 210px;
+    min-width: 200px;
+    max-width: 220px;
+  }
+  .appointment-grid > div:last-child { padding-right: 6px; }
+}
+
 .appointment-grid label {
   display: block;
   font-weight: 700;
@@ -470,6 +531,7 @@ tr.row-scroll-focus {
 }
 .appointment-grid select:focus,
 .appointment-grid input[type="text"]:focus { border-color: var(--dc-accent, #185abd); }
+
 
 /* react-calendar */
 .react-calendar {
@@ -638,8 +700,12 @@ tr.row-scroll-focus {
 .af-section-head:not(:first-child) { margin-top: 22px; }
 .af-slots-sub { font-size: 0.82rem; color: var(--dc-text-3, #94a3b8); margin: 6px 0 2px; }
 
-/* Live booking summary bar */
-.af-error { margin-top: 18px; }
+/* Procedure fields + booking summary, side by side */
+.af-proc-summary-row { display: flex; gap: 24px; align-items: flex-start; margin-top: 4px; }
+.af-proc-fields { flex: 1 1 55%; min-width: 0; }
+
+/* Live booking summary card */
+.af-error { margin-top: 0; margin-bottom: 16px; }
 .af-summary {
   display: flex;
   align-items: center;
@@ -689,9 +755,163 @@ tr.row-scroll-focus {
 .af-summary-actions { display: flex; gap: 10px; }
 .af-summary-actions .dc-btn { padding: 10px 20px; }
 
+/* ── Sidebar variant — premium "Booking Summary" card beside the fields ── */
+.af-summary--sidebar {
+  flex: 1 1 45%;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  margin-top: 30px;
+  height: fit-content;
+  padding: 0;                       /* header / body / footer own their padding */
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--dc-border-strong, #dbe6fa);
+  background: var(--dc-elevated, var(--dc-surface, #fff));
+  box-shadow: var(--dc-shadow, 0 18px 44px rgba(20, 40, 90, 0.12));
+  position: relative;
+}
+/* Accent hairline across the very top of the card */
+.af-summary--sidebar::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--dc-accent, #185abd), var(--dc-accent-soft, rgba(24, 90, 189, 0.35)) 80%, transparent);
+}
+
+/* Header band */
+.af-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 20px;
+  background: linear-gradient(135deg, var(--dc-accent-soft, rgba(24, 90, 189, 0.12)), transparent 72%);
+  border-bottom: 1px solid var(--dc-border, #e4e9f2);
+}
+.af-summary-head-icon { font-size: 1.05rem; color: var(--dc-accent, #185abd); flex-shrink: 0; }
+.af-summary-head-title {
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.13em;
+  color: var(--dc-accent, #185abd);
+}
+.af-summary-head-ready {
+  margin-left: auto;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dc-success, #22b87c);
+  background: var(--dc-success-soft, rgba(34, 184, 124, 0.13));
+  border: 1px solid var(--dc-success, #22b87c);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+/* Details — dense two-column grid, patient row spans full width */
+.af-summary--sidebar .af-error { margin: 16px 20px 0; }
+.af-summary--sidebar .af-summary-items {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 18px;
+  padding: 20px;
+}
+.af-summary--sidebar .af-summary-value { max-width: none; }
+.af-summary--sidebar .af-summary-label { font-size: 0.62rem; letter-spacing: 0.08em; }
+.af-summary--sidebar .af-summary-value { font-size: 0.95rem; }
+
+/* Footer — total band + full-width actions, stacked */
+.af-summary--sidebar .af-summary-right {
+  margin-left: 0;
+  margin-top: 0;
+  padding: 16px 20px 18px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  border-top: 1px solid var(--dc-border, #e4e9f2);
+  background: linear-gradient(180deg, transparent, var(--dc-accent-soft, rgba(24, 90, 189, 0.06)));
+}
+.af-summary--sidebar .af-summary-total {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  width: 100%;
+  gap: 12px;
+}
+.af-summary--sidebar .af-summary-total span { font-size: 0.68rem; letter-spacing: 0.09em; }
+.af-summary--sidebar .af-summary-total strong { font-size: 2rem; letter-spacing: -0.02em; }
+.af-summary--sidebar .af-summary-actions { flex: 1 1 auto; }
+.af-summary--sidebar .af-summary-actions .dc-btn { flex: 1 1 0%; }
+.af-summary--sidebar .af-summary-actions .dc-btn--primary:not(:disabled) {
+  box-shadow: 0 8px 20px var(--dc-accent-soft, rgba(24, 90, 189, 0.32));
+}
+
+/* Patient row — hero identity, spans both grid columns with a divider under it */
+.af-summary-item--patient {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--dc-border, #e4e9f2);
+}
+.af-summary-item--patient .af-summary-item-col .af-summary-value { font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+.af-summary-item-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.af-summary-phone { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; text-align: right; min-width: 0; }
+.af-summary-phone-view { display: flex; align-items: center; gap: 8px; }
+.af-summary-phone-view .af-summary-value.empty { color: var(--dc-text-3, #94a3b8); font-weight: 500; font-style: italic; }
+.af-summary-phone-editbtn {
+  border: none;
+  background: none;
+  color: var(--dc-accent, #185abd);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.af-summary-phone-editbtn:hover { text-decoration: underline; }
+.af-summary-phone-edit { display: flex; flex-direction: column; gap: 6px; align-items: stretch; min-width: 150px; }
+.af-summary-phone-edit input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1.5px solid var(--dc-border-strong, #dbe6fa);
+  background: var(--dc-surface, #fff);
+  font-size: 0.88rem;
+  color: var(--dc-text, #223);
+  outline: none;
+  box-sizing: border-box;
+  text-align: left;
+}
+.af-summary-phone-edit input:focus { border-color: var(--dc-accent, #185abd); }
+.af-summary-phone-actions { display: flex; gap: 6px; }
+.af-summary-phone-btn {
+  flex: 1 1 0%;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+}
+.af-summary-phone-btn.ghost { background: transparent; border-color: var(--dc-border-strong, #dbe6fa); color: var(--dc-text-2, #475569); }
+.af-summary-phone-btn.primary { background: var(--dc-accent, #185abd); color: #fff; }
+.af-summary-phone-btn:disabled { opacity: 0.6; cursor: default; }
+
 @media (max-width: 820px) {
   .af-summary { flex-direction: column; align-items: stretch; }
   .af-summary-right { margin-left: 0; justify-content: space-between; }
+}
+
+/* Stack procedure fields above the summary once the right column gets narrow —
+   covers all tablets (≤1024) so neither gets cramped side-by-side. */
+@media (max-width: 1024px) {
+  .af-proc-summary-row { flex-direction: column; }
+  .af-summary--sidebar { margin-top: 24px; }
 }
 
 /* Patient search + add (booking form) */
@@ -814,12 +1034,18 @@ tr.row-scroll-focus {
 
 /* ---------- Responsive ---------- */
 
+/* List-view (table) density — unaffected by the form's two-column range. */
 @media (max-width: 900px) {
+  .dentist-group-title { font-size: 0.95rem; flex-wrap: wrap; gap: 8px; }
+  .appointments-table-fixed th, .appointments-table-fixed td { font-size: 0.8rem; padding: 8px 8px; }
+}
+
+/* Phones only (≤767): the booking form stacks to one column and reverts to
+   normal document scroll (the frozen 100dvh card starts at 768px). */
+@media (max-width: 767px) {
   .appointment-grid { flex-direction: column; gap: 22px; }
   .appointment-grid > div:first-child, .appointment-grid > div:last-child { max-width: unset; flex: unset; width: 100%; }
   .slots-list { max-width: 100vw; grid-template-columns: repeat(2, 1fr); }
-  .dentist-group-title { font-size: 0.95rem; flex-wrap: wrap; gap: 8px; }
-  .appointments-table-fixed th, .appointments-table-fixed td { font-size: 0.8rem; padding: 8px 8px; }
 }
 
 @media (max-width: 700px) {
