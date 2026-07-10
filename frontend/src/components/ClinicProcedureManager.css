@@ -16,6 +16,34 @@
   color: var(--dc-text, #EDF2FA);
 }
 
+/* ── Frozen header + metrics, internal-scroll body ───────────────────────────
+   The eyebrow/title header and the KPI metrics stay put; only the region from
+   the Senior/PWD guide down through the procedures scrolls. Same pattern as the
+   appointment form and clinic config: lock the page to the viewport height as a
+   flex column (fixed header + KPIs, flex scroll region) so the page itself never
+   scrolls. The scroll region is safe for overflow — the DnD drag preview is a
+   fixed-position portal (DragOverlay) and the bulk-edit modal is position:fixed,
+   so neither is clipped. Holds down to tablet portrait (768px); below that it
+   reverts to normal document scroll. 100dvh avoids iOS toolbar overflow. */
+@media (min-width: 768px) {
+  .CPM-container {
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
+    margin: 10px auto 16px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .CPM-container > .dc-page-header,
+  .CPM-container > .CPM-kpis { flex: 0 0 auto; }
+  .CPM-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
 /* ── Header meta (counts under the standard title) ─────────────────────────── */
 .CPM-header-meta { display: flex; align-items: center; gap: 7px; }
 .CPM-stat        { font-size: 0.8rem; color: var(--dc-text-2, #A9B7CE); }

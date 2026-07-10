@@ -855,6 +855,8 @@ const ClinicProcedureManager = () => {
         </div>
       )}
 
+      {/* ── Scroll region: guide + procedures move; header + KPIs stay frozen ── */}
+      <div className="CPM-scroll">
       {/* ── Senior/PWD eligibility guide ── */}
       <div className="CPM-guide">
         <span className="CPM-guide-ico"><Icon d={I.percent} size={15} /></span>
@@ -903,6 +905,7 @@ const ClinicProcedureManager = () => {
             </SortableContext>
           </DndContext>
         )}
+      </div>
       </div>
     </div>
   );
