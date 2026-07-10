@@ -201,7 +201,10 @@ async function getAvailableSlots(dateStr, context) {
       if (!dd) continue; // query error for this dentist → fail closed
       const blocked = dd.blocks.some(b => {
         const bs = toMin(b.start_time), be = toMin(b.end_time);
-        return slotMin >= bs && slotMin < be;
+        // OVERLAP, not start-in: a slot [slotMin, slotMin+interval) that overlaps
+        // a block is unavailable — start-in wrongly OFFERED a slot straddling a
+        // block's start (e.g. a 45-min 15:45 slot into a 16:00 block).
+        return slotMin < be && slotMin + interval > bs;
       });
       if (blocked) continue;
       const busy = dd.busyMins.some(m => m >= slotMin && m < slotMin + interval);
@@ -250,7 +253,9 @@ async function isDentistSlotFree(dentistId, dateStr, slot24, context) {
   if (blocksErr) { console.error("isDentistSlotFree blocks error:", blocksErr); return false; }
   const blocked = (blocks || []).some(b => {
     const bs = toMin(b.start_time), be = toMin(b.end_time);
-    return slotMin >= bs && slotMin < be;
+    // OVERLAP (see getAvailableSlots) — keep the confirm-time check identical
+    // to the offer so a straddling slot is rejected consistently.
+    return slotMin < be && slotMin + interval > bs;
   });
   if (blocked) return false;
 

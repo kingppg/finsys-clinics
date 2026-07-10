@@ -492,6 +492,22 @@ async function testScheduleEngine() {
   r = await bh.getAvailableSlots(wed, defCtx);
   check('holiday: unblocked holiday keeps day open', r.closedReason === null);
   fakeDb.__db.clinic_holidays = [];
+
+  // F1 — OVERLAP block enforcement. Dentist blocked 16:00–18:00 on a 45-min grid:
+  // the 15:45 slot (03:45 PM) runs 15:45–16:30, straddling the 16:00 block start,
+  // and must NOT be offered (start-in wrongly offered it). 16:30/17:15 blocked too.
+  // Use the appointment-free Sunday so 'before the block' slots are truly free.
+  const ctx45 = { clinicId: 1, timeZone: 'Asia/Manila', clinic: { id: 1, schedule: {
+    days: { '0': { is_closed: false, open: '09:00', close: '18:00' } }, breaks: [], slot_interval_minutes: 45,
+  } } };
+  fakeDb.__db.dentist_availability = [
+    { id: 1, dentist_id: 1, clinic_id: 1, is_available: false, specific_date: sun, start_time: '16:00', end_time: '18:00' },
+  ];
+  r = await bh.getAvailableSlots(sun, ctx45);
+  check('F1: straddling 03:45 PM slot NOT offered (overlaps 16:00 block)', !r.slots.includes('03:45 PM'));
+  check('F1: 04:30 PM inside block NOT offered', !r.slots.includes('04:30 PM'));
+  check('F1: 03:00 PM (before block) still offered', r.slots.includes('03:00 PM'));
+  fakeDb.__db.dentist_availability = [];
 }
 
 // ---------------------------------------------------------------------------

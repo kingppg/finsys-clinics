@@ -8,7 +8,7 @@ import socket from '../socket';
 import Swal from 'sweetalert2';
 import { useClinic } from './ClinicContext'; // ✅ import context hook
 import { normalizePHMobile } from '../utils/phone';
-import { daySlots, closedReasonFor, normalizeSchedule } from '../utils/schedule';
+import { daySlots, closedReasonFor, normalizeSchedule, dowOf } from '../utils/schedule';
 
 // ─── Timezone utility ─────────────────────────────────────────────────────────
 function getUtcOffset(timeZone) {
@@ -357,10 +357,16 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
         .eq('dentist_id', selectedDentist).eq('clinic_id', clinicId).eq('deleted', false)
         .gte('appointment_time', startISO).lt('appointment_time', endISO);
       if (error) { setBookedSlots([]); return; }
+      // Map appointments by CLINIC-local date/time (matches the bot + the slot
+      // grid), not the browser's — otherwise a cross-timezone staffer would map
+      // an appointment onto the wrong slot/day.
+      const tz = clinicTimeZone || 'Asia/Manila';
+      const clinicDate = (ts) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ts));
+      const clinicHHMM = (ts) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ts));
       let slotsList = (data || [])
-        .filter(appt => new Date(appt.appointment_time).toLocaleDateString('sv-SE') === dateStr)
+        .filter(appt => clinicDate(appt.appointment_time) === dateStr)
         .map(appt => ({
-          time: new Date(appt.appointment_time).toTimeString().slice(0, 5),
+          time: clinicHHMM(appt.appointment_time),
           id: appt.id,
           patientId: appt.patient_id,
           reason: appt.reason || '',
@@ -376,18 +382,26 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     if (!selectedDentist || !selectedDate) { setBlockedSlots([]); return; }
     const ds = selectedDate.toLocaleDateString('sv-SE');
     try {
+      // Honor BOTH one-off (specific_date) and recurring (day_of_week) blocks —
+      // matches the bot; the form previously ignored recurring blocks.
+      const dow = dowOf(ds);
       const { data: blocks } = await supabase
         .from('dentist_availability').select('*')
         .eq('dentist_id', selectedDentist).eq('clinic_id', clinicId)
-        .eq('is_available', false).eq('specific_date', ds);
+        .eq('is_available', false)
+        .or(`specific_date.eq.${ds},day_of_week.eq.${dow}`);
       let blocked = [];
       (blocks || []).forEach(block => {
         const [startHour, startMin] = block.start_time.split(':').map(Number);
         const [endHour, endMin] = block.end_time.split(':').map(Number);
+        const blockStart = startHour * 60 + startMin;
+        const blockEnd = endHour * 60 + endMin;
         slots.forEach(slot => {
           const [h, m] = slot.split(':').map(Number);
           const slotMinutes = h * 60 + m;
-          if (slotMinutes >= startHour * 60 + startMin && slotMinutes < endHour * 60 + endMin) {
+          // OVERLAP (matches bot + availability): a slot [start, start+interval)
+          // that overlaps the block is unavailable.
+          if (slotMinutes < blockEnd && slotMinutes + slotInterval > blockStart) {
             if (!blocked.includes(slot)) blocked.push(slot);
           }
         });

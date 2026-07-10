@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Swal from 'sweetalert2';
 import { LuTrash2, LuBan, LuLock, LuCoffee, LuSunrise, LuSunset, LuCircleCheck, LuCalendarClock, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { supabase } from '../supabaseClient';
+import { useClinic } from './ClinicContext';
 import { daySlots, closedReasonFor, normalizeSchedule, toMin, toHHMM } from '../utils/schedule';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -111,6 +112,15 @@ function AvCalendar({ valueStr, onPick, hasBlocks, isDateClosed }) {
 }
 
 function DentistAvailabilityManager({ clinicId, dentistId }) {
+  const { clinicTimeZone } = useClinic();
+  // Appointment date/time in CLINIC-local terms (matches the bot + the slot
+  // grid), so a cross-timezone staffer maps appointments to the right slot/day.
+  const apptClinicDate = (ts) => new Intl.DateTimeFormat('en-CA', { timeZone: clinicTimeZone || 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ts));
+  const apptClinicMins = (ts) => {
+    const s = new Intl.DateTimeFormat('en-GB', { timeZone: clinicTimeZone || 'Asia/Manila', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(ts));
+    const [h, m] = s.split(':').map(Number);
+    return h * 60 + m;
+  };
   const [dentists, setDentists] = useState([]);
   const [selectedDentist, setSelectedDentist] = useState(dentistId || '');
   const [selectedDate, setSelectedDate] = useState('');
@@ -184,7 +194,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
         .eq('deleted', false)
         .then(res => (res.data || []).filter(
           appt => {
-            const apptDate = new Date(appt.appointment_time).toLocaleDateString('sv-SE');
+            const apptDate = apptClinicDate(appt.appointment_time);
             return apptDate === todayStr;
           }
         )),
@@ -197,6 +207,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
       setAppointments([]);
       setLoading(false);
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDentist, clinicId]);
 
   useEffect(() => {
@@ -225,8 +236,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     // Appointments → booked: mark the slot whose [start, start+interval) contains
     // the appointment start (range-match; catches off-grid appointments too).
     appointments.forEach(appt => {
-      const d = new Date(appt.appointment_time);
-      const mins = d.getHours() * 60 + d.getMinutes();
+      const mins = apptClinicMins(appt.appointment_time);
       const t = bookableSlots.find(x => { const s = toMin(x); return mins >= s && mins < s + interval; });
       if (t) status[t] = 'booked';
     });
@@ -257,7 +267,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
         .eq('deleted', false)
         .then(res => (res.data || []).filter(
           appt => {
-            const apptDate = new Date(appt.appointment_time).toLocaleDateString('sv-SE');
+            const apptDate = apptClinicDate(appt.appointment_time);
             return apptDate === dateStr;
           }
         )),
@@ -390,7 +400,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
           .eq('deleted', false)
           .then(res => (res.data || []).filter(
             appt => {
-              const apptDate = new Date(appt.appointment_time).toLocaleDateString('sv-SE');
+              const apptDate = apptClinicDate(appt.appointment_time);
               return apptDate === selectedDate;
             }
           )),
@@ -449,7 +459,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
         .eq('deleted', false)
         .then(res => (res.data || []).filter(
           appt => {
-            const apptDate = new Date(appt.appointment_time).toLocaleDateString('sv-SE');
+            const apptDate = apptClinicDate(appt.appointment_time);
             return apptDate === selectedDate;
           }
         )),
