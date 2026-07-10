@@ -8,6 +8,7 @@ import socket from '../socket';
 import Swal from 'sweetalert2';
 import { useClinic } from './ClinicContext'; // ✅ import context hook
 import { normalizePHMobile } from '../utils/phone';
+import { daySlots, closedReasonFor, normalizeSchedule } from '../utils/schedule';
 
 // ─── Timezone utility ─────────────────────────────────────────────────────────
 function getUtcOffset(timeZone) {
@@ -20,30 +21,12 @@ function getUtcOffset(timeZone) {
   return `${diff >= 0 ? '+' : '-'}${hours}:${minutes}`;
 }
 
-function generateTimeSlots(start = "09:00", end = "18:00", interval = 20) {
-  const slots = [];
-  let [hour, minute] = start.split(":").map(Number);
-  const [endHour, endMinute] = end.split(":").map(Number);
-  while (hour < endHour || (hour === endHour && minute < endMinute)) {
-    const slot = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-    slots.push(slot);
-    minute += interval;
-    if (minute >= 60) { hour += 1; minute = minute % 60; }
-  }
-  return slots;
-}
-
 function to12HourFormat(time24) {
   const [hourStr, minStr] = time24.split(':');
   let hour = parseInt(hourStr, 10);
   const ampm = hour >= 12 ? 'PM' : 'AM';
   hour = hour % 12 || 12;
   return `${hour.toString().padStart(2, '0')}:${minStr} ${ampm}`;
-}
-
-function isClinicOpen(date) {
-  if (!date) return false;
-  return date.getDay() !== 0;
 }
 
 // ─── Patient Search + Add Component ───────────────────────────────────────────
@@ -266,8 +249,18 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
   const [success, setSuccess] = useState('');
   const [validationErrors, setValidationErrors] = useState({});
   const [doubleBookingChecked, setDoubleBookingChecked] = useState(false);
+  const [schedule, setSchedule] = useState(null);
+  const [holidays, setHolidays] = useState([]);
 
-  const slots = generateTimeSlots("09:00", "18:00", 20);
+  // Slot grid, breaks, and closed-days now come from the clinic's configured
+  // schedule (migration 024) via the shared utils/schedule — same engine the
+  // booking bot uses, so the form and bot can't disagree.
+  const dateStr = selectedDate ? selectedDate.toLocaleDateString('sv-SE') : '';
+  const scheduleClosedReason = dateStr ? closedReasonFor(schedule, holidays, dateStr) : null;
+  const daySlotList = dateStr ? daySlots(schedule, dateStr) : [];
+  const slots = daySlotList.map(s => s.time);
+  const breakTimes = new Set(daySlotList.filter(s => s.isBreak).map(s => s.time));
+  const slotInterval = normalizeSchedule(schedule).slot_interval_minutes;
 
   const fetchPatients = useCallback(async () => {
     const { data } = await supabase
@@ -303,13 +296,18 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     supabase.from('procedure_categories').select('*, procedures:procedures(*)')
       .eq('clinic_id', clinicId)
       .then(res => setCategories(res.data || []));
+    // Clinic schedule + holidays drive the slot grid / closed days (migration 024).
+    supabase.from('clinics').select('schedule').eq('id', clinicId).single()
+      .then(res => setSchedule(res.data?.schedule || null));
+    supabase.from('clinic_holidays').select('holiday_date, is_recurring, is_blocked').eq('clinic_id', clinicId)
+      .then(res => setHolidays(res.data || []));
   }, [clinicId, fetchPatients]);
 
   useEffect(() => {
     fetchBookedSlots();
     fetchBlockedSlots();
     // eslint-disable-next-line
-  }, [selectedDentist, selectedDate, appointment, clinicId]);
+  }, [selectedDentist, selectedDate, appointment, clinicId, schedule]);
 
   useEffect(() => {
     // Use the shared socket singleton (env-based URL) — the old code hardcoded
@@ -372,26 +370,17 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     } catch { setBookedSlots([]); }
   };
 
-  const LUNCH_START = 12 * 60;
-  const LUNCH_END = 13 * 60;
-
-  function getLunchSlots() {
-    return slots.filter(slot => {
-      const [h, m] = slot.split(':').map(Number);
-      const slotMinutes = h * 60 + m;
-      return slotMinutes >= LUNCH_START && slotMinutes < LUNCH_END;
-    });
-  }
-
+  // Dentist availability blocks only — breaks now come from the schedule grid
+  // (daySlotList isBreak), not injected here.
   const fetchBlockedSlots = async () => {
     if (!selectedDentist || !selectedDate) { setBlockedSlots([]); return; }
-    const dateStr = selectedDate.toLocaleDateString('sv-SE');
+    const ds = selectedDate.toLocaleDateString('sv-SE');
     try {
       const { data: blocks } = await supabase
         .from('dentist_availability').select('*')
         .eq('dentist_id', selectedDentist).eq('clinic_id', clinicId)
-        .eq('is_available', false).eq('specific_date', dateStr);
-      let blocked = [...getLunchSlots()];
+        .eq('is_available', false).eq('specific_date', ds);
+      let blocked = [];
       (blocks || []).forEach(block => {
         const [startHour, startMin] = block.start_time.split(':').map(Number);
         const [endHour, endMin] = block.end_time.split(':').map(Number);
@@ -404,16 +393,25 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
         });
       });
       setBlockedSlots(blocked);
-    } catch { setBlockedSlots(getLunchSlots()); }
+    } catch { setBlockedSlots([]); }
   };
 
   const isTileDisabled = ({ date }) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    return date.getDay() === 0 || date < today;
+    if (date < today) return true;
+    // Closed by clinic schedule (day-config) or a blocked holiday.
+    return closedReasonFor(schedule, holidays, date.toLocaleDateString('sv-SE')) !== null;
   };
 
-  const isSlotAvailable = (slot) =>
-    !bookedSlots.some(s => s.time === slot) && !blockedSlots.includes(slot);
+  // Range-match: a slot is taken if any booked appointment STARTS within
+  // [slot, slot + interval) — so an off-grid appointment (e.g. after an interval
+  // change) still blocks its slot instead of appearing free.
+  const slotStartMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const bookedInSlot = (slot) => {
+    const sMin = slotStartMin(slot);
+    return bookedSlots.find(s => { const b = slotStartMin(s.time); return b >= sMin && b < sMin + slotInterval; });
+  };
+  const isSlotAvailable = (slot) => !bookedInSlot(slot) && !blockedSlots.includes(slot);
 
   function isSlotInPast(time) {
     if (!selectedDate) return false;
@@ -433,7 +431,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     if (!selectedSlot) errors.selectedSlot = 'Time slot is required.';
     if (!selectedCategory) errors.selectedCategory = 'Procedure category is required.';
     if (!selectedProcedure) errors.selectedProcedure = 'Procedure is required.';
-    if (selectedDate && !isClinicOpen(selectedDate)) errors.selectedDate = 'Clinic is closed on this day.';
+    if (selectedDate && scheduleClosedReason) errors.selectedDate = scheduleClosedReason === 'holiday' ? 'Clinic is closed on this date (holiday).' : 'Clinic is closed on this day.';
     if (selectedDate && selectedDate < new Date(new Date().setHours(0, 0, 0, 0))) errors.selectedDate = 'Date must not be in the past.';
     return errors;
   };
@@ -544,10 +542,8 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
 
   useEffect(() => { setSelectedProcedure(''); }, [selectedCategory]);
 
-  function isLunchSlot(slot) {
-    const [h, m] = slot.split(':').map(Number);
-    return h * 60 + m >= LUNCH_START && h * 60 + m < LUNCH_END;
-  }
+  // A slot is a "break" slot if the schedule marks it so (any configured break).
+  const isLunchSlot = (slot) => breakTimes.has(slot);
 
   // Live booking summary values
   const summaryPatient = patients.find(p => String(p.id) === String(selectedPatient))?.name;
@@ -555,7 +551,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
   const summaryProc = procedures.find(p => String(p.id) === String(selectedProcedure));
   const summaryPrice = summaryProc?.price;
   const canBook = !!(selectedDentist && selectedPatient && selectedSlot && selectedCategory &&
-    selectedProcedure && isClinicOpen(selectedDate) && !isSlotInPast(selectedSlot));
+    selectedProcedure && !scheduleClosedReason && !isSlotInPast(selectedSlot));
 
   return (
     <section className="main-section appointment-modern">
@@ -611,9 +607,11 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
               tileDisabled={isTileDisabled}
             />
             {validationErrors.selectedDate && <div className="field-error">{validationErrors.selectedDate}</div>}
-            {!isClinicOpen(selectedDate) && selectedDate && (
+            {scheduleClosedReason && selectedDate && (
               <div className="appt-closed-note">
-                Clinic is closed on Sundays. Please select another day.
+                {scheduleClosedReason === 'holiday'
+                  ? 'Clinic is closed on this date (holiday). Please select another day.'
+                  : 'Clinic is closed on this day. Please select another day.'}
               </div>
             )}
           </div>
@@ -621,23 +619,23 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
           <div>
             <div className="af-section-head"><LuClock /><span>Time</span></div>
             <div className="af-slots-sub">
-              {selectedDentist && selectedDate && isClinicOpen(selectedDate)
+              {selectedDentist && selectedDate && !scheduleClosedReason
                 ? `${dentists.find(d => String(d.id) === String(selectedDentist))?.name || ''} · ${selectedDate.toLocaleDateString()}`
                 : 'Select a dentist and date to see available slots'}
             </div>
             <div className="slots-list">
               {slots.map(time => {
-                const bookedSlotObj = bookedSlots.find(s => s.time === time);
+                const bookedSlotObj = bookedInSlot(time);
                 const lunch = isLunchSlot(time);
                 const blocked = blockedSlots.includes(time) && !lunch;
                 const past = isSlotInPast(time);
                 const disabled =
                   lunch || blocked || !!bookedSlotObj ||
-                  !selectedDentist || !isClinicOpen(selectedDate) || past;
+                  !selectedDentist || !!scheduleClosedReason || past;
                 const isSelected = !disabled && selectedSlot === time;
 
                 let stateClass = 'available', icon = null, title = 'Available';
-                if (lunch)              { stateClass = 'lunch';   icon = <LuUtensils />;  title = 'Lunch Break (12:00–1:00 PM)'; }
+                if (lunch)              { stateClass = 'lunch';   icon = <LuUtensils />;  title = 'Break'; }
                 else if (blocked)       { stateClass = 'blocked'; icon = <LuBan />;       title = 'Dentist Blocked'; }
                 else if (bookedSlotObj) { stateClass = 'booked';  icon = <LuBookMarked />; title = `Booked: ${patients.find(p => String(p.id) === String(bookedSlotObj.patientId))?.name || 'Unknown'}${bookedSlotObj.reason ? '\nProcedure: ' + bookedSlotObj.reason : ''}`; }
                 else if (past)          { stateClass = 'past';    icon = <LuClock />;     title = 'Past'; }
