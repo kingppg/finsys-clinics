@@ -50,17 +50,23 @@ function normalizeSchedule(schedule) {
   };
 }
 
-// Does a blocked holiday fall on this date? Recurring = same month/day any year.
-function matchesBlockedHoliday(holidays, dateStr) {
+// The blocked holiday (if any) that closes this date — recurring = same
+// month/day any year. Returns the holiday row (for UI labels) or null.
+function blockedHolidayFor(holidays, dateStr) {
   const [, mm, dd] = String(dateStr).split('-');
-  return (holidays || []).some(h => {
+  return (holidays || []).find(h => {
     if (!h || h.is_blocked === false) return false;
     if (h.is_recurring) {
       const [, hm, hd] = String(h.holiday_date).split('-');
       return hm === mm && hd === dd;
     }
     return h.holiday_date === dateStr;
-  });
+  }) || null;
+}
+
+// Does a blocked holiday fall on this date?
+function matchesBlockedHoliday(holidays, dateStr) {
+  return blockedHolidayFor(holidays, dateStr) !== null;
 }
 
 // Why (if at all) the clinic is closed on this date: 'day' | 'holiday' | null.
@@ -134,6 +140,7 @@ module.exports = {
   toHHMM,
   to12,
   normalizeSchedule,
+  blockedHolidayFor,
   matchesBlockedHoliday,
   closedReasonFor,
   isClinicOpenOn,

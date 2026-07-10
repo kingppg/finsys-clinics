@@ -4,7 +4,7 @@ import Swal from 'sweetalert2';
 import { LuTrash2, LuBan, LuLock, LuCoffee, LuSunrise, LuSunset, LuCircleCheck, LuCalendarClock, LuChevronLeft, LuChevronRight } from 'react-icons/lu';
 import { supabase } from '../supabaseClient';
 import { useClinic } from './ClinicContext';
-import { daySlots, closedReasonFor, normalizeSchedule, toMin, toHHMM } from '../utils/schedule';
+import { daySlots, closedReasonFor, blockedHolidayFor, normalizeSchedule, toMin, toHHMM } from '../utils/schedule';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 // Grid slots + breaks + closed days now come from the clinic's configured
@@ -42,7 +42,7 @@ const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // Full control over grid/sizing/theming; disables past dates + days the clinic
 // is CLOSED (per schedule / blocked holiday, via the isDateClosed predicate) and
 // marks days that have blocks. Emits a native Date via onPick.
-function AvCalendar({ valueStr, onPick, hasBlocks, isDateClosed }) {
+function AvCalendar({ valueStr, onPick, hasBlocks, isDateClosed, dateTitle }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const selected = valueStr ? parseLocalDate(valueStr) : null;
   const seed = selected || today;
@@ -95,7 +95,8 @@ function AvCalendar({ valueStr, onPick, hasBlocks, isDateClosed }) {
               type="button"
               key={date.toISOString()}
               className={cls.join(' ')}
-              disabled={disabled}
+              aria-disabled={disabled}
+              title={dateTitle ? dateTitle(date, date < today) : undefined}
               onClick={() => !disabled && onPick(date)}
             >
               {date.getDate()}
@@ -138,7 +139,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     if (!clinicId) return;
     supabase.from('clinics').select('schedule').eq('id', clinicId).single()
       .then(res => setSchedule(res.data?.schedule || null));
-    supabase.from('clinic_holidays').select('holiday_date, is_recurring, is_blocked').eq('clinic_id', clinicId)
+    supabase.from('clinic_holidays').select('holiday_date, label, is_recurring, is_blocked').eq('clinic_id', clinicId)
       .then(res => setHolidays(res.data || []));
   }, [clinicId]);
 
@@ -148,6 +149,18 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
   const bookableSlots = daySlotList.filter(s => !s.isBreak).map(s => s.time);
   const selectedClosed = selectedDate ? closedReasonFor(schedule, holidays, selectedDate) : null;
   const isDateClosed = (dateObj) => closedReasonFor(schedule, holidays, dateObj.toLocaleDateString('sv-SE')) !== null;
+  // Tooltip explaining WHY a calendar date is unavailable (no user confusion).
+  const dateTitle = (dateObj, isPast) => {
+    if (isPast) return 'Past date';
+    const ds = dateObj.toLocaleDateString('sv-SE');
+    const reason = closedReasonFor(schedule, holidays, ds);
+    if (!reason) return undefined;
+    if (reason === 'holiday') {
+      const hol = blockedHolidayFor(holidays, ds);
+      return hol?.label ? `Closed — ${hol.label} (holiday)` : 'Closed — holiday';
+    }
+    return 'Closed — clinic is not open on this day';
+  };
 
   useEffect(() => {
     if (dentistId) {
@@ -175,7 +188,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
       setAppointments([]);
       return;
     }
-    const todayStr = new Date().toLocaleDateString('sv-SE');
+    const todayStr = apptClinicDate(new Date()); // clinic-local today (matches appt mapping)
     setSelectedDate(todayStr);
     setLoading(true);
 
@@ -345,19 +358,22 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     }
     setSaving(true);
 
-    const blocksForDate = availability.filter(a => {
-      const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
-      return dbDate === selectedDate;
-    });
-    for (let block of blocksForDate) {
-      await supabase
-        .from('dentist_availability')
-        .delete()
-        .eq('id', block.id)
-        .eq('clinic_id', clinicId);
-    }
-
     try {
+      // supabase-js returns { error } rather than throwing — check every write
+      // so a failed delete/insert never shows a false "Saved!".
+      const blocksForDate = availability.filter(a => {
+        const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
+        return dbDate === selectedDate;
+      });
+      for (let block of blocksForDate) {
+        const { error } = await supabase
+          .from('dentist_availability')
+          .delete()
+          .eq('id', block.id)
+          .eq('clinic_id', clinicId);
+        if (error) throw error;
+      }
+
       // Merge contiguous blocked slots into time-aligned ranges. A run continues
       // only while the next blocked slot starts exactly where the previous one
       // ends (start + interval) — so a break naturally splits runs, and each
@@ -374,7 +390,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
         }
       }
       for (const run of runs) {
-        await supabase
+        const { error } = await supabase
           .from('dentist_availability')
           .insert([{
             dentist_id: selectedDentist,
@@ -384,6 +400,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
             is_available: false,
             clinic_id: clinicId
           }]);
+        if (error) throw error;
       }
       Promise.all([
         supabase
@@ -410,7 +427,8 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
       });
       showNotification('Saved!', 'success');
     } catch (err) {
-      showNotification('Error saving!', 'error');
+      console.error('availability save failed:', err);
+      showNotification('Error saving — nothing was changed. Please try again.', 'error');
     }
     setSaving(false);
   }
@@ -432,42 +450,44 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
     if (!confirm.isConfirmed) return;
 
     setSaving(true);
-    const blocksForDate = availability.filter(a => {
-      const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
-      return dbDate === selectedDate;
-    });
-    for (let block of blocksForDate) {
-      await supabase
-        .from('dentist_availability')
-        .delete()
-        .eq('id', block.id)
-        .eq('clinic_id', clinicId);
-    }
+    try {
+      const blocksForDate = availability.filter(a => {
+        const dbDate = parseLocalDate(a.specific_date)?.toLocaleDateString('sv-SE');
+        return dbDate === selectedDate;
+      });
+      for (let block of blocksForDate) {
+        const { error } = await supabase
+          .from('dentist_availability')
+          .delete()
+          .eq('id', block.id)
+          .eq('clinic_id', clinicId);
+        if (error) throw error;
+      }
 
-    Promise.all([
-      supabase
-        .from('dentist_availability')
-        .select('*')
-        .eq('dentist_id', selectedDentist)
-        .eq('clinic_id', clinicId)
-        .then(res => res.data || []),
-      supabase
-        .from('appointments')
-        .select('*')
-        .eq('dentist_id', selectedDentist)
-        .eq('clinic_id', clinicId)
-        .eq('deleted', false)
-        .then(res => (res.data || []).filter(
-          appt => {
-            const apptDate = apptClinicDate(appt.appointment_time);
-            return apptDate === selectedDate;
-          }
-        )),
-    ]).then(([avail, appts]) => {
+      const [avail, appts] = await Promise.all([
+        supabase
+          .from('dentist_availability')
+          .select('*')
+          .eq('dentist_id', selectedDentist)
+          .eq('clinic_id', clinicId)
+          .then(res => res.data || []),
+        supabase
+          .from('appointments')
+          .select('*')
+          .eq('dentist_id', selectedDentist)
+          .eq('clinic_id', clinicId)
+          .eq('deleted', false)
+          .then(res => (res.data || []).filter(
+            appt => apptClinicDate(appt.appointment_time) === selectedDate
+          )),
+      ]);
       setAvailability(avail);
       setAppointments(appts);
-    });
-    showNotification('All blocks deleted!', 'success');
+      showNotification('All blocks deleted!', 'success');
+    } catch (err) {
+      console.error('availability delete-date failed:', err);
+      showNotification('Error deleting — please try again.', 'error');
+    }
     setSaving(false);
   }
 
@@ -481,11 +501,16 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
       cancelButtonText: 'Cancel'
     });
     if (!confirm.isConfirmed) return;
-    await supabase
+    const { error } = await supabase
       .from('dentist_availability')
       .delete()
       .eq('id', id)
       .eq('clinic_id', clinicId);
+    if (error) {
+      console.error('availability delete-block failed:', error);
+      showNotification('Failed to delete — please try again.', 'error');
+      return;
+    }
     setAvailability(avail => avail.filter(a => a.id !== id));
     showNotification('Deleted!', 'success');
   }
@@ -683,6 +708,7 @@ function DentistAvailabilityManager({ clinicId, dentistId }) {
                 onPick={handleCalendarChange}
                 hasBlocks={dateHasBlocks}
                 isDateClosed={isDateClosed}
+                dateTitle={dateTitle}
               />
             </div>
           </div>

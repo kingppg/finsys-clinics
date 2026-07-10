@@ -13,6 +13,7 @@ export type Schedule = {
 };
 export type Holiday = {
   holiday_date: string;
+  label?: string | null;
   is_recurring?: boolean;
   is_blocked?: boolean;
 };
@@ -56,16 +57,22 @@ export function normalizeSchedule(schedule?: Schedule | null): Schedule {
   };
 }
 
-export function matchesBlockedHoliday(holidays: Holiday[] | undefined, dateStr: string): boolean {
+// The blocked holiday (if any) that closes this date — returns the row (for UI
+// labels) or null. Recurring = same month/day any year.
+export function blockedHolidayFor(holidays: Holiday[] | undefined, dateStr: string): Holiday | null {
   const [, mm, dd] = String(dateStr).split('-');
-  return (holidays || []).some(h => {
+  return (holidays || []).find(h => {
     if (!h || h.is_blocked === false) return false;
     if (h.is_recurring) {
       const [, hm, hd] = String(h.holiday_date).split('-');
       return hm === mm && hd === dd;
     }
     return h.holiday_date === dateStr;
-  });
+  }) || null;
+}
+
+export function matchesBlockedHoliday(holidays: Holiday[] | undefined, dateStr: string): boolean {
+  return blockedHolidayFor(holidays, dateStr) !== null;
 }
 
 export function closedReasonFor(schedule: Schedule | null | undefined, holidays: Holiday[] | undefined, dateStr: string): ClosedReason {

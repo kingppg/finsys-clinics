@@ -831,3 +831,28 @@ tr.row-scroll-focus {
   .modal { padding: 14px 4vw; min-width: unset; }
   .slots-list { grid-template-columns: 1fr; gap: 11px 10px; }
 }
+
+/* Holiday closure marker on the appointment-form calendar (react-calendar) */
+.appointment-modern .react-calendar__tile { position: relative; }
+.appointment-modern .react-calendar__tile.af-cal-holiday {
+  background: var(--dc-danger-soft, rgba(248, 113, 113, 0.12));
+}
+.af-cal-holdot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dc-danger, #f87171);
+  pointer-events: auto;
+}
+.af-cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--dc-text-3, #6E7E98);
+}
+.af-cal-legend .af-cal-holdot { position: static; display: inline-block; }

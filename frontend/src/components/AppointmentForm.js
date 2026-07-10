@@ -8,7 +8,7 @@ import socket from '../socket';
 import Swal from 'sweetalert2';
 import { useClinic } from './ClinicContext'; // ✅ import context hook
 import { normalizePHMobile } from '../utils/phone';
-import { daySlots, closedReasonFor, normalizeSchedule, dowOf } from '../utils/schedule';
+import { daySlots, closedReasonFor, blockedHolidayFor, normalizeSchedule, dowOf } from '../utils/schedule';
 
 // ─── Timezone utility ─────────────────────────────────────────────────────────
 function getUtcOffset(timeZone) {
@@ -299,7 +299,7 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
     // Clinic schedule + holidays drive the slot grid / closed days (migration 024).
     supabase.from('clinics').select('schedule').eq('id', clinicId).single()
       .then(res => setSchedule(res.data?.schedule || null));
-    supabase.from('clinic_holidays').select('holiday_date, is_recurring, is_blocked').eq('clinic_id', clinicId)
+    supabase.from('clinic_holidays').select('holiday_date, label, is_recurring, is_blocked').eq('clinic_id', clinicId)
       .then(res => setHolidays(res.data || []));
   }, [clinicId, fetchPatients]);
 
@@ -619,7 +619,21 @@ function AppointmentForm({ appointment, onClose, onEdit, clinicId }) {
               onChange={setSelectedDate}
               minDate={new Date()}
               tileDisabled={isTileDisabled}
+              tileClassName={({ date, view }) =>
+                view === 'month' && closedReasonFor(schedule, holidays, date.toLocaleDateString('sv-SE')) === 'holiday'
+                  ? 'af-cal-holiday' : null}
+              tileContent={({ date, view }) => {
+                if (view !== 'month') return null;
+                const ds = date.toLocaleDateString('sv-SE');
+                if (closedReasonFor(schedule, holidays, ds) !== 'holiday') return null;
+                const hol = blockedHolidayFor(holidays, ds);
+                // Titled marker — hovering a holiday-closed date explains why.
+                return <span className="af-cal-holdot" title={hol?.label ? `Closed — ${hol.label} (holiday)` : 'Closed — holiday'} />;
+              }}
             />
+            {holidays.some(h => h.is_blocked !== false) && (
+              <div className="af-cal-legend"><span className="af-cal-holdot" /> Holiday — clinic closed (hover a marked date)</div>
+            )}
             {validationErrors.selectedDate && <div className="field-error">{validationErrors.selectedDate}</div>}
             {scheduleClosedReason && selectedDate && (
               <div className="appt-closed-note">
