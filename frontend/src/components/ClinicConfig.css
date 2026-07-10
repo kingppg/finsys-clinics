@@ -49,6 +49,59 @@
   align-items: start;
 }
 
+/* ── Frozen title + rail, internal-scroll panel ──────────────────────────────
+   Same pattern as the Add Appointment form: the page title and the section rail
+   must NOT move — only the selected panel scrolls. Lock the page to the viewport
+   height as a flex column (fixed header, flex shell), switch the shell to a flex
+   row, and give ONLY the panel overflow-y. The rail stays natural height, frozen
+   (its old position:sticky drifted-then-pinned). The panel has only native
+   selects/date inputs (top-layer, not clipped), so internal scroll is safe.
+   Holds down to tablet portrait (768px) for parity with the appointment form;
+   below 768 the rail collapses to a top bar. 100dvh avoids iOS toolbar overflow. */
+@media (min-width: 768px) {
+  .cc-page {
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
+    margin: 10px auto 16px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .cc-page > .dc-page-header { flex: 0 0 auto; }
+  .cc-shell {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
+  }
+  .cc-page .cc-rail {           /* +specificity: beat the later base position:sticky */
+    position: static;
+    flex: 0 0 264px;
+    align-self: flex-start;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+  .cc-panel {
+    flex: 1 1 0%;
+    min-width: 0;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Tablet range: keep the frozen two-column layout, just tighten it so the rail
+   and panel both fit (narrower rail, smaller gap/padding). Form grids stack via
+   the ≤880 rule; the sidebar auto-collapses <1024 (Dashboard) for extra room. */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .cc-shell { gap: 14px; }
+  .cc-page .cc-rail { flex-basis: 214px; }
+  .cc-rail-item { padding: 10px 12px; gap: 10px; }
+  .cc-rail-ico { width: 34px; height: 34px; }
+  .cc-panel { padding: 20px 18px 22px; }
+}
+
 /* ---- Left section rail ---- */
 .cc-rail {
   display: flex;
@@ -660,11 +713,16 @@
 /* ---- Users panel: let AdminUsersRoles sit flush inside the panel card ---- */
 .cc-users { margin: -4px 0; }
 
-/* ---- Responsive: rail collapses above the panel ---- */
-@media (max-width: 880px) {
+/* ---- Responsive ---- */
+/* Phones (<768): rail collapses to a scrollable top bar, page scrolls normally
+   (the frozen two-column layout starts at 768). */
+@media (max-width: 767px) {
   .cc-shell { grid-template-columns: 1fr; }
   .cc-rail { position: static; flex-direction: row; overflow-x: auto; }
   .cc-rail-item { min-width: 220px; }
+}
+/* Narrow panels (tablet portrait + phones): stack the two-column form grids. */
+@media (max-width: 880px) {
   .cc-grid, .cc-grid--3 { grid-template-columns: 1fr; }
 }
 
