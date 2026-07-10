@@ -42,20 +42,13 @@
   }
   .bills-page > .dc-page-header,
   .bills-page > .dc-tabs,
-  .bills-page > .bills-period-bar { flex: 0 0 auto; }
+  .bills-page > .bills-period-bar,
+  .bills-page > .bills-kpis { flex: 0 0 auto; }
   .bills-body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-  }
-  .bills-body > .bills-kpis {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    margin-bottom: 0;
-    padding-bottom: 20px;
-    background: var(--dc-bg, #f6f9fc);
   }
 }
 
@@ -236,6 +229,36 @@
   position: sticky;
   top: 0;
   z-index: 2;
+}
+
+/* ── Desktop stacked-reveal (≥1025px) ────────────────────────────────────────
+   On wide screens the tables fit, so instead of a bounded box we let both
+   tables live in the single page scroll (.bills-body) and pin each section's
+   TITLE bar + column HEADERS as you scroll. Scroll through Active Invoices with
+   its title+headers pinned; reach the end and the Payment Collections Audit
+   title+headers take over (a clean hand-off — the invoices table is scrolled
+   away, only its pinned bar was showing). Needs the card + scroll wrappers to be
+   overflow:visible so the sticky anchors to .bills-body, not an inner box. The
+   KPIs above are frozen chrome, so top:0 sits right beneath them. */
+@media screen and (min-width: 1025px) {
+  .bills-section-card { overflow: visible; }
+  .bills-table-scroll { overflow: visible; max-height: none; min-height: 0; }
+  /* The title bar pins 2px ABOVE the scroll top (over-covering the clip edge) so
+     a fractional-zoom rounding gap can't reveal the rows scrolling behind it. */
+  .bills-section-header {
+    position: sticky;
+    top: -2px;
+    z-index: 4;
+    height: 54px;                 /* 52 + the 2px it's pulled up, so visible height stays 52 */
+    box-sizing: border-box;
+    border-radius: 14px 14px 0 0;
+  }
+  /* Column headers pin flush under the title bar, overlapping it 2px so no seam
+     opens between the two pinned bars either. */
+  .bills-table-scroll .bills-table th {
+    top: 50px;
+    z-index: 3;
+  }
 }
 
 .bills-section-header {

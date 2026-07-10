@@ -696,15 +696,10 @@ function BillsPayment() {
         </div>
       )}
 
-      {/* Main Body */}
-      <div className="bills-body no-print">
-        {tableLoading && activeTab === 'invoices' && <div className="bills-table-loading"><span className="bills-spinner" /> Syncing ledgers...</div>}
-
-        {/* INVOICES TAB */}
-        {activeTab === 'invoices' && (
-        <>
-        {/* KPI STRIP — headline finance metrics for the active ledger */}
-        <div className="bills-kpis">
+      {/* KPI STRIP — headline finance metrics; frozen chrome (Invoices tab) so
+          the table headers can pin directly beneath it in the scroll body. */}
+      {activeTab === 'invoices' && (
+        <div className="bills-kpis no-print">
           <div className="bills-kpi" style={toneVars('warning')}>
             <div className="bills-kpi-top">
               <span className="bills-kpi-label">Outstanding</span>
@@ -738,7 +733,15 @@ function BillsPayment() {
             <div className="bills-kpi-sub">of this period's invoices paid</div>
           </div>
         </div>
+      )}
 
+      {/* Main Body */}
+      <div className="bills-body no-print">
+        {tableLoading && activeTab === 'invoices' && <div className="bills-table-loading"><span className="bills-spinner" /> Syncing ledgers...</div>}
+
+        {/* INVOICES TAB */}
+        {activeTab === 'invoices' && (
+        <>
         {/* INVOICES TABLE */}
         <div className="bills-section-card">
           <div className="bills-section-header">
